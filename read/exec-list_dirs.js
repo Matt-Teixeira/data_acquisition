@@ -15,7 +15,7 @@ const exec_list_dirs = async (
   system,
   args,
   capture_datetime,
-  ip_reset
+  ip_reset = false
 ) => {
   let note = {
     job_id,
@@ -26,9 +26,16 @@ const exec_list_dirs = async (
 
   const connection_test_1 = /Connection timed out/;
   const connection_test_2 = /error: max-retries exceeded/;
+  const fingerprint_test =
+    /Warning:\sPermanently\sadded\s'\d+\.\d+\.\d+.\d+'.+to\sthe\slist\sof\sknown\shosts|Error:\sCommand\sfailed/g;
 
   try {
     const { stdout, stderr } = await execFile(path, args);
+
+    console.log("\n*********** stdout *****************");
+    console.log(stdout);
+    console.log("\n*********** stderr *****************");
+    console.log(stderr);
 
     // If connection is closed, return false
     if (connection_test_1.test(stderr) || connection_test_2.test(stderr)) {
@@ -46,7 +53,8 @@ const exec_list_dirs = async (
           id: system.id,
           capture_datetime,
           successful_acquisition: false,
-          data_source: "hhm"
+          data_source: "hhm",
+          host_intervention: false
         });
 
         return false;
@@ -60,11 +68,13 @@ const exec_list_dirs = async (
       id: system.id,
       capture_datetime,
       successful_acquisition: true,
-      data_source: "hhm"
+      data_source: "hhm",
+      host_intervention: false
     });
 
     return stdout;
   } catch (error) {
+    console.log("\n*********** Catch Error *****************");
     console.log(error);
 
     if (
@@ -75,9 +85,32 @@ const exec_list_dirs = async (
         job_id,
         system_id: sme
       };
+      if (ip_reset) {
+        await add_to_online_queue(job_id, run_log, {
+          id: system.id,
+          capture_datetime,
+          successful_acquisition: false,
+          data_source: "hhm",
+          host_intervention: false
+        });
+
+        return false;
+      }
       await addLogEvent(E, run_log, "exec_list_dirs", cat, note, error);
       system.data_source = "hhm";
       await add_to_redis_queue(job_id, run_log, system);
+      return false;
+    }
+    // Second condition mostly as a catch all for now due to "Error: Command failed:" pattern match
+    if (fingerprint_test.test(error)) {
+      console.log("Reestablish keys/fingerprint/password");
+      await add_to_online_queue(job_id, run_log, {
+        id: system.id,
+        capture_datetime,
+        successful_acquisition: false,
+        data_source: "hhm",
+        host_intervention: true
+      });
       return false;
     }
     return null;
