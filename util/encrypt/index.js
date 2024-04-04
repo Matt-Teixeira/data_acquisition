@@ -16,8 +16,11 @@ function decryptString(encryptedText) {
   return decrypted;
 }
 
-/* let user = decryptString("d0abf2ee77ab55cf3399c4803dad8cb9");
-let pass = decryptString("e916c81b9abf1adeb79ba47a5ac64364");
+/* let user = decryptString("10ee1736338ac090fb42ecbc060574c4");
+let pass = decryptString("708be4af9aa45c87dceebabb80eb7b45");
+
+// let user = encryptString("insite");
+// let pass = encryptString("713704HMR4@mr");
 
 console.log("USER: " + user);
 console.log("PASS: " + pass); */
