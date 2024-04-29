@@ -2318,3 +2318,123 @@ VALUES(
 	NULL,
 	NULL
 );
+
+-- >
+-- >
+
+INSERT INTO config.acquisition(system_id, host_ip, mmb_ip, protocal, debian_server_path, credentials_group, acquisition_script, run_group, host, user_id, acqu_point)
+VALUES (
+	'SME18532',
+	'10.128.131.240',
+	NULL,
+	'lftp',
+	'/home/prod/hhm_data_acquisition/files/SME18532',
+	'12',
+	'phil_cv_21.sh',
+	1,
+	NULL,
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME18532',
+	'EventLog.txe',
+	'EventLog',
+	ARRAY['eventlog'], -- regex
+	ARRAY['philips_cv_eventlog'], -- tables
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME18532',
+	'lod_EventLog.txe',
+	'lod_EventLog',
+	ARRAY['eventlog'], -- regex
+	ARRAY['philips_cv_eventlog', 'lod'], -- tables
+	NULL,
+	NULL
+);
+
+-- >
+-- >
+
+INSERT INTO config.acquisition(system_id, host_ip, mmb_ip, protocal, debian_server_path, credentials_group, acquisition_script, run_group, host, user_id, acqu_point)
+VALUES (
+	'SME18533',
+	'10.128.130.241',
+	NULL,
+	'lftp',
+	'/home/prod/hhm_data_acquisition/files/SME18533',
+	'12',
+	'phil_cv_21.sh',
+	1,
+	NULL,
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME18533',
+	'EventLog.txe',
+	'EventLog',
+	ARRAY['eventlog'], -- regex
+	ARRAY['philips_cv_eventlog'], -- tables
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME18533',
+	'lod_EventLog.txe',
+	'lod_EventLog',
+	ARRAY['eventlog'], -- regex
+	ARRAY['philips_cv_eventlog', 'lod'], -- tables
+	NULL,
+	NULL
+);
+
+-- >
+-- >
+
+INSERT INTO config.acquisition(system_id, host_ip, mmb_ip, protocal, debian_server_path, credentials_group, acquisition_script, run_group, host, user_id, acqu_point)
+VALUES (
+	'SME18529',
+	'10.0.99.3',
+	NULL,
+	'lftp',
+	'/home/prod/hhm_data_acquisition/files/SME18529',
+	'12',
+	'phil_cv_21.sh',
+	1,
+	NULL,
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME18529',
+	'EventLog.txe',
+	'EventLog',
+	ARRAY['eventlog'], -- regex
+	ARRAY['philips_cv_eventlog'], -- tables
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME18529',
+	'lod_EventLog.txe',
+	'lod_EventLog',
+	ARRAY['eventlog'], -- regex
+	ARRAY['philips_cv_eventlog', 'lod'], -- tables
+	NULL,
+	NULL
+);

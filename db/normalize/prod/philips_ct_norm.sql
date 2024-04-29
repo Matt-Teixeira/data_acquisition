@@ -639,3 +639,43 @@ VALUES(
 	NULL,
 	NULL
 );
+
+-- >
+-- >
+
+INSERT INTO config.acquisition(system_id, host_ip, mmb_ip, protocal, debian_server_path, credentials_group, acquisition_script, run_group, host, user_id, acqu_point)
+VALUES (
+	'SME18534',
+	'10.1.74.232',
+	NULL,
+	'lftp',
+	'/home/prod/hhm_data_acquisition/files/SME18534',
+	'13',
+	'phil_ct_data_grab_1.sh',
+	1,
+	NULL,
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME18534',
+	'Events.output',
+	'events',
+	ARRAY['ct_events_v2'], -- regex
+	ARRAY['philips_ct_events'], -- tables
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME18534',
+	'EALInfo.output',
+	'eal',
+	ARRAY['ct_eal_v_2'], -- regex
+	ARRAY['philips_ct_eal'], -- tables
+	NULL,
+	NULL
+);
