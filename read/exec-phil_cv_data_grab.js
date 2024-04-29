@@ -32,6 +32,8 @@ const exec_phil_cv_data_grab = async (
 
   const connection_test_1 = /Connection timed out/;
   const connection_test_2 = /error: max-retries exceeded/;
+  const fingerprint_test =
+    /Warning:\sPermanently\sadded\s'\d+\.\d+\.\d+.\d+'.+to\sthe\slist\sof\sknown\shosts|Error:\sCommand\sfailed/g;
 
   let data_store_path = "";
   switch (process.env.RUN_ENV) {
@@ -52,11 +54,13 @@ const exec_phil_cv_data_grab = async (
   // DEV: args.push(`${data_store_path}/${manufacturer}/${modality}/${sme}`);
   args.push(`${data_store_path}/${sme}`);
 
-  console.log("\nBash Args");
-  console.log(args);
-
   try {
     const { stdout, stderr } = await execFile(execPath, args);
+
+    console.log("\n*********** stdout *****************");
+    console.log(stdout);
+    console.log("\n*********** stderr *****************");
+    console.log(stderr);
 
     let note = {
       job_id,
@@ -81,15 +85,13 @@ const exec_phil_cv_data_grab = async (
       // Only runs for ip reset instance
       // Reason: In initial data pull, if connection issue occurs, just send to ip:queue and make second attempt.
       // If connection issue occurs on second attempt (ip reset job), place in online:queue to then place in heartbeat table
-
-      console.log("\nip_reset");
-      console.log(ip_reset);
       if (ip_reset) {
         await add_to_online_queue(job_id, run_log, {
           id: system.id,
           capture_datetime,
           successful_acquisition: false,
-          data_source: "hhm"
+          data_source: "hhm",
+          host_intervention: false
         });
 
         return false;
@@ -105,11 +107,13 @@ const exec_phil_cv_data_grab = async (
       id: system.id,
       capture_datetime,
       successful_acquisition: true,
-      data_source: "hhm"
+      data_source: "hhm",
+      host_intervention: false
     });
 
     return stdout;
   } catch (error) {
+    console.log("\n*********** Catch Error *****************");
     console.log(error);
 
     if (
@@ -127,7 +131,8 @@ const exec_phil_cv_data_grab = async (
           id: system.id,
           capture_datetime,
           successful_acquisition: false,
-          data_source: "hhm"
+          data_source: "hhm",
+          host_intervention: false
         });
 
         return false;
@@ -138,6 +143,20 @@ const exec_phil_cv_data_grab = async (
 
       return false;
     }
+
+    // Second condition mostly as a catch all for now due to "Error: Command failed:" pattern match
+    if (fingerprint_test.test(error)) {
+      console.log("Reestablish keys/fingerprint/password");
+      await add_to_online_queue(job_id, run_log, {
+        id: system.id,
+        capture_datetime,
+        successful_acquisition: false,
+        data_source: "hhm",
+        host_intervention: true
+      });
+      return false;
+    }
+
     await addLogEvent(E, run_log, "exec_phil_cv_data_grab", cat, note, error);
     return null;
   }
