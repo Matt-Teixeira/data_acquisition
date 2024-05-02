@@ -9,6 +9,7 @@ const reset_tunnel = require("./jobs/tunnel_reset");
 const get_ip_sec_table = require("./jobs/tools/ip_sec");
 const { captureDatetime, insertHeartbeat } = require("./util");
 const mmb_configs = require("./jobs/tools/build_mmb_config");
+const update_pg_ipsec = require("./utils/vpn/update-pg-ipsec-table_2");
 const [
   addLogEvent,
   writeLogEvents,
@@ -47,6 +48,9 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
     case "offline_alert":
       await insertHeartbeat();
       break;
+    case "update_ipsec":
+      await update_pg_ipsec();
+      break;
     default:
       break;
   }
@@ -74,7 +78,12 @@ const onBoot = async () => {
     // Supply one or more SMEs in first arg array, but must be same manufac. & modality
     if (run_group === "manual") {
       const capture_datetime = captureDatetime();
-      await run_system_manual(run_log, ["SME17372"], ["Philips", "CT"], capture_datetime);
+      await run_system_manual(
+        run_log,
+        ["SME17372"],
+        ["Philips", "CT"],
+        capture_datetime
+      );
     }
     if (run_group === "ip_sec") {
       await get_ip_sec_table();
