@@ -3121,3 +3121,56 @@ VALUES
 		NULL,
 		NULL
 	);
+
+-->
+--> 
+
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME18536',
+		'10.0.99.20',
+		NULL,
+		'lftp',
+		'/home/staging/hhm_data_acquisition/files/SME18536',
+		'3',
+		'ge_ct_22.sh',
+		1,
+		NULL,
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME18536',
+		'gesys_ct01.log',
+		'gesys',
+		ARRAY ['block', 'sub_block'],
+		ARRAY ['ge_ct_gesys'],
+		NULL,
+		NULL
+	);

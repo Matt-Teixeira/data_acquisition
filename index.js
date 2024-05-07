@@ -9,7 +9,7 @@ const reset_tunnel = require("./jobs/tunnel_reset");
 const get_ip_sec_table = require("./jobs/tools/ip_sec");
 const { captureDatetime, insertHeartbeat } = require("./util");
 const mmb_configs = require("./jobs/tools/build_mmb_config");
-const update_pg_ipsec = require("./utils/vpn/update-pg-ipsec-table_2");
+const update_pg_ipsec = require("./utils/vpn/update-pg-ipsec-table");
 const [
   addLogEvent,
   writeLogEvents,
@@ -49,7 +49,7 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
       await insertHeartbeat();
       break;
     case "update_ipsec":
-      await update_pg_ipsec();
+      await update_pg_ipsec(run_log);
       break;
     default:
       break;
