@@ -2,18 +2,12 @@
 current_date=$(date +'%Y_%m_%d')
 echo $current_date
 
-ftp -inv $1 <<EOF
-user $2 $3
-cd $4
-binary  # Ensure binary mode is used for the transfer
-mget *${4}${current_date}* -o $6/
-bye
-EOF
+path="$4$current_date$5"
 
+curl -u matt_teixeira:coremission ftp://172.31.1.1/C0162/SHIP045/SME08929/XA157409_ERRORS_A1_2024_04_30_10_20_46_Evtlog.txt -o $6/XA157409_ERRORS_A1_2024_04_30_10_20_46_Evtlog.txt
 
-ftp
-open 10.10.10.3
-user matt_teixeira coremission
-binary
-put C0162/SHIP045/SME08929/XA157409_ERRORS_A1_2024_04_30_10_20_46_Evtlog.txt /home/matt-teixeira/XA157409_ERRORS_A1_2024_04_30_10_20_46_Evtlog.txt
-quit
+#1 '10.10.10.3',
+#2 'matt_teixeira',
+#3 'coremission',
+#4 'C0162/SHIP045/SME08929/XA157409_ERRORS_A1_',
+#5 '_Evtlog.txt'
