@@ -6164,3 +6164,82 @@ VALUES
 		'he_psi_avg_value',
 		'max'
 	);
+
+-->
+-->
+
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME18338',
+		'192.168.31.153',
+		NULL,
+		'lftp',
+		'/home/prod/hhm_data_acquisition/files/SME18338',
+		'15',
+		'phil_mri_data_grab_9.sh',
+		3,
+		NULL,
+		NULL,
+		'host'
+	);
+
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME18338',
+		'logcurrent.log',
+		'logcurrent',
+		ARRAY ['mri_logcurrent'],
+		-- regex
+		ARRAY ['philips_mri_logcurrent'],
+		-- tables
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.mag (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME18338',
+		'STT_MAGNET.txt',
+		'stt_magnet',
+		ARRAY ['stt_magnet'],
+		-- regex
+		ARRAY ['stt_magnet'],
+		-- tables
+		NULL,
+		NULL
+	);
