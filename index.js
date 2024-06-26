@@ -30,7 +30,7 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
     modality: modality
   };
 
-  await addLogEvent(I, run_log, "onBoot", det, note, null);
+  await addLogEvent(I, run_log, "runJob", det, note, null);
 
   switch (run_group) {
     case "mmb":
