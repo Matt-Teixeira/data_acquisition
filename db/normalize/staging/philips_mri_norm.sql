@@ -13075,7 +13075,8 @@ INSERT INTO
 		run_group,
 		host,
 		user_id,
-		acqu_point
+		acqu_point,
+		alt_data_source
 	)
 VALUES
 	(
@@ -13089,7 +13090,8 @@ VALUES
 		3,
 		NULL,
 		NULL,
-		'host'
+		'host',
+		'[{"type": "he_level", "pg_table": "stt_magnet"}]'
 	);
 
 
