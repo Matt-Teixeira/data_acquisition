@@ -1794,58 +1794,6 @@ INSERT INTO
 	)
 VALUES
 	(
-		'SME17377',
-		'10.146.16.47',
-		NULL,
-		'lftp',
-		'/home/matt-teixeira/hep3/hhm_data_acquisition/files/SME17377',
-		'2',
-		'ge_ct_22.sh',
-		1,
-		NULL,
-		NULL,
-		NULL
-	);
-
-INSERT INTO
-	config.log (
-		system_id,
-		file_name,
-		dir_name,
-		regex_models,
-		pg_tables,
-		column_name,
-		agg
-	)
-VALUES
-	(
-		'SME17377',
-		'gesys_DVMR_SL.log',
-		'gesys',
-		ARRAY ['block', 'sub_block'],
-		ARRAY ['ge_ct_gesys'],
-		NULL,
-		NULL
-	);
-
--- >
--- >
-INSERT INTO
-	config.acquisition(
-		system_id,
-		host_ip,
-		mmb_ip,
-		protocal,
-		debian_server_path,
-		credentials_group,
-		acquisition_script,
-		run_group,
-		host,
-		user_id,
-		acqu_point
-	)
-VALUES
-	(
 		'SME17158',
 		'129.109.252.147',
 		NULL,
@@ -2108,3 +2056,458 @@ VALUES
 		NULL,
 		NULL
 	);
+
+-- >
+-- >
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME17377',
+		'10.46.210.44',
+		NULL,
+		'lftp',
+		'/home/matt-teixeira/hep3/hhm_data_acquisition/files/SME17377',
+		'2',
+		'ge_ct_22.sh',
+		1,
+		NULL,
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME17377',
+		'gesys_DVMR_SL.log',
+		'gesys',
+		ARRAY ['block', 'sub_block'],
+		ARRAY ['ge_ct_gesys'],
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME17377',
+		'ssw.dastools.hist',
+		'dastools',
+		ARRAY ['dastools'],
+		ARRAY ['ge_ct_dastools'],
+		NULL,
+		NULL
+	);
+
+-->
+-->
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME00875',
+		'ssw.dastools.hist',
+		'dastools',
+		ARRAY ['dastools'],
+		ARRAY ['ge_ct_dastools'],
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME00875',
+		'messages',
+		'messages',
+		ARRAY ['messages'],
+		ARRAY ['ge_ct_messages'],
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME00875',
+		'messages.1',
+		'messages',
+		ARRAY ['messages'],
+		ARRAY ['ge_ct_messages_1'],
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME00875',
+		'messages.2',
+		'messages',
+		ARRAY ['messages'],
+		ARRAY ['ge_ct_messages_2'],
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME00875',
+		'messages.3',
+		'messages',
+		ARRAY ['messages'],
+		ARRAY ['ge_ct_messages_3'],
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME00875',
+		'messages.4',
+		'messages',
+		ARRAY ['messages'],
+		ARRAY ['ge_ct_messages_4'],
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME00875',
+		'ssw.calreport.hist',
+		'calreport',
+		ARRAY ['calreport'],
+		ARRAY ['ge_ct_calreport'],
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME00875',
+		'ssw.GenCal.hist',
+		'gencal',
+		ARRAY ['gencal'],
+		ARRAY ['ge_ct_gencal'],
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME00875',
+		'ssw.tube_align.hist',
+		'tube_align',
+		ARRAY ['tube_align'],
+		ARRAY ['ge_ct_tube_align'],
+		NULL,
+		NULL
+	);
+
+-->
+-->
+INSERT INTO
+    config.log (
+        system_id,
+        file_name,
+        dir_name,
+        regex_models,
+        pg_tables,
+        column_name,
+        agg
+    )
+VALUES
+    (
+        'SME00897',
+        'ssw.dastools.hist',
+        'dastools',
+        ARRAY ['dastools'],
+        ARRAY ['ge_ct_dastools'],
+        NULL,
+        NULL
+    );
+
+INSERT INTO
+    config.log (
+        system_id,
+        file_name,
+        dir_name,
+        regex_models,
+        pg_tables,
+        column_name,
+        agg
+    )
+VALUES
+    (
+        'SME00897',
+        'messages',
+        'messages',
+        ARRAY ['messages'],
+        ARRAY ['ge_ct_messages'],
+        NULL,
+        NULL
+    );
+
+INSERT INTO
+    config.log (
+        system_id,
+        file_name,
+        dir_name,
+        regex_models,
+        pg_tables,
+        column_name,
+        agg
+    )
+VALUES
+    (
+        'SME00897',
+        'messages.1',
+        'messages',
+        ARRAY ['messages'],
+        ARRAY ['ge_ct_messages_1'],
+        NULL,
+        NULL
+    );
+
+INSERT INTO
+    config.log (
+        system_id,
+        file_name,
+        dir_name,
+        regex_models,
+        pg_tables,
+        column_name,
+        agg
+    )
+VALUES
+    (
+        'SME00897',
+        'messages.2',
+        'messages',
+        ARRAY ['messages'],
+        ARRAY ['ge_ct_messages_2'],
+        NULL,
+        NULL
+    );
+
+INSERT INTO
+    config.log (
+        system_id,
+        file_name,
+        dir_name,
+        regex_models,
+        pg_tables,
+        column_name,
+        agg
+    )
+VALUES
+    (
+        'SME00897',
+        'messages.3',
+        'messages',
+        ARRAY ['messages'],
+        ARRAY ['ge_ct_messages_3'],
+        NULL,
+        NULL
+    );
+
+INSERT INTO
+    config.log (
+        system_id,
+        file_name,
+        dir_name,
+        regex_models,
+        pg_tables,
+        column_name,
+        agg
+    )
+VALUES
+    (
+        'SME00897',
+        'messages.4',
+        'messages',
+        ARRAY ['messages'],
+        ARRAY ['ge_ct_messages_4'],
+        NULL,
+        NULL
+    );
+
+INSERT INTO
+    config.log (
+        system_id,
+        file_name,
+        dir_name,
+        regex_models,
+        pg_tables,
+        column_name,
+        agg
+    )
+VALUES
+    (
+        'SME00897',
+        'ssw.calreport.hist',
+        'calreport',
+        ARRAY ['calreport'],
+        ARRAY ['ge_ct_calreport'],
+        NULL,
+        NULL
+    );
+
+INSERT INTO
+    config.log (
+        system_id,
+        file_name,
+        dir_name,
+        regex_models,
+        pg_tables,
+        column_name,
+        agg
+    )
+VALUES
+    (
+        'SME00897',
+        'ssw.GenCal.hist',
+        'gencal',
+        ARRAY ['gencal'],
+        ARRAY ['ge_ct_gencal'],
+        NULL,
+        NULL
+    );
+
+INSERT INTO
+    config.log (
+        system_id,
+        file_name,
+        dir_name,
+        regex_models,
+        pg_tables,
+        column_name,
+        agg
+    )
+VALUES
+    (
+        'SME00897',
+        'ssw.tube_align.hist',
+        'tube_align',
+        ARRAY ['tube_align'],
+        ARRAY ['ge_ct_tube_align'],
+        NULL,
+        NULL
+    );

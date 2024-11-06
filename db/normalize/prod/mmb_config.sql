@@ -2541,3 +2541,22 @@ VALUES
 	);
 
 	{RE_EDU2_TEMP_PROBE_TEMPS,RE_EDU2_COMP_VIB,RE_EDU2_ROOM_PROBE_HUM_TEMP}
+-->
+-->
+
+INSERT INTO
+	config.edu (
+		system_id,
+		file_name,
+		regex_models,
+		pg_tables,
+		schedule
+	)
+VALUES
+	(
+		'SME18368',
+		'v2_edu2',
+		ARRAY ['RE_EDU2_COMP_VIB', 'RE_EDU2_ROOM_PROBE_HUM_TEMP', 'RE_EDU2_TEMP_PROBE_TEMPS'],
+		ARRAY ['mmb_edu2'],
+		6
+	);
