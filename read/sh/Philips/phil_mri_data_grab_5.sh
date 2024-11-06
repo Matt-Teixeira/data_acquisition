@@ -19,7 +19,9 @@ mget monitor_System* -O $4/monitoring;
 mget monitor_cryocompressor* -O $4/monitoring; 
 mget monitor_magnet* -O $4/monitoring; 
 cd /cygdrive/g/Log/; 
-mget logcurrent.log -O $4"
+mget logcurrent.log -O $4;
+cd /cygdrive/g/stt/; 
+mget STT_MAGNET.txt -O $4;"
 
 ## logcurrent.log  /cygdrive/g/Log/
 

@@ -2449,3 +2449,114 @@ VALUES
 		1,
 		NULL
 	);
+
+-->
+-->
+INSERT INTO systems(id, site_id, manufacturer, modality, model, show_on_website, cus_sys_id, process_edu, process_mag)
+VALUES (
+	'SME16909',
+	'C008408',
+	'GE',
+	'MRI',
+	'1.5T HDX',
+	TRUE,
+	'DI33-173'
+	TRUE,
+	TRUE,
+);
+-->
+-->
+
+
+
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME16909',
+		NULL,
+		'172.31.2.20',
+		'rsync',
+		'/home/prod/hhm_data_acquisition/files',
+		NULL,
+		NULL,
+		NULL,
+		'SME15819',
+		'avante',
+		NULL
+	);
+
+INSERT INTO
+	config.mag (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		schedule,
+		agg
+	)
+VALUES
+	(
+		'SME16909',
+		'v3_ge_mm3',
+		NULL,
+		ARRAY ['RE_GE_MM3_E'],
+		-- regex
+		ARRAY ['mmb_ge_mm3'],
+		-- tables
+		NULL,
+		5,
+		NULL
+	);
+
+INSERT INTO
+	config.edu (
+		system_id,
+		file_name,
+		regex_models,
+		pg_tables,
+		schedule
+	)
+VALUES
+	(
+		'SME16909',
+		'v2_edu2',
+		ARRAY ['RE_EDU2_COMP_VIB', 'RE_EDU2_ROOM_PROBE_HUM_TEMP', 'RE_EDU2_TEMP_PROBE_TEMPS'],
+		ARRAY ['mmb_edu2'],
+		7
+	);
+
+	{RE_EDU2_TEMP_PROBE_TEMPS,RE_EDU2_COMP_VIB,RE_EDU2_ROOM_PROBE_HUM_TEMP}
+-->
+-->
+
+INSERT INTO
+	config.edu (
+		system_id,
+		file_name,
+		regex_models,
+		pg_tables,
+		schedule
+	)
+VALUES
+	(
+		'SME18368',
+		'v2_edu2',
+		ARRAY ['RE_EDU2_COMP_VIB', 'RE_EDU2_ROOM_PROBE_HUM_TEMP', 'RE_EDU2_TEMP_PROBE_TEMPS'],
+		ARRAY ['mmb_edu2'],
+		6
+	);

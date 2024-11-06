@@ -89,6 +89,9 @@ async function run_phil_cv(
     "last_phil_cv_daily"
   );
 
+  console.log("\nlast_aquired_dir");
+  console.log(last_aquired_dir);
+
   // GET PREVIOUS LOD DIR PULLED FROM HOST STORED IN REDIS - Example: lod_20231114_0953
   const last_lod_file = await get_previous_dir(
     job_id,
