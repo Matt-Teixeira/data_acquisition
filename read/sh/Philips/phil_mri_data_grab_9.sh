@@ -7,5 +7,6 @@ current_year_month=$(date +%Y%m)
 
 sshpass -p $3 scp -o KexAlgorithms=diffie-hellman-group1-sha1 $2@$1:"G:/Log/logcurrent.log" $4/
 sshpass -p $3 scp -o KexAlgorithms=diffie-hellman-group1-sha1 $2@$1:"G:/stt/STT_MAGNET.txt" $4/
+sshpass -p $3 scp -o KexAlgorithms=diffie-hellman-group1-sha1 $2@$1:"G:/Site/monitor_magnet_under_pressure.dat" $4/monitoring
 sleep 5
 chmod 644 $4/STT_MAGNET.txt 
