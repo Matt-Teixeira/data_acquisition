@@ -91,14 +91,14 @@ const onBoot = async () => {
 
     await runJob(run_log, run_group, schedule, manufacturer, modality);
 
-    await dbInsertLogEvents(pgp, run_log);
+    // await dbInsertLogEvents(pgp, run_log);
     await writeLogEvents(run_log);
     console.log("\n********** END **********");
     console.timeEnd("App Run Time");
   } catch (error) {
     console.log(error);
     await addLogEvent(E, run_log, "onBoot", cat, null, error);
-    await dbInsertLogEvents(pgp, run_log);
+    //await dbInsertLogEvents(pgp, run_log);
     await writeLogEvents(run_log);
   }
 };

@@ -843,3 +843,32 @@ VALUES(
 	NULL,
 	NULL
 );
+
+-->
+-->
+
+INSERT INTO config.acquisition(system_id, host_ip, mmb_ip, protocal, debian_server_path, credentials_group, acquisition_script, run_group, host, user_id, acqu_point)
+VALUES (
+	'SME16380',
+	'10.33.20.25',
+	NULL,
+	'lftp',
+	'/home/prod/hhm_data_acquisition/files/SME16380',
+	'5',
+	'ge_mri_22.sh',
+	1,
+	NULL,
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME16380',
+	'gesys_KREH_HDe.log',
+	'gesys',
+	ARRAY['block', 'sub_block'],
+	ARRAY['ge_mri_gesys'],
+	NULL,
+	NULL
+);

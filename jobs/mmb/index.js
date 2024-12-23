@@ -108,6 +108,7 @@ const onBootMMB = async (run_log, process_argv, capture_datetime) => {
     const systems_mag_configs = await get_systems_by_mag_schedule(
       process_argv.toString()
     );
+    
     const systems_edu_configs = await get_systems_by_edu_schedule(
       process_argv.toString()
     );
