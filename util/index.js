@@ -5,6 +5,7 @@ const list_new_phil_cv_files = require("./tools/list_new_phil_cv_files");
 const captureDatetime = require("./tools/captureDatetime");
 const { extract_ip } = require("./tools/tunnel_reset");
 const { insertHeartbeat } = require("./tools/offline_alert");
+const {increment_system_reset_totals} = require("./tools/system_reset_totalizer");
 
 module.exports = {
   encryptString,
@@ -15,4 +16,5 @@ module.exports = {
   extract_ip,
   insertHeartbeat,
   captureDatetime,
+  increment_system_reset_totals
 };

@@ -1,6 +1,6 @@
 const util = require("util");
 const execFile = util.promisify(require("child_process").execFile);
-const { add_to_redis_queue, add_to_online_queue } = require("../redis");
+const { add_to_redis_queue, add_to_online_queue, add_system_reset_totalizer } = require("../redis");
 const [addLogEvent] = require("../utils/logger/log");
 const {
   type: { I, W, E },
@@ -68,7 +68,7 @@ const exec_hhm_data_grab = async (
 
     await addLogEvent(I, run_log, "exec_hhm_data_grab", det, note, null);
 
-    // If connection is closed, return false. Any other error, return null.
+    // TEST stderr FOR CONNECTIVITY: If connection is closed, return false. Any other error, return null.
     if (connection_test_1.test(stderr) || connection_test_2.test(stderr)) {
       let note = {
         job_id: job_id,
@@ -96,22 +96,11 @@ const exec_hhm_data_grab = async (
 
       system.data_source = "hhm";
       await add_to_redis_queue(job_id, run_log, system);
+      await add_system_reset_totalizer(job_id, run_log, {id: system.id, data_source: "HHM"});
+      // ADD HERE: Place system daily_total and lifetime_total redis:queue
 
       return false;
     }
-
-    // Second condition mostly as a catch all for now due to "Error: Command failed:" pattern match
-    /*     if (fingerprint_test.test(stderr)) {
-      console.log("Reestablish keys/fingerprint/password");
-      await add_to_online_queue(job_id, run_log, {
-        id: system.id,
-        capture_datetime,
-        successful_acquisition: false,
-        data_source: "hhm",
-        host_intervention: true
-      });
-      return false;
-    } */
 
     await add_to_online_queue(job_id, run_log, {
       id: system.id,
@@ -152,6 +141,7 @@ const exec_hhm_data_grab = async (
 
       system.data_source = "hhm";
       await add_to_redis_queue(job_id, run_log, system);
+      await add_system_reset_totalizer(job_id, run_log, {id: system.id, data_source: "HHM"});
 
       return false;
     }

@@ -17,3 +17,5 @@ WHERE
     manufacturer = $1
     AND modality LIKE $2
     AND process_log = true;
+    -- SME17374
+    -- SME00410

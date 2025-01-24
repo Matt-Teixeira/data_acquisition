@@ -19,9 +19,9 @@ async function reset_tunnel(run_log) {
   try {
     // Get Redis systems that need tunnel resets
     const ip_queue = await get_redis_ip_queue();
-    
+
     // End if no systems in redis queue
-    
+
     if (!ip_queue.length) {
       let note = { message: "No IP addresses in queue" };
       await addLogEvent(I, run_log, "reset_tunnel", det, note, null);
@@ -32,8 +32,6 @@ async function reset_tunnel(run_log) {
 
     // Parse system data to get array of ip addresses and ids
     const parsed_data = extract_ip(ip_queue);
-
-    parsed_data.ip_addresses.push('172.18.41.23');
 
     // Group IP by tunnel id
     const tunnels_by_ip = await getTunnelsByIP(
@@ -58,14 +56,20 @@ async function reset_tunnel(run_log) {
       return;
     }
     // Reset tunnels
-    await resetTunnels(run_log, tunnels_by_ip);
+
+    const [ip_tunnels_1, ip_tunnels_2] = split_array(tunnels_by_ip);
+    // await resetTunnels(run_log, ip_tunnels_1);
+    // await setTimeout(5_000);
+    // await resetTunnels(run_log, ip_tunnels_2); 
+ 
+    // await resetTunnels(run_log, tunnels_by_ip);
 
     // Clear Redis queue
     await clear_redis_ip_queue();
 
     // Timer set to allow tunnel resets to complete
     console.log("Start of 10 second timer");
-    await setTimeout(10_000);
+    await setTimeout(5_000);
     console.log("End of timer");
 
     /* Rerun Data Acquisition */
@@ -106,13 +110,25 @@ async function reset_tunnel(run_log) {
         case "Philips":
           jobs.push(
             async () =>
-              await get_philips_data(job_id, run_log, system, capture_datetime, true)
+              await get_philips_data(
+                job_id,
+                run_log,
+                system,
+                capture_datetime,
+                true
+              )
           );
           break;
         case "Siemens":
           jobs.push(
             async () =>
-              await get_siemens_data(job_id, run_log, system, capture_datetime, true)
+              await get_siemens_data(
+                job_id,
+                run_log,
+                system,
+                capture_datetime,
+                true
+              )
           );
           break;
         default:
@@ -165,4 +181,11 @@ async function insertOfflineAlerts(ip_queue, capture_datetime) {
     console.log(error);
     addLogEvent(E, run_log, "insertOfflineAlerts", cat, note, error);
   }
+}
+
+function split_array(arr) {
+  let mid_index = Math.ceil(arr.lengh / 2);
+  const first_half = arr.slice(0, mid_index);
+  const second_half = arr.slice(mid_index);
+  return [first_half, second_half];
 }

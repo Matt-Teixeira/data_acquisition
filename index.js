@@ -7,7 +7,11 @@ const get_hhm_data = require("./jobs/hhm");
 const run_system_manual = require("./jobs/hhm/run_manual");
 const reset_tunnel = require("./jobs/tunnel_reset");
 const get_ip_sec_table = require("./jobs/tools/ip_sec");
-const { captureDatetime, insertHeartbeat } = require("./util");
+const {
+  captureDatetime,
+  insertHeartbeat,
+  increment_system_reset_totals
+} = require("./util");
 const mmb_configs = require("./jobs/tools/build_mmb_config");
 const update_pg_ipsec = require("./utils/vpn/update-pg-ipsec-table");
 const [
@@ -51,6 +55,9 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
     case "update_ipsec":
       await update_pg_ipsec(run_log);
       break;
+    case "system_reset_totalizer":
+      await increment_system_reset_totals(run_log);
+      break;
     default:
       break;
   }
@@ -91,14 +98,14 @@ const onBoot = async () => {
 
     await runJob(run_log, run_group, schedule, manufacturer, modality);
 
-    // await dbInsertLogEvents(pgp, run_log);
+    await dbInsertLogEvents(pgp, run_log);
     await writeLogEvents(run_log);
     console.log("\n********** END **********");
     console.timeEnd("App Run Time");
   } catch (error) {
     console.log(error);
     await addLogEvent(E, run_log, "onBoot", cat, null, error);
-    //await dbInsertLogEvents(pgp, run_log);
+    await dbInsertLogEvents(pgp, run_log);
     await writeLogEvents(run_log);
   }
 };
