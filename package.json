@@ -19,6 +19,7 @@
     "ip": "node index.js ip_reset",
     "offline_alert": "node index.js offline_alert",
     "update_ipsec": "node index.js update_ipsec",
+    "system_reset_totalizer": "node index.js system_reset_totalizer",
     "schedule_0": "node index.js mmb 0",
     "schedule_1": "node index.js mmb 1",
     "schedule_2": "node index.js mmb 2",

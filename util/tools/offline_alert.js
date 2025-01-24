@@ -4,7 +4,14 @@ const {
   clear_redis_online_queue
 } = require("../../redis");
 
+const [addLogEvent] = require("../../utils/logger/log");
+const {
+  type: { I, W, E },
+  tag: { cal, det, cat, seq, qaf }
+} = require("../../utils/logger/enums");
+
 async function insertHeartbeat() {
+  await addLogEvent(I, run_log, "insertHeartbeat", cal, null, null);
   const queue = await get_redis_online_queue();
 
   await clear_redis_online_queue();
@@ -53,16 +60,16 @@ const upsert_query_builder = async (queue) => {
   const mmb_failed_on_conflict = `ON CONFLICT (system_id) DO UPDATE SET `;
   const mmb_failed_set_str = `inserted_at = EXCLUDED.inserted_at;`;
 
-  // Insert Successful Acquisition Systems
-
-  // Seperate successful hhm and mmb. Filter duplicate entries.
+  // SEPARATE SUCCESSFUL HHM AND MMB. FILTER DUPLICATE ENTRIES.
   for (const system of success_queue) {
     if (system.data_source === "hhm") {
       // Check for possible duplicates in queue and prevent double runs
       let is_duplicate = dup_systems.hhm.indexOf(system.id);
       if (is_duplicate !== -1) continue;
 
-      hhm_success_values.push(`('${system.id}', '${system.capture_datetime}', ${system.host_intervention})`);
+      hhm_success_values.push(
+        `('${system.id}', '${system.capture_datetime}', ${system.host_intervention})`
+      );
 
       dup_systems.hhm.push(system.id);
     }
@@ -105,7 +112,7 @@ const upsert_query_builder = async (queue) => {
   if (hhm_success_values.length) await db.any(hhm_query_string);
   if (mmb_success_values.length) await db.any(mmb_query_string);
 
-  // Seperate failed hhm and mmb. Filter duplicate entries.
+  // SEPARATE FAILED HHM AND MMB. FILTER DUPLICATE ENTRIES.
   for (const system of failed_queue) {
     if (system.data_source === "hhm") {
       // Check for possible duplicates in queue and prevent double runs
