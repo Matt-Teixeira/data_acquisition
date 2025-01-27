@@ -22,8 +22,6 @@ async function get_philips_cv_data(run_log, capture_datetime) {
     const systems = await get_hhm([manufacturer, modality]);
     const credentials = await getHhmCreds([manufacturer, modality]);
 
-    console.log(systems);
-
     for (const system of systems) {
       const job_id = uuidv4();
       child_processes.push(
@@ -39,6 +37,7 @@ async function get_philips_cv_data(run_log, capture_datetime) {
     }
   } catch (error) {
     console.log(error);
+    await addLogEvent(E, run_log, "get_philips_cv_data", cat, null, error);
   }
   try {
     // CREATE AN ARRAY OF PROMISES BY CALLING EACH child_process FUNCTION
