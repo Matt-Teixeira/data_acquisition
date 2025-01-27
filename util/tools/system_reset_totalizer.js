@@ -19,13 +19,26 @@ async function increment_system_reset_totals(run_log) {
     null,
     null
   );
-  const queue = await get_redis_system_total_queue();
+  try {
+    const queue = await get_redis_system_total_queue();
 
-  // await clear_redis_system_total_queue();
-  await update_system_reset_total(queue);
+    await clear_redis_system_total_queue();
+    await update_system_reset_total(queue, run_log);
+  } catch (error) {
+    console.log(error);
+    await addLogEvent(
+      E,
+      run_log,
+      "increment_system_reset_totals",
+      cat,
+      null,
+      error
+    );
+  }
 }
 
-const update_system_reset_total = async (queue) => {
+const update_system_reset_total = async (queue, run_log) => {
+  await addLogEvent(I, run_log, "update_system_reset_total", cal, null, null);
   const query = `
     UPDATE alert.offline_hhm_conn
     SET 
@@ -37,7 +50,6 @@ const update_system_reset_total = async (queue) => {
   let duplicate_systems = [];
 
   for await (let system of queue) {
-
     // Filter out any duplicate entries
     let is_duplicate = duplicate_systems.indexOf(system.id);
     if (is_duplicate !== -1) continue;
@@ -49,6 +61,14 @@ const update_system_reset_total = async (queue) => {
       }
     } catch (error) {
       console.log(error);
+      await addLogEvent(
+        E,
+        run_log,
+        "update_system_reset_total",
+        cat,
+        null,
+        error
+      );
     }
   }
 };

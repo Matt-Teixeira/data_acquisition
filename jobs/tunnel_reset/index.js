@@ -57,22 +57,23 @@ async function reset_tunnel(run_log) {
     }
     // Reset tunnels
 
-    const [ip_tunnels_1, ip_tunnels_2] = split_array(tunnels_by_ip);
-    // await resetTunnels(run_log, ip_tunnels_1);
-    // await setTimeout(5_000);
-    // await resetTunnels(run_log, ip_tunnels_2); 
+    /* const [ip_tunnels_1, ip_tunnels_2] = split_array(tunnels_by_ip);
+    await setTimeout(4_000);
+    await resetTunnels(run_log, ip_tunnels_1);
+    await setTimeout(5_000);
+    await resetTunnels(run_log, ip_tunnels_2);  */
  
-    // await resetTunnels(run_log, tunnels_by_ip);
+    await resetTunnels(run_log, tunnels_by_ip);
 
     // Clear Redis queue
     await clear_redis_ip_queue();
 
     // Timer set to allow tunnel resets to complete
-    console.log("Start of 10 second timer");
+    console.log("Start of 5 second timer");
     await setTimeout(5_000);
     console.log("End of timer");
 
-    /* Rerun Data Acquisition */
+    /* Re-run Data Acquisition */
     const jobs = [];
 
     for (const system of ip_queue) {
@@ -163,7 +164,6 @@ async function reset_tunnel(run_log) {
       addLogEvent(E, run_log, "reset_tunnel", cat, null, error);
     }
   } catch (error) {
-    console.log(error);
     addLogEvent(E, run_log, "reset_tunnel", cat, null, error);
   }
 }
