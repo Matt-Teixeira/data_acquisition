@@ -50,7 +50,7 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
       await reset_tunnel(run_log);
       break;
     case "offline_alert":
-      await insertHeartbeat();
+      await insertHeartbeat(run_log);
       break;
     case "update_ipsec":
       await update_pg_ipsec(run_log);

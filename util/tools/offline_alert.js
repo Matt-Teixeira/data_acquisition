@@ -10,7 +10,7 @@ const {
   tag: { cal, det, cat, seq, qaf }
 } = require("../../utils/logger/enums");
 
-async function insertHeartbeat() {
+async function insertHeartbeat(run_log) {
   await addLogEvent(I, run_log, "insertHeartbeat", cal, null, null);
   const queue = await get_redis_online_queue();
 
