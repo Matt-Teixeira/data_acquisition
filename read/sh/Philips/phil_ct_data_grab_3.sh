@@ -3,7 +3,7 @@
 [ ! -d "$4/" ] && mkdir $4/
 
 ## timeout 60 sshpass -p $3 scp -o StrictHostKeyChecking=accept-new $2@$1:/cygdrive/d/Data_Logger/Logger.mdb $4
-sshpass -p $3 scp -o StrictHostKeyChecking=accept-new $2@$1:/cygdrive/d/Data_Logger/Logger.mdb $4/Output.mdb
+sshpass -p "$3" scp -o KexAlgorithms=diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1 -o StrictHostKeyChecking=accept-new "$2@$1:/cygdrive/d/Data_Logger/Logger.mdb" "$4/Output.mdb"
 
 chmod +0644 $4/Output.mdb
 # { BEGIN CONVERSION
