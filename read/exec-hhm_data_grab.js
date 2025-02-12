@@ -29,6 +29,7 @@ const exec_hhm_data_grab = async (
 
   const connection_test_1 = /Connection timed out/;
   const connection_test_2 = /error: max-retries exceeded/;
+  const no_file_test = /No such file or directory/;
   const fingerprint_test =
     /Warning:\sPermanently\sadded\s'\d+\.\d+\.\d+.\d+'.+to\sthe\slist\sof\sknown\shosts|Error:\sCommand\sfailed/g;
 
@@ -143,6 +144,18 @@ const exec_hhm_data_grab = async (
       await add_to_redis_queue(job_id, run_log, system);
       await add_system_reset_totalizer(job_id, run_log, {id: system.id, data_source: "HHM"});
 
+      return false;
+    }
+
+    // data_acqu was able to reach out and connect, but no file found. Sent to online queue
+    if(no_file_test.test(error)) {
+      await add_to_online_queue(job_id, run_log, {
+        id: system.id,
+        capture_datetime,
+        successful_acquisition: true,
+        data_source: "hhm",
+        host_intervention: false
+      });
       return false;
     }
 
