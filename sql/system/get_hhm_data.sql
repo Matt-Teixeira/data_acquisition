@@ -16,6 +16,7 @@ FROM
 WHERE
     manufacturer = $1
     AND modality LIKE $2
-    AND process_log = true;
+    AND process_log = true
+    AND sys.id = 'SME00349';
     -- SME17374
     -- SME00410

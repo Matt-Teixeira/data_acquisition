@@ -13,3 +13,4 @@ scripts_on_mmb/
 siemens_cv_test/
 copy_table.sql
 ge_profiling/
+*.json
