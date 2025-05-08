@@ -1,4 +1,5 @@
 const exec_phil_cv_data_grab = require("../../../read/exec-phil_cv_data_grab");
+const exec_phil_cv_unzip = require("../../../read/exec-phil_cv_unzip");
 const { get_hhm, getHhmCreds } = require("../../../sql/qf-provider");
 const { decryptString, list_new_phil_cv_files } = require("../../../util");
 const { get_previous_dir } = require("../../../redis/redis_helpers");
@@ -11,7 +12,7 @@ const {
 } = require("../../../utils/logger/enums");
 
 // New lod directory grab implemented STAGING: 2/15/2024
-// New lod directory grab implemented PROD: 
+// New lod directory grab implemented PROD:
 
 async function get_philips_cv_data(run_log, capture_datetime) {
   const child_processes = [];
@@ -61,6 +62,7 @@ async function run_phil_cv(
   await addLogEvent(I, run_log, "run_phil_cv", cal, { job_id, system }, null);
   const daily_dir_acqu_script = `./read/sh/Philips/${system.acquisition_script}`;
   const lod_dir_acqu_script = `./read/sh/Philips/phil_cv_21_lod.sh`;
+  const parse_event_zip = `./read/sh/Philips/parse_event_zip.sh`;
 
   if (!system.host_ip || !system.credentials_group) {
     let note = {
@@ -80,7 +82,7 @@ async function run_phil_cv(
   const user = decryptString(system_creds.user_enc);
   const pass = decryptString(system_creds.password_enc);
 
-  // GET PREVIOUS DAILY DIR PULLED FROM HOST STORED IN REDIS - Example: daily_2023_06_19 or daily_20230619
+  // REDIS VALUE: GET PREVIOUS DAILY DIR PULLED FROM HOST STORED IN REDIS - Example: daily_2023_06_19 or daily_20230619
   const last_aquired_dir = await get_previous_dir(
     job_id,
     run_log,
@@ -91,15 +93,18 @@ async function run_phil_cv(
   console.log("\nlast_aquired_dir");
   console.log(last_aquired_dir);
 
-  // GET PREVIOUS LOD DIR PULLED FROM HOST STORED IN REDIS - Example: lod_20231114_0953
+  // REDIS VALUE: GET PREVIOUS LOD DIR PULLED FROM HOST STORED IN REDIS - Example: lod_20231114_0953
+  /* UNCOMMENT WHEN DONE TESTING
   const last_lod_file = await get_previous_dir(
     job_id,
     run_log,
     system.id,
     "last_phil_cv_lod"
   );
+   */
 
   // PASS IN PREVIOUS FILE NAMES AND RETURN 1 OR MORE LOD OR DAILY DIRs TO PULL
+  /*  UNCOMMENT WHEN DONE TESTING
   const { daily_files_to_pull, lod_files_to_pull } =
     await list_new_phil_cv_files(
       job_id,
@@ -112,8 +117,14 @@ async function run_phil_cv(
       pass,
       system,
       capture_datetime
-    );
+    ); 
+    */
 
+  const daily_files_to_pull = ["daily_2025_05_06", "daily_2025_05_08"];
+  const lod_files_to_pull = null;
+
+  // GET ALL DIRECTORIES FROM HOST BASED ON DELTA LIST FROM daily_files_to_pull. EXAMPLE: ["daily_2025_05_06", "daily_2025_05_08"]
+  /* UNCOMMENT WHEN DONE TESTING
   if (daily_files_to_pull !== null) {
     for await (const file of daily_files_to_pull) {
       await exec_phil_cv_data_grab(
@@ -128,7 +139,20 @@ async function run_phil_cv(
       );
     }
   }
+   */
 
+  for await (const daily_dir of daily_files_to_pull) {
+    await exec_phil_cv_unzip(
+      job_id,
+      run_log,
+      system.id,
+      parse_event_zip,
+      system,
+      daily_dir
+    );
+  }
+
+  /* UNCOMMENT WHEN DONE TESTING
   if (lod_files_to_pull !== null) {
     for await (const file of lod_files_to_pull) {
       console.log("\nfile");
@@ -159,7 +183,8 @@ async function run_phil_cv(
         capture_datetime
       );
     }
-  }
+  } 
+    */
 }
 
 async function get_trace_files(
