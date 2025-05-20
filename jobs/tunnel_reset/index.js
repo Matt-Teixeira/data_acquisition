@@ -63,7 +63,7 @@ async function reset_tunnel(run_log) {
     await setTimeout(5_000);
     await resetTunnels(run_log, ip_tunnels_2);  */
  
-    await resetTunnels(run_log, tunnels_by_ip);
+    // await resetTunnels(run_log, tunnels_by_ip);
 
     // Clear Redis queue
     await clear_redis_ip_queue();
