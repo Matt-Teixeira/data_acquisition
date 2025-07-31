@@ -1,6 +1,10 @@
 const util = require("util");
 const execFile = util.promisify(require("child_process").execFile);
-const { add_to_redis_queue, add_to_online_queue, add_system_reset_totalizer } = require("../redis");
+const {
+  add_to_redis_queue,
+  add_to_online_queue,
+  add_system_reset_totalizer
+} = require("../redis");
 const [addLogEvent] = require("../utils/logger/log");
 const {
   type: { I, W, E },
@@ -17,6 +21,8 @@ const exec_hhm_data_grab = async (
   capture_datetime,
   ip_reset = false
 ) => {
+  system.data_source = "hhm"; 
+
   let note = {
     job_id: job_id,
     system_id: system.id,
@@ -24,14 +30,36 @@ const exec_hhm_data_grab = async (
     args
   };
 
+  console.log("\nExec Note");
   console.log(note);
   await addLogEvent(I, run_log, "exec_hhm_data_grab", cal, note, null);
 
-  const connection_test_1 = /Connection timed out/;
-  const connection_test_2 = /error: max-retries exceeded/;
-  const no_file_test = /No such file or directory/;
-  const fingerprint_test =
-    /Warning:\sPermanently\sadded\s'\d+\.\d+\.\d+.\d+'.+to\sthe\slist\sof\sknown\shosts|Error:\sCommand\sfailed/g;
+  const regexes = [
+    {
+      connection_error: true,
+      error_type: "connection",
+      message: "Connection timed out",
+      manual_intervention: false,
+      successful_acquisition: false,
+      re: /Connection timed out/
+    },
+    {
+      connection_error: true,
+      error_type: "connection",
+      message: "max-retries exceeded",
+      manual_intervention: false,
+      successful_acquisition: false,
+      re: /error: max-retries exceeded/
+    },
+    {
+      connection_error: true,
+      error_type: "connection",
+      message: "confirm the new fingerprint and update known hosts",
+      manual_intervention: true,
+      successful_acquisition: false,
+      re: /Warning:\sPermanently\sadded\s'\d+\.\d+\.\d+\.\d+'.+to\sthe\slist\sof\sknown\shosts|Error:\sCommand\sfailed/g
+    }
+  ];
 
   let data_store_path = "";
   switch (process.env.RUN_ENV) {
@@ -56,8 +84,10 @@ const exec_hhm_data_grab = async (
     const { stdout, stderr } = await execFile(execPath, args);
 
     console.log("\n*********** stdout *****************");
+    console.log(system.id);
     console.log(stdout);
     console.log("\n*********** stderr *****************");
+    console.log(system.id);
     console.log(stderr);
 
     let note = {
@@ -69,8 +99,10 @@ const exec_hhm_data_grab = async (
 
     await addLogEvent(I, run_log, "exec_hhm_data_grab", det, note, null);
 
-    // TEST stderr FOR CONNECTIVITY: If connection is closed, return false. Any other error, return null.
-    if (connection_test_1.test(stderr) || connection_test_2.test(stderr)) {
+    const extracted_error = extractConnectionError(stderr, regexes);
+
+    // TEST stderr FOR CONNECTIVITY
+    if (extracted_error?.connection_error) {
       let note = {
         job_id: job_id,
         system_id: system.id,
@@ -82,22 +114,25 @@ const exec_hhm_data_grab = async (
 
       // Only runs for ip reset instance
       // Reason: In initial data pull, if connection issue occurs, just send to ip:queue and make second attempt.
-      // If connection issue occurs on second attempt (ip reset job), place in online:queue to then place in heartbeat table as offline
+      // If connection issue occurs on second attempt (ip reset job), place in online:queue to then place in connection status table
       if (ip_reset) {
         await add_to_online_queue(job_id, run_log, {
           id: system.id,
           capture_datetime,
-          successful_acquisition: false,
-          data_source: "hhm",
-          host_intervention: false
+          successful_acquisition: extracted_error.successful_acquisition,
+          data_source: system.data_source,
+          host_intervention: extracted_error.manual_intervention,
+          connection_error: extracted_error.message
         });
 
         return false;
       }
 
-      system.data_source = "hhm";
       await add_to_redis_queue(job_id, run_log, system);
-      await add_system_reset_totalizer(job_id, run_log, {id: system.id, data_source: "HHM"});
+      await add_system_reset_totalizer(job_id, run_log, {
+        id: system.id,
+        data_source: system.data_source
+      });
       // ADD HERE: Place system daily_total and lifetime_total redis:queue
 
       return false;
@@ -107,8 +142,9 @@ const exec_hhm_data_grab = async (
       id: system.id,
       capture_datetime,
       successful_acquisition: true,
-      data_source: "hhm",
-      host_intervention: false
+      data_source: system.data_source,
+      host_intervention: false,
+      connection_error: null
     });
 
     return stdout;
@@ -116,10 +152,10 @@ const exec_hhm_data_grab = async (
     console.log("\n*********** Catch Error *****************");
     console.log(error);
 
-    if (
-      connection_test_1.test(error.message) ||
-      connection_test_2.test(error.message)
-    ) {
+    // TEST stderr FOR CONNECTION ERROR
+    const extracted_error = extractConnectionError(error.message, regexes);
+
+    if (extracted_error?.connection_error) {
       let note = {
         job_id,
         system_id: system.id
@@ -128,52 +164,62 @@ const exec_hhm_data_grab = async (
       await addLogEvent(E, run_log, "exec_hhm_data_grab", cat, note, error);
 
       if (ip_reset) {
-        console.log("In ip_reset");
         await add_to_online_queue(job_id, run_log, {
           id: system.id,
           capture_datetime,
-          successful_acquisition: false,
-          data_source: "hhm",
-          host_intervention: false
+          successful_acquisition: extracted_error.successful_acquisition,
+          data_source: system.data_source,
+          host_intervention: extracted_error.host_intervention,
+          connection_error: extracted_error.message
         });
 
         return false;
       }
 
-      system.data_source = "hhm";
       await add_to_redis_queue(job_id, run_log, system);
-      await add_system_reset_totalizer(job_id, run_log, {id: system.id, data_source: "HHM"});
+      await add_system_reset_totalizer(job_id, run_log, {
+        id: system.id,
+        data_source: system.data_source
+      });
 
       return false;
     }
 
-    // data_acqu was able to reach out and connect, but no file found. Sent to online queue
-    if(no_file_test.test(error)) {
-      await add_to_online_queue(job_id, run_log, {
-        id: system.id,
-        capture_datetime,
-        successful_acquisition: true,
-        data_source: "hhm",
-        host_intervention: false
-      });
-      return false;
-    }
+    // CHECK ERROR CODE
+    if (error.code === 124) {
+      if (ip_reset) {
+        await add_to_online_queue(job_id, run_log, {
+          id: system.id,
+          capture_datetime,
+          successful_acquisition: false,
+          data_source: system.data_source,
+          host_intervention: false,
+          connection_error: "hanging connection"
+        });
+        return false;
+      }
 
-    // Second condition mostly as a catch all for now due to "Error: Command failed:" pattern match
-    if (fingerprint_test.test(error)) {
-      console.log("Reestablish keys/fingerprint/password");
-      await add_to_online_queue(job_id, run_log, {
+      await add_to_redis_queue(job_id, run_log, system);
+      await add_system_reset_totalizer(job_id, run_log, {
         id: system.id,
-        capture_datetime,
-        successful_acquisition: false,
-        data_source: "hhm",
-        host_intervention: true
+        data_source: system.data_source
       });
+
       return false;
     }
     await addLogEvent(E, run_log, "exec_hhm_data_grab", cat, note, error);
     return null;
   }
 };
+
+// TEST stderr FOR CONNECTION ERROR
+function extractConnectionError(text, regexes) {
+  for (let regex of regexes) {
+    const is_match = regex.re.test(text);
+
+    if (is_match) return regex;
+  }
+  return null;
+}
 
 module.exports = exec_hhm_data_grab;
