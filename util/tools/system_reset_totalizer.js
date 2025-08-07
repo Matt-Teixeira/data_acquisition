@@ -56,7 +56,7 @@ const update_system_reset_total = async (queue, run_log) => {
     duplicate_systems.push(system.id);
 
     try {
-      if (system.data_source === "HHM") {
+      if (system.data_source === "hhm") {
         await db.any(query, [system.id]);
       }
     } catch (error) {

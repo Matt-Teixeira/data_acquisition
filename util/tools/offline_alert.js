@@ -29,26 +29,28 @@ const upsert_query_builder = async (queue) => {
 
   // Seperate queued systems based on successful acquisition
   for (let system of queue) {
-    if (system.successful_acquisition) {
+    if (!system.conn_err) {
       success_queue.push(system);
     }
-    if (!system.successful_acquisition) {
+    if (system.conn_err) {
       failed_queue.push(system);
     }
   }
 
-  // alert.offline_mmb
-  // alert.offline_hhm
+  console.log("\nsuccess_queue");
+  console.log(success_queue);
+  console.log("\nfailed_queue");
+  console.log(failed_queue);
 
   const hhm_success_values = [];
-  const hhm_insert_str = `INSERT INTO alert.offline_hhm_conn (system_id, capture_datetime, host_intervention) VALUES `;
+  const hhm_insert_str = `INSERT INTO alert.offline_hhm_conn (system_id, capture_datetime, successful_acquisition, host_intervention, connection_error) VALUES `;
   const hhm_on_conflict = `ON CONFLICT (system_id) DO UPDATE SET `;
-  const hhm_set_str = `capture_datetime = EXCLUDED.capture_datetime, inserted_at = EXCLUDED.inserted_at, host_intervention = EXCLUDED.host_intervention;`;
+  const hhm_set_str = `capture_datetime = EXCLUDED.capture_datetime, inserted_at = EXCLUDED.inserted_at, successful_acquisition = EXCLUDED.successful_acquisition, host_intervention = EXCLUDED.host_intervention, connection_error = EXCLUDED.connection_error;`;
 
   const hhm_failed_values = [];
-  const hhm_failed_insert_str = `INSERT INTO alert.offline_hhm_conn (system_id, host_intervention) VALUES `;
+  const hhm_failed_insert_str = `INSERT INTO alert.offline_hhm_conn (system_id, successful_acquisition, host_intervention, connection_error) VALUES `;
   const hhm_failed_on_conflict = `ON CONFLICT (system_id) DO UPDATE SET `;
-  const hhm_failed_set_str = `inserted_at = EXCLUDED.inserted_at, host_intervention = EXCLUDED.host_intervention;`;
+  const hhm_failed_set_str = `inserted_at = EXCLUDED.inserted_at, successful_acquisition = EXCLUDED.successful_acquisition, host_intervention = EXCLUDED.host_intervention, connection_error = EXCLUDED.connection_error;`;
 
   const mmb_success_values = [];
   const mmb_insert_str = `INSERT INTO alert.offline_mmb_conn (system_id, capture_datetime) VALUES `;
@@ -67,9 +69,15 @@ const upsert_query_builder = async (queue) => {
       let is_duplicate = dup_systems.hhm.indexOf(system.id);
       if (is_duplicate !== -1) continue;
 
-      hhm_success_values.push(
-        `('${system.id}', '${system.capture_datetime}', ${system.host_intervention})`
-      );
+      if (system.connection_error === null) {
+        hhm_success_values.push(
+          `('${system.id}', '${system.capture_datetime}', ${system.successful_acquisition}, ${system.host_intervention}, ${system.connection_error})`
+        );
+      } else {
+        hhm_success_values.push(
+          `('${system.id}', '${system.capture_datetime}', ${system.successful_acquisition}, ${system.host_intervention}, '${system.connection_error}')`
+        );
+      }
 
       dup_systems.hhm.push(system.id);
     }
@@ -120,8 +128,15 @@ const upsert_query_builder = async (queue) => {
       if (is_duplicate !== -1) continue;
       dup_systems.hhm.push(system.id);
 
-      // system.host_intervention
-      hhm_failed_values.push(`('${system.id}', ${system.host_intervention})`);
+      if (system.connection_error === null) {
+        hhm_failed_values.push(
+          `('${system.id}', ${system.successful_acquisition}, ${system.host_intervention}, ${system.connection_error})`
+        );
+      } else {
+        hhm_failed_values.push(
+          `('${system.id}', ${system.successful_acquisition}, ${system.host_intervention}, '${system.connection_error}')`
+        );
+      }
     }
 
     if (system.data_source === "mmb") {
@@ -155,9 +170,6 @@ const upsert_query_builder = async (queue) => {
 
   let hhm_failed_query_string = `${hhm_failed_insert_str}${hhm_failed_values_str}${hhm_failed_on_conflict}${hhm_failed_set_str}`;
   let mmb_failed_query_string = `${mmb_failed_insert_str}${mmb_failed_values_str}${mmb_failed_on_conflict}${mmb_failed_set_str}`;
-
-  console.log("\nhhm_failed_query_string");
-  console.log(hhm_failed_query_string);
 
   if (hhm_failed_values.length) await db.any(hhm_failed_query_string);
   if (mmb_failed_values.length) await db.any(mmb_failed_query_string);
