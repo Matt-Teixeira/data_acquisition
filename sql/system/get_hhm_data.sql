@@ -18,15 +18,8 @@ WHERE
     AND modality LIKE $2
     AND process_log = true;
 
---> GE_CT
--- Connecting              SME00897
--- Timed Out               SME00847
--- Network Hang Code: 124  SME17366 SME17367
---> 'SME17367', 'SME00897', 'SME00847', 'SME17366'
--- SME01433 TEST FOR CRED SWITCH UP
 
---> GE_CV
--- Connecting              
--- Timed Out               
--- Network Hang Code: 124  
---> 
+--> PHILIPS CT
+--> SME17375 SME01447
+
+--> SME00444  SME18580
