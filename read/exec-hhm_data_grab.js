@@ -5,6 +5,7 @@ const {
   add_to_online_queue,
   add_system_reset_totalizer
 } = require("../redis");
+const { extractConnectionError, connection_regexes } = require("../util");
 const [addLogEvent] = require("../utils/logger/log");
 const {
   type: { I, W, E },
@@ -21,7 +22,7 @@ const exec_hhm_data_grab = async (
   capture_datetime,
   ip_reset = false
 ) => {
-  system.data_source = "hhm"; 
+  system.data_source = "hhm";
 
   let note = {
     job_id: job_id,
@@ -34,32 +35,7 @@ const exec_hhm_data_grab = async (
   console.log(note);
   await addLogEvent(I, run_log, "exec_hhm_data_grab", cal, note, null);
 
-  const regexes = [
-    {
-      connection_error: true,
-      error_type: "connection",
-      message: "Connection timed out",
-      manual_intervention: false,
-      successful_acquisition: false,
-      re: /Connection timed out/
-    },
-    {
-      connection_error: true,
-      error_type: "connection",
-      message: "max-retries exceeded",
-      manual_intervention: false,
-      successful_acquisition: false,
-      re: /error: max-retries exceeded/
-    },
-    {
-      connection_error: true,
-      error_type: "connection",
-      message: "confirm the new fingerprint and update known hosts",
-      manual_intervention: true,
-      successful_acquisition: false,
-      re: /Warning:\sPermanently\sadded\s'\d+\.\d+\.\d+\.\d+'.+to\sthe\slist\sof\sknown\shosts|Error:\sCommand\sfailed/g
-    }
-  ];
+  // NEED REXEX
 
   let data_store_path = "";
   switch (process.env.RUN_ENV) {
@@ -99,10 +75,36 @@ const exec_hhm_data_grab = async (
 
     await addLogEvent(I, run_log, "exec_hhm_data_grab", det, note, null);
 
-    const extracted_error = extractConnectionError(stderr, regexes);
+    const extracted_stderr = extractConnectionError(stderr, connection_regexes);
+    const extracted_stdout = extractConnectionError(stdout, connection_regexes);
+
+    if (extracted_stdout?.extraction_error) {
+      if (ip_reset || !extracted_stdout.connection_error) {
+        await add_to_online_queue(job_id, run_log, {
+          id: system.id,
+          capture_datetime,
+          successful_acquisition: extracted_stdout.successful_acquisition,
+          data_source: system.data_source,
+          host_intervention: extracted_stdout.manual_intervention,
+          connection_error: extracted_stdout.message,
+          conn_err: extracted_stdout.connection_error
+        });
+
+        return false;
+      }
+
+      await add_to_redis_queue(job_id, run_log, system);
+      await add_system_reset_totalizer(job_id, run_log, {
+        id: system.id,
+        data_source: system.data_source
+      });
+      // ADD HERE: Place system daily_total and lifetime_total redis:queue
+
+      return false;
+    }
 
     // TEST stderr FOR CONNECTIVITY
-    if (extracted_error?.connection_error) {
+    if (extracted_stderr?.connection_error) {
       let note = {
         job_id: job_id,
         system_id: system.id,
@@ -119,10 +121,11 @@ const exec_hhm_data_grab = async (
         await add_to_online_queue(job_id, run_log, {
           id: system.id,
           capture_datetime,
-          successful_acquisition: extracted_error.successful_acquisition,
+          successful_acquisition: extracted_stderr.successful_acquisition,
           data_source: system.data_source,
-          host_intervention: extracted_error.manual_intervention,
-          connection_error: extracted_error.message
+          host_intervention: extracted_stderr.manual_intervention,
+          connection_error: extracted_stderr.message,
+          conn_err: extracted_stderr.connection_error
         });
 
         return false;
@@ -144,7 +147,8 @@ const exec_hhm_data_grab = async (
       successful_acquisition: true,
       data_source: system.data_source,
       host_intervention: false,
-      connection_error: null
+      connection_error: null,
+      conn_err: false
     });
 
     return stdout;
@@ -153,9 +157,15 @@ const exec_hhm_data_grab = async (
     console.log(error);
 
     // TEST stderr FOR CONNECTION ERROR
-    const extracted_error = extractConnectionError(error.message, regexes);
+    const extracted_err_message = extractConnectionError(
+      error.message,
+      connection_regexes
+    );
 
-    if (extracted_error?.connection_error) {
+    if (
+      extracted_err_message?.connection_error ||
+      extracted_err_message?.extraction_error
+    ) {
       let note = {
         job_id,
         system_id: system.id
@@ -163,14 +173,17 @@ const exec_hhm_data_grab = async (
 
       await addLogEvent(E, run_log, "exec_hhm_data_grab", cat, note, error);
 
-      if (ip_reset) {
+      // IF IP RESET, JUST SEND TO QUEUE TO NOT RUN RESET AGAIN
+      // TEST FOR THE PRESENCE OF extracted_err_message (present means connectivity, but file pull issue. Not connectivity)
+      if (ip_reset || extracted_err_message?.extraction_error) {
         await add_to_online_queue(job_id, run_log, {
           id: system.id,
           capture_datetime,
-          successful_acquisition: extracted_error.successful_acquisition,
+          successful_acquisition: extracted_err_message.successful_acquisition,
           data_source: system.data_source,
-          host_intervention: extracted_error.host_intervention,
-          connection_error: extracted_error.message
+          host_intervention: extracted_err_message.manual_intervention,
+          connection_error: extracted_err_message.message,
+          conn_err: extracted_err_message.connection_error
         });
 
         return false;
@@ -194,7 +207,8 @@ const exec_hhm_data_grab = async (
           successful_acquisition: false,
           data_source: system.data_source,
           host_intervention: false,
-          connection_error: "hanging connection"
+          connection_error: "hanging connection",
+          conn_err: true
         });
         return false;
       }
@@ -211,15 +225,5 @@ const exec_hhm_data_grab = async (
     return null;
   }
 };
-
-// TEST stderr FOR CONNECTION ERROR
-function extractConnectionError(text, regexes) {
-  for (let regex of regexes) {
-    const is_match = regex.re.test(text);
-
-    if (is_match) return regex;
-  }
-  return null;
-}
 
 module.exports = exec_hhm_data_grab;
