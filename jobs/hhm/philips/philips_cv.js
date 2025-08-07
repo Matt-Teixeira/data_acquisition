@@ -95,7 +95,7 @@ async function run_phil_cv(
     "last_phil_cv_lod"
   );
 
-  // PASS IN PREVIOUS FILE NAMES AND RETURN 1 OR MORE LOD OR DAILY DIRs TO PULL
+  // REQUIRES HOST CONNECTIVITY: PASS IN PREVIOUS FILE NAMES AND RETURN 1 OR MORE LOD OR DAILY DIRs TO PULL
   const { daily_files_to_pull, lod_files_to_pull } =
     await list_new_phil_cv_files(
       job_id,
@@ -110,12 +110,20 @@ async function run_phil_cv(
       capture_datetime
     );
 
+  console.log("\nPAIRED DOWN LIST:");
+
+  console.log("\ndaily_files_to_pull");
+  console.log(daily_files_to_pull);
+
+  console.log("\nlod_files_to_pull");
+  console.log(lod_files_to_pull);
+
   // TESTING VARS
   // const daily_files_to_pull = ["daily_2025_05_06", "daily_2025_05_08"];
   // const lod_files_to_pull = null;
 
   // GET ALL DIRECTORIES FROM HOST BASED ON DELTA LIST FROM daily_files_to_pull. EXAMPLE: ["daily_2025_05_06", "daily_2025_05_08"]
-  if (daily_files_to_pull !== null) {
+  if (daily_files_to_pull !== null && daily_files_to_pull !== false) {
     for await (const file of daily_files_to_pull) {
       await exec_phil_cv_data_grab(
         job_id,
@@ -128,22 +136,22 @@ async function run_phil_cv(
         capture_datetime
       );
     }
-  }
 
-  // NOTE: LOOP THROUGH EACH DIRECTORY BROUGHT OVER FROM HOST, UNZIP AND FORMAT INTO EventLog.txe
-  for await (const daily_dir of daily_files_to_pull) {
-    await exec_phil_cv_unzip(
-      job_id,
-      run_log,
-      system.id,
-      parse_event_zip,
-      system,
-      daily_dir
-    );
+    // NOTE: LOOP THROUGH EACH DIRECTORY BROUGHT OVER FROM HOST, UNZIP AND FORMAT INTO EventLog.txe
+    for await (const daily_dir of daily_files_to_pull) {
+      await exec_phil_cv_unzip(
+        job_id,
+        run_log,
+        system.id,
+        parse_event_zip,
+        system,
+        daily_dir
+      );
+    }
   }
 
   // NOTE: PULL LOD DIRECTORIES FROM HOST
-  if (lod_files_to_pull !== null) {
+  if (lod_files_to_pull !== null && lod_files_to_pull !== false) {
     for await (const file of lod_files_to_pull) {
       await exec_phil_cv_data_grab(
         job_id,
@@ -160,6 +168,7 @@ async function run_phil_cv(
 
   // NOTE: PULLS TRACE DIRECTORIES FROM HOST
   // LARGE FILE SET - STOP PROCESS IF SLOW HOST NETWORK
+  /*
   if (daily_files_to_pull !== null) {
     for await (const file of daily_files_to_pull) {
       await get_trace_files(
@@ -173,6 +182,7 @@ async function run_phil_cv(
       );
     }
   }
+  */
 }
 
 async function get_trace_files(
