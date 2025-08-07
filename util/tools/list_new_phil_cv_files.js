@@ -27,57 +27,8 @@ async function list_new_phil_cv_files(
 
   await addLogEvent(I, run_log, "list_new_phil_cv_files", cal, note, null);
 
-  const daily_files_to_pull = await list_new_daily_files(
-    job_id,
-    run_log,
-    sme,
-    ip_address,
-    previous_daily_file,
-    user,
-    pass,
-    system,
-    capture_datetime,
-    ip_reset
-  );
-
-  const lod_files_to_pull = await list_new_lod_files(
-    job_id,
-    run_log,
-    sme,
-    ip_address,
-    previous_lod_file,
-    user,
-    pass,
-    system,
-    capture_datetime,
-    ip_reset
-  );
-
-  return { daily_files_to_pull, lod_files_to_pull };
-}
-
-async function list_new_daily_files(
-  job_id,
-  run_log,
-  sme,
-  ip_address,
-  previous_daily_file,
-  user,
-  pass,
-  system,
-  capture_datetime,
-  ip_reset
-) {
-  let note = {
-    job_id,
-    system_id: sme,
-    previous_daily_file
-  };
-
-  await addLogEvent(I, run_log, "list_new_daily_files", cal, note, null);
-
-  const daily_re = /daily_\d{4}_\d{2}_\d{2}|daily_\d{4}\d{2}\d{2}/;
   const list_path = "./read/sh/Philips/phil_cv_file_list.sh";
+
   const files_list = await exec_list_dirs(
     job_id,
     run_log,
@@ -89,7 +40,54 @@ async function list_new_daily_files(
     ip_reset
   );
 
-  if (files_list === false) return null;
+  // IF files_list IS null/false, BREAK EARLY DUE TO POSSIBLE CONNECTION ISSUE
+  if (!files_list) {
+    let daily_files_to_pull = null;
+    let lod_files_to_pull = null;
+    return { daily_files_to_pull, lod_files_to_pull };
+  }
+
+  const daily_files_to_pull = await list_new_daily_files(
+    job_id,
+    run_log,
+    sme,
+    previous_daily_file,
+    files_list
+  );
+
+  // IF daily_files_to_pull IS null, BREAK EARLY DUE TO CONNECTION ISSUE
+  if (!daily_files_to_pull) {
+    let lod_files_to_pull = null;
+    return { daily_files_to_pull, lod_files_to_pull };
+  }
+
+  const lod_files_to_pull = await list_new_lod_files(
+    job_id,
+    run_log,
+    sme,
+    previous_lod_file,
+    files_list
+  );
+
+  return { daily_files_to_pull, lod_files_to_pull };
+}
+
+async function list_new_daily_files(
+  job_id,
+  run_log,
+  sme,
+  previous_daily_file,
+  files_list
+) {
+  let note = {
+    job_id,
+    system_id: sme,
+    previous_daily_file
+  };
+
+  await addLogEvent(I, run_log, "list_new_daily_files", cal, note, null);
+
+  const daily_re = /daily_\d{4}_\d{2}_\d{2}|daily_\d{4}\d{2}\d{2}/;
 
   const dirs = files_list.split(" ");
   if (!dirs) return null;
@@ -129,13 +127,8 @@ async function list_new_lod_files(
   job_id,
   run_log,
   sme,
-  ip_address,
   previous_lod_file,
-  user,
-  pass,
-  system,
-  capture_datetime,
-  ip_reset
+  files_list
 ) {
   let note = {
     job_id,
@@ -145,42 +138,13 @@ async function list_new_lod_files(
 
   await addLogEvent(I, run_log, "list_new_lod_files", cal, note, null);
 
-  const list_path = "./read/sh/Philips/phil_cv_file_list.sh";
   const lod_re = /lod.*/;
-
-  const files_list = await exec_list_dirs(
-    job_id,
-    run_log,
-    sme,
-    list_path,
-    system,
-    [ip_address, user, pass, `${process.env.DEV_HHM_FILES}/Philips/CV/${sme}`],
-    capture_datetime,
-    ip_reset
-  );
-
-  if (files_list === false) return null;
 
   const dirs = files_list.split(" ");
   if (!dirs) return null;
 
   // Runs if block if no Redis reference - returns oldest valid lod dir for this system
   if (!previous_lod_file) {
-    /* let last_file = "";
-    for (let i = dirs.length - 1; i > 0; i--) {
-      const matching_file = lod_re.test(dirs[i]);
-      if (matching_file) {
-        last_file = dirs[i];
-        last_file = last_file.trim();
-        break;
-      }
-    }
-
-    // account for no lod dir
-    if (last_file === "") return null;
-
-    return [last_file]; */
-
     let first_lod_file = "";
     for (let i = 0; i < dirs.length; i++) {
       const matching_file = lod_re.test(dirs[i]);
@@ -211,7 +175,7 @@ async function list_new_lod_files(
   let prev_lod_index = lod_dirs.indexOf(previous_lod_file);
 
   // Account no lod
-  if(lod_dirs.length < 1) {
+  if (lod_dirs.length < 1) {
     let note = {
       job_id,
       message: "Previous lod file not found",
@@ -222,7 +186,7 @@ async function list_new_lod_files(
   }
 
   // Account for not found previous lod dir
-  // prev_lod_index < 0 MEANS PREVIOUS FILE NOT FOUND - We want to pull something so 
+  // prev_lod_index < 0 MEANS PREVIOUS FILE NOT FOUND - We want to pull something so
   if (prev_lod_index < 0) {
     const new_lod_file = lod_dirs[lod_dirs.length - 1];
     return [new_lod_file];
