@@ -17,9 +17,3 @@ WHERE
     manufacturer = $1
     AND modality LIKE $2
     AND process_log = true;
-
-
---> PHILIPS CT
---> SME17375 SME01447
-
---> SME00444  SME18580

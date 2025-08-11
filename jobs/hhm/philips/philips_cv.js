@@ -3,6 +3,7 @@ const exec_phil_cv_unzip = require("../../../read/exec-phil_cv_unzip");
 const { get_hhm, getHhmCreds } = require("../../../sql/qf-provider");
 const { decryptString, list_new_phil_cv_files } = require("../../../util");
 const { get_previous_dir } = require("../../../redis/redis_helpers");
+const { file_exists } = require("../../../util");
 const { v4: uuidv4 } = require("uuid");
 
 const [addLogEvent] = require("../../../utils/logger/log");
@@ -117,6 +118,29 @@ async function run_phil_cv(
 
   console.log("\nlod_files_to_pull");
   console.log(lod_files_to_pull);
+
+  // CHECK FOR EventLog.txe within last_aquired_dir
+  if (process.env.RUN_ENV === "dev") {
+    system.debian_server_path = `/home/matt-teixeira/hep3/hhm_data_acquisition/files/${system.id}`;
+  }
+
+  if (last_aquired_dir) {
+    const file_there = await file_exists(
+      system.debian_server_path,
+      `${last_aquired_dir}/EventLog.txe`
+    );
+
+    if (!file_there) {
+      await exec_phil_cv_unzip(
+        job_id,
+        run_log,
+        system.id,
+        parse_event_zip,
+        system,
+        last_aquired_dir
+      );
+    }
+  }
 
   // TESTING VARS
   // const daily_files_to_pull = ["daily_2025_05_06", "daily_2025_05_08"];
