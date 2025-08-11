@@ -31,15 +31,6 @@ const connection_regexes = [
     connection_error: true,
     extraction_error: false,
     error_type: "connection",
-    message: "confirm the new fingerprint and update known hosts",
-    manual_intervention: true,
-    successful_acquisition: false,
-    re: /Warning:\sPermanently\sadded\s'\d+\.\d+\.\d+\.\d+'.+to\sthe\slist\sof\sknown\shosts|Error:\sCommand\sfailed/g
-  },
-  {
-    connection_error: true,
-    extraction_error: false,
-    error_type: "connection",
     message: "host may be offline",
     manual_intervention: false,
     successful_acquisition: false,
@@ -62,7 +53,16 @@ const connection_regexes = [
     manual_intervention: true,
     successful_acquisition: false,
     re: /remote host identification has changed/gi
-  }
+  },
+    {
+    connection_error: false,
+    extraction_error: true,
+    error_type: "key",
+    message: "confirm the new fingerprint and update known hosts",
+    manual_intervention: true,
+    successful_acquisition: false,
+    re: /Warning:\sPermanently\sadded\s'\d+\.\d+\.\d+\.\d+'.+to\sthe\slist\sof\sknown\shosts|Error:\sCommand\sfailed/g
+  },
 ];
 
 module.exports = { extractConnectionError, connection_regexes };
