@@ -12,6 +12,7 @@ const { insertHeartbeat } = require("./tools/offline_alert");
 const {
   increment_system_reset_totals
 } = require("./tools/system_reset_totalizer");
+const { file_exists } = require("./tools/file_exists");
 
 module.exports = {
   encryptString,
@@ -25,4 +26,5 @@ module.exports = {
   insertHeartbeat,
   captureDatetime,
   increment_system_reset_totals,
+  file_exists
 };
