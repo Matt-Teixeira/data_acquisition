@@ -124,13 +124,35 @@ async function run_phil_cv(
     system.debian_server_path = `/home/matt-teixeira/hep3/hhm_data_acquisition/files/${system.id}`;
   }
 
+  // BACKFILL ANY CURRENT DATA NOT PRESENT
+  // WILL RUN EVEN IN ABSENCE OF daily_files_to_pull AND lod_files_to_pull AS A DOUBLE CHECK ON CURRENT STATE
   if (last_aquired_dir) {
-    const file_there = await file_exists(
+    // 1) CHECK FOR PRESENCE OF Event.zip WITHIN last_aquired_dir
+    const event_zip_there = await file_exists(
+      system.debian_server_path,
+      `${last_aquired_dir}/Event.zip`
+    );
+    // 2) IF Event.zip NOT PRESENT: PULL DIR FROM HOST AGAIN
+    if (!event_zip_there) {
+      await exec_phil_cv_data_grab(
+        job_id,
+        run_log,
+        system.id,
+        daily_dir_acqu_script,
+        system,
+        [system.host_ip, user, pass, last_aquired_dir],
+        "last_phil_cv_daily",
+        capture_datetime
+      );
+    }
+
+    // 1) CHECK FOR PRESENCE OF EventLog.txe WITHIN last_aquired_dir
+    const event_log_there = await file_exists(
       system.debian_server_path,
       `${last_aquired_dir}/EventLog.txe`
     );
 
-    if (!file_there) {
+    if (!event_log_there) {
       await exec_phil_cv_unzip(
         job_id,
         run_log,
