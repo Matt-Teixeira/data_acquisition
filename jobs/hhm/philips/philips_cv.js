@@ -110,7 +110,7 @@ async function run_phil_cv(
       system,
       capture_datetime
     );
-
+/* 
   console.log("\nPAIRED DOWN LIST:");
 
   console.log("\ndaily_files_to_pull");
@@ -118,7 +118,7 @@ async function run_phil_cv(
 
   console.log("\nlod_files_to_pull");
   console.log(lod_files_to_pull);
-
+ */
   // CHECK FOR EventLog.txe within last_aquired_dir
   if (process.env.RUN_ENV === "dev") {
     system.debian_server_path = `/home/matt-teixeira/hep3/hhm_data_acquisition/files/${system.id}`;

@@ -36,13 +36,13 @@ const exec_list_dirs = async (
   try {
     const { stdout, stderr } = await execFile(path, args);
 
-    console.log("\n*********** stdout *****************");
+/*     console.log("\n*********** stdout *****************");
     console.log(system.id);
     console.log(stdout);
     console.log("\n*********** stderr *****************");
     console.log(system.id);
     console.log(stderr);
-
+ */
     const extracted_stderr = extractConnectionError(stderr, connection_regexes);
     const extracted_stdout = extractConnectionError(stdout, connection_regexes);
 
