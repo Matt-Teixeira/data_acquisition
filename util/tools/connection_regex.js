@@ -54,7 +54,7 @@ const connection_regexes = [
     successful_acquisition: false,
     re: /remote host identification has changed/gi
   },
-    {
+  {
     connection_error: false,
     extraction_error: true,
     error_type: "key",
@@ -63,6 +63,15 @@ const connection_regexes = [
     successful_acquisition: false,
     re: /Warning:\sPermanently\sadded\s'\d+\.\d+\.\d+\.\d+'.+to\sthe\slist\sof\sknown\shosts|Error:\sCommand\sfailed/g
   },
+  {
+    connection_error: false,
+    extraction_error: true,
+    error_type: "key",
+    message: "no matching key exchange method found",
+    manual_intervention: true,
+    successful_acquisition: false,
+    re: /Unable to negotiate with \d+\.\d+\.\d+\.\d+.+/gi
+  }
 ];
 
 module.exports = { extractConnectionError, connection_regexes };
