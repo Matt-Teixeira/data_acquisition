@@ -55,13 +55,13 @@ const exec_phil_cv_data_grab = async (
   try {
     const { stdout, stderr } = await execFile(execPath, args);
 
-    console.log("\n*********** stdout *****************");
+/*     console.log("\n*********** stdout *****************");
     console.log(system.id);
     console.log(stdout);
     console.log("\n*********** stderr *****************");
     console.log(system.id);
     console.log(stderr);
-
+ */
     let note = {
       job_id,
       system_id: system.id,
