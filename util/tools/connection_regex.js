@@ -60,7 +60,7 @@ const connection_regexes = [
     error_type: "key",
     message: "confirm the new fingerprint and update known hosts",
     manual_intervention: true,
-    successful_acquisition: false,
+    successful_acquisition: true,
     re: /Warning:\sPermanently\sadded\s'\d+\.\d+\.\d+\.\d+'.+to\sthe\slist\sof\sknown\shosts|Error:\sCommand\sfailed/g
   },
   {
