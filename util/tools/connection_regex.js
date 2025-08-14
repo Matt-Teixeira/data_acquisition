@@ -71,7 +71,16 @@ const connection_regexes = [
     manual_intervention: true,
     successful_acquisition: false,
     re: /Unable to negotiate with \d+\.\d+\.\d+\.\d+.+/gi
+  },
+  {
+    connection_error: false,
+    extraction_error: true,
+    error_type: "credentials",
+    message: "update credentials",
+    manual_intervention: true,
+    successful_acquisition: false,
+    re: /Login failed|Login incorrect/gi
   }
 ];
-
+// /Login failed|Login incorrect/gi
 module.exports = { extractConnectionError, connection_regexes };
