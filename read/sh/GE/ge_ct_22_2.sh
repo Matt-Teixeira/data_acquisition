@@ -1,7 +1,7 @@
 #!/bin/bash
 [ ! -d "$4" ] && mkdir $4
 
-lftp -c "set sftp:connect-program 'ssh -o KexAlgorithms=diffie-hellman-group1-sha1'; 
+lftp -c "set sftp:connect-program 'ssh -o KexAlgorithms=diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha256'; 
 set net:timeout 10; 
 set ftp:ssl-allow off; 
 set net:reconnect-interval-base 5; 
@@ -16,10 +16,10 @@ mget ssw.calreport.hist -O $4;
 mget ssw.GenCal.hist -O $4;
 mget ssw.GenCal.hist -O $4;
 mget ssw.tube_align.hist -O $4;
-mget air_bubble_detection_result.csv $4;
-mget TubeSpits.csv $4;
-mget image_analysis.csv $4;
-mget ssw.srv_activity.ref $4;
-mget ssw.diagSession.hist $4;
+mget air_bubble_detection_result.csv -O $4;
+mget TubeSpits.csv -O $4;
+mget image_analysis.csv -O $4;
+mget ssw.srv_activity.ref -O $4;
+mget ssw.diagSession.hist -O $4;
 cd /var/log;
 mget messages* -O $4;"
