@@ -1,1 +1,1 @@
-SELECT * FROM hhm_credentials WHERE manufacturer = $1 AND modality = $2;
+SELECT * FROM hhm_credentials WHERE manufacturer = $1 AND modality = $2 OR manufacturer = 'avante';

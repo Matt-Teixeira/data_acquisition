@@ -38,6 +38,8 @@ async function get_philips_mri_data(run_log, capture_datetime) {
             return true;
         });
 
+        console.log(system_creds);
+
         const user = decryptString(system_creds.user_enc);
         const pass = decryptString(system_creds.password_enc);
 

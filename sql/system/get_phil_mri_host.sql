@@ -19,3 +19,5 @@ WHERE
         sys.process_mag IS TRUE
         OR sys.process_log IS TRUE
     );
+
+-- SME10251 is an mmb, but acqu_point set to host for testing: removing current rsync process.
