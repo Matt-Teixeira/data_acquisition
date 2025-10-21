@@ -38,4 +38,7 @@ module.exports = {
   phil_mri_host: {
     systems: sql("system/get_phil_mri_host.sql"),
   },
+  get_althea_env_configs: {
+    systems: sql("system/get_althea_env_configs.sql"),
+  }
 };

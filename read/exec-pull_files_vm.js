@@ -1,0 +1,30 @@
+const util = require("util");
+const execFile = util.promisify(require("child_process").execFile);
+const [addLogEvent] = require("../utils/logger/log");
+const {
+  type: { I, W, E },
+  tag: { cal, det, cat, seq, qaf }
+} = require("../utils/logger/enums");
+
+const exec_pull_vm_files = async (run_log, job_id, path, args) => {
+  const sme = args[2];
+  let note = {
+    job_id,
+    system_id: sme,
+    path,
+    args
+  };
+  addLogEvent(I, run_log, "exec_pull_vm_files", cal, note, null);
+  console.log(args);
+  try {
+    const { stdout, stderr } = await execFile(path, args);
+
+    return;
+  } catch (error) {
+    console.log(error);
+    addLogEvent(E, run_log, "exec_pull_vm_files", cat, note, error);
+    return [];
+  }
+};
+
+module.exports = exec_pull_vm_files;

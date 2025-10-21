@@ -13,6 +13,7 @@ const {
   increment_system_reset_totals
 } = require("./tools/system_reset_totalizer");
 const { file_exists } = require("./tools/file_exists");
+const get_new_files = require("./tools/list_new_files_althea_env");
 
 module.exports = {
   encryptString,
@@ -26,5 +27,6 @@ module.exports = {
   insertHeartbeat,
   captureDatetime,
   increment_system_reset_totals,
-  file_exists
+  file_exists,
+  get_new_files
 };

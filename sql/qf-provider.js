@@ -11,12 +11,13 @@ const {
   get_hhm_creds,
   one_system_data,
   phil_mri_host,
+  get_althea_env_configs
 } = require("./sql");
 
 // GENERIC LOGGER FOR ANY QF CALL
 const logQf = async (uuid, fn, qfArgs) => {
   await log("info", uuid, "sme", fn, `FN CALL`, {
-    qfArgs: qfArgs,
+    qfArgs: qfArgs
   });
 };
 
@@ -91,6 +92,15 @@ const get_phil_mri_host = async (argsArray) => {
   }
 };
 
+const get_althea_env_systems = async () => {
+  try {
+    return db.any(get_althea_env_configs.systems);
+  } catch (error) {
+    console.log(error);
+    await log("error", "uuid", "sme", "get_hhm_data", `FN CALL`);
+  }
+};
+
 module.exports = {
   getSystemIpAddress,
   get_phil_mri_systems,
@@ -102,4 +112,5 @@ module.exports = {
   getHhmCreds,
   getOneSystem,
   get_phil_mri_host,
+  get_althea_env_systems
 };
