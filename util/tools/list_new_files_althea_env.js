@@ -127,7 +127,7 @@ async function get_new_files(job_id, run_log, system, capture_datetime) {
       const res = await concatFilesInOrder(
         system.debian_server_path,
         files_to_append,
-        "/home/matt-teixeira/hep3/hhm_data_acquisition/files/SME20288.v3_ge_mm3.log",
+        perm_file_path,  // "/home/matt-teixeira/hep3/hhm_data_acquisition/files/SME20288.v3_ge_mm3.log"
         getKey
       );
 
