@@ -17,12 +17,19 @@ const {
 } = require("../../utils/logger/enums");
 
 async function get_new_files(job_id, run_log, system, capture_datetime) {
+  // SHELL SCRIPT EXEC PATHS
   const list_path = "./read/sh/althea-env/list_files.sh";
   const pull_path = "./read/sh/althea-env/althea_server_pull.sh";
 
+  // DEV CHANGES FOR TESTING: REMOVE OR COMMENT OUT
+  if (process.env.RUN_ENV === "dev") {
+    system.debian_server_path = `/home/matt-teixeira/hep3/hhm_data_acquisition/files/${system.system_id}_temp`;
+  }
+
+  // CREATE FILE NAME && DIR PATHS
   const perm_file_name = `${system.system_id}.v3_ge_mm3.log`;
   const dir = path.dirname(system.debian_server_path);
-  const perm_file_path = path.join(dir, perm_file_name);
+  let perm_file_path = path.join(dir, perm_file_name);
 
   console.log(perm_file_path);
 
@@ -34,11 +41,13 @@ async function get_new_files(job_id, run_log, system, capture_datetime) {
   await addLogEvent(I, run_log, "get_new_files", cal, note, null);
 
   try {
-    const files = await exec_list_files(run_log, list_path, [
-      system.user_id,
-      system.host_ip,
-      system.system_id
-    ]);
+    const files = await exec_list_files(
+      run_log,
+      job_id,
+      capture_datetime,
+      list_path,
+      [system.user_id, system.host_ip, system.system_id]
+    );
 
     // NO NEED TO DO ANY WORK
     if (files.length === 0) return;
@@ -60,12 +69,6 @@ async function get_new_files(job_id, run_log, system, capture_datetime) {
       system.system_id,
       "althea_vm"
     );
-
-    // DEV CHANGES FOR TESTING: REMOVE OR COMMENT OUT
-    if (process.env.RUN_ENV === "dev") {
-      system.debian_server_path =
-        "/home/matt-teixeira/hep3/hhm_data_acquisition/files/SME20288_temp";
-    }
 
     console.log("\nlast_file_processed");
     console.log(last_file_processed);
@@ -127,7 +130,7 @@ async function get_new_files(job_id, run_log, system, capture_datetime) {
       const res = await concatFilesInOrder(
         system.debian_server_path,
         files_to_append,
-        perm_file_path,  // "/home/matt-teixeira/hep3/hhm_data_acquisition/files/SME20288.v3_ge_mm3.log"
+        perm_file_path, // "/home/matt-teixeira/hep3/hhm_data_acquisition/files/SME20288.v3_ge_mm3.log"
         getKey
       );
 
