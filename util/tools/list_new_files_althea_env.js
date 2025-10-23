@@ -2,6 +2,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 const { pipeline } = require("stream/promises");
+const { DateTime } = require("luxon");
 
 const exec_list_files = require("../../read/exec-list_files");
 const exec_pull_vm_files = require("../../read/exec-pull_files_vm");
@@ -19,309 +20,124 @@ const {
 
 async function get_new_files(job_id, run_log, system, capture_datetime) {
   // SHELL SCRIPT EXEC PATHS
-  const list_path = "./read/sh/althea-env/list_files.sh";
-  const pull_path = "./read/sh/althea-env/althea_server_pull.sh";
+  const pull_path = `./read/sh/althea-env/${system.acquisition_script}`;
 
-  // DEV CHANGES FOR TESTING: REMOVE OR COMMENT OUT
+  console.log("\ncapture_datetime");
+  console.log(capture_datetime);
+
   if (process.env.RUN_ENV === "dev") {
-    system.debian_server_path = `/home/matt-teixeira/hep3/hhm_data_acquisition/files/${system.system_id}_temp`;
+    system.debian_server_path =
+      "/home/matt-teixeira/hep3/hhm_data_acquisition/files";
   }
 
-  // CREATE FILE NAME && DIR PATHS
-  const perm_file_name = `${system.system_id}.v3_ge_mm3.log`;
-  const dir = path.dirname(system.debian_server_path);
-  let perm_file_path = path.join(dir, perm_file_name);
+  const remote_path = `${system.host_path}/${system.system_id}.v3_ge_mm3.log`;
+  const local_path = `${system.debian_server_path}/${system.system_id}.v3_ge_mm3.log`;
 
-  console.log(perm_file_path);
-
-  let note = {
-    job_id,
-    system_id: system.system_id
-  };
-
-  await addLogEvent(I, run_log, "get_new_files", cal, note, null);
-
-  let latestCaptureFromProcessed = null;
-  let acquisitionSuccess = false;
+  console.log(system);
 
   try {
-    const listResult = await exec_list_files(
-      run_log,
-      job_id,
-      list_path,
-      [system.user_id, system.host_ip, system.system_id]
-    );
+    await exec_pull_vm_files(run_log, job_id, pull_path, [
+      system.system_id,
+      remote_path,
+      local_path,
+      system.host_ip,
+      system.user_id
+    ]);
 
-    if (!listResult.success) {
-      throw listResult.error || new Error("Failed to list remote files");
+    let lastCaptureDatetime = await readLastCaptureDatetime(local_path);
+
+    if (lastCaptureDatetime) {
+      lastCaptureDatetime = DateTime.fromISO(lastCaptureDatetime, {
+        zone: "utc"
+      })
+        .setZone("America/New_York")
+        .toISO();
     }
 
-    const files = listResult.files;
-
-    // NO NEED TO DO ANY WORK
-    if (files.length > 0) {
-      // ARRANGE FILES BY APPENDED DATE ASC
-      const sorted = [...files].sort((a, b) => {
-        const da = yyyymmddFromName(a);
-        const db = yyyymmddFromName(b);
-        if (da && db)
-          return da === db ? a.localeCompare(b) : da.localeCompare(db);
-        if (da && !db) return -1;
-        if (!da && db) return 1;
-        return a.localeCompare(b);
-      });
-
-      const { last_file_processed, getKey } = await get_prev_file(
-        job_id,
-        run_log,
-        system.system_id,
-        "althea_vm"
-      );
-
-      console.log("\nlast_file_processed");
-      console.log(last_file_processed);
-      const files_to_process = [];
-
-      if (last_file_processed) {
-        note.last_file_processed = last_file_processed;
-        await addLogEvent(I, run_log, "get_new_files", cal, note, null);
-
-        for (let i = sorted.length - 1; i > 0; i--) {
-          if (last_file_processed === sorted[i]) break;
-          files_to_process.unshift(sorted[i]);
-        }
-
-        for (const file of files_to_process) {
-          console.log("\nPULLING AND PROCESSING DELTA");
-          await exec_pull_vm_files(run_log, job_id, pull_path, [
-            system.user_id,
-            system.host_ip,
-            system.system_id,
-            file,
-            system.debian_server_path
-          ]);
-
-          const files_to_append = await listFiles(system.debian_server_path);
-
-          console.log("\nfiles_to_append");
-          console.log(files_to_append);
-
-          const res = await concatFilesInOrder(
-            system.debian_server_path,
-            files_to_append,
-            perm_file_path,
-            getKey
-          );
-
-          console.log("\nres");
-          console.log(res);
-
-          if (res && res.lastCaptureUtc) {
-            latestCaptureFromProcessed = res.lastCaptureUtc;
-          }
-        }
-
-        console.log("\n END OF DELTA PROCESSING");
-      } else {
-        for (const file of sorted) {
-          await exec_pull_vm_files(run_log, job_id, pull_path, [
-            system.user_id,
-            system.host_ip,
-            system.system_id,
-            file,
-            system.debian_server_path
-          ]);
-        }
-
-        const files_to_append = await listFiles(system.debian_server_path);
-
-        const res = await concatFilesInOrder(
-          system.debian_server_path,
-          files_to_append,
-          perm_file_path,
-          getKey
-        );
-
-        console.log(res);
-        console.log("\n END OF ALL FILES PROCESSING");
-
-        if (res && res.lastCaptureUtc) {
-          latestCaptureFromProcessed = res.lastCaptureUtc;
-        }
-      }
-    }
-
-    acquisitionSuccess = true;
+    await add_to_online_queue(job_id, run_log, {
+      id: system.system_id,
+      capture_datetime: lastCaptureDatetime,
+      successful_acquisition: true,
+      data_source: "mmb"
+    });
   } catch (error) {
     console.log(error);
-    await addLogEvent(E, run_log, "get_new_files", cat, null, error);
-  } finally {
-    let captureForQueue = latestCaptureFromProcessed;
-
-    if (!captureForQueue) {
-      captureForQueue =
-        (await readLastCaptureTimestamp(perm_file_path)) || capture_datetime;
-    }
-
-    try {
-      await add_to_online_queue(job_id, run_log, {
-        id: system.system_id,
-        capture_datetime: captureForQueue,
-        successful_acquisition: acquisitionSuccess,
-        data_source: "mmb"
-      });
-    } catch (queueError) {
-      console.log(queueError);
-      await addLogEvent(E, run_log, "get_new_files", cat, null, queueError);
-    }
   }
 }
 
-async function listFiles(dir, absolute = false) {
-  const entries = await fsp.readdir(dir, { withFileTypes: true });
-  return entries
-    .filter((e) => e.isFile())
-    .map((e) => (absolute ? path.join(dir, e.name) : e.name))
-    .sort();
-}
+async function readLastCaptureDatetime(filePath) {
+  const marker = "[END CAPTURE BLOCK : ";
+  const closing = "]";
+  const isoRe = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
+  const chunkSize = 64 * 1024;
+  const overlap = marker.length + 32;
 
-// parse DDMMYY from ...-dayDDMMYY.dat -> "YYYYMMDD" (string) or null
-function yyyymmddFromName(name) {
-  const m = name.match(/-day(\d{6})\.dat$/i);
-  if (!m) return null;
-  const dd = +m[1].slice(0, 2);
-  const mm = +m[1].slice(2, 4);
-  const yy = +m[1].slice(4, 6);
-  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
-  const year = yy <= 69 ? 2000 + yy : 1900 + yy;
-  const dt = new Date(year, mm - 1, dd);
-  if (
-    dt.getFullYear() !== year ||
-    dt.getMonth() !== mm - 1 ||
-    dt.getDate() !== dd
-  )
-    return null;
-  return `${year}${String(mm).padStart(2, "0")}${String(dd).padStart(2, "0")}`;
-}
+  const handle = await fsp.open(filePath, "r");
 
-function findLastEndCaptureTimestamp(text) {
-  const regex = /\[END CAPTURE BLOCK\s*:\s*([^\]]+)\]/gi;
-  let match;
-  let last = null;
-  while ((match = regex.exec(text)) !== null) {
-    last = match[1].trim();
-  }
-  return last;
-}
-
-async function extractEndCaptureTimestamp(filePath) {
   try {
-    const contents = await fsp.readFile(filePath, "utf8");
-    return findLastEndCaptureTimestamp(contents);
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      console.log(error);
-    }
-    return null;
-  }
-}
-
-async function readLastCaptureTimestamp(filePath) {
-  let handle;
-  try {
-    handle = await fsp.open(filePath, "r");
-    const stats = await handle.stat();
-    if (stats.size === 0) return null;
-
-    const chunkSize = Math.min(stats.size, 128 * 1024);
-    const buffer = Buffer.alloc(chunkSize);
-    await handle.read(buffer, 0, chunkSize, stats.size - chunkSize);
-    return findLastEndCaptureTimestamp(buffer.toString("utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") {
+    const { size } = await handle.stat();
+    if (size === 0) {
       return null;
     }
-    console.log(error);
-    return null;
-  } finally {
-    if (handle) {
-      await handle.close();
-    }
-  }
-}
 
-// assumes yyyymmddFromName(name) = (DDMMYY -> "YYYYMMDD")
+    let offset = size;
+    let carry = "";
 
-async function concatFilesInOrder(srcDir, files, destPath, getKey) {
-  const srcAbs = path.resolve(srcDir);
-  const destAbs = path.resolve(destPath);
+    while (offset > 0) {
+      const readSize = Math.min(chunkSize, offset);
+      offset -= readSize;
 
-  if (destAbs.startsWith(srcAbs + path.sep)) {
-    throw new Error(
-      `Destination must not be inside source directory:\n  src=${srcAbs}\n  dest=${destAbs}`
-    );
-  }
-
-  const sorted = [...files].sort((a, b) => {
-    const da = yyyymmddFromName(a);
-    const db = yyyymmddFromName(b);
-    if (da && db) return da === db ? a.localeCompare(b) : da.localeCompare(db);
-    if (da && !db) return -1;
-    if (!da && db) return 1;
-    return a.localeCompare(b);
-  });
-
-  if (sorted.length === 0) {
-    console.log("LAST_FILE: <none>");
-    return { count: 0, first: null, last: null, lastCaptureUtc: null };
-  }
-
-  const lastFile = sorted[sorted.length - 1];
-  console.log("LAST_FILE:", lastFile);
-
-  await fsp.mkdir(path.dirname(destAbs), { recursive: true });
-
-  // append mode (persistent log)
-  const out = fs.createWriteStream(destAbs, { flags: "a" });
-  let lastSuccess = null;
-  let lastCaptureUtc = null;
-
-  try {
-    for (const name of sorted) {
-      const srcFile = path.join(srcAbs, name);
-
-      const captureTimestamp = await extractEndCaptureTimestamp(srcFile);
-      if (captureTimestamp) {
-        lastCaptureUtc = captureTimestamp;
+      const buffer = Buffer.allocUnsafe(readSize);
+      const { bytesRead } = await handle.read(buffer, 0, readSize, offset);
+      if (bytesRead === 0) {
+        break;
       }
 
-      // append this file
-      await pipeline(fs.createReadStream(srcFile), out, { end: false });
+      const chunk = buffer.toString("utf8", 0, bytesRead);
+      const combined = chunk + carry;
 
-      // ensure separator hits the stream before we mark Redis
-      await new Promise((res, rej) =>
-        out.write("\n", (e) => (e ? rej(e) : res()))
-      );
+      let searchIndex = combined.length;
+      let needsMore = false;
 
-      // delete the source file
-      try {
-        await fsp.unlink(srcFile);
-      } catch {}
+      while (true) {
+        const markerIndex = combined.lastIndexOf(marker, searchIndex - 1);
+        if (markerIndex === -1) {
+          break;
+        }
 
-      // ✅ update bookmark AFTER successful append (and optional delete)
-      await update_last_file(getKey, name);
+        if (markerIndex >= chunk.length && carry) {
+          searchIndex = markerIndex;
+          continue;
+        }
 
-      lastSuccess = name;
+        const isoStart = markerIndex + marker.length;
+        const closingIndex = combined.indexOf(closing, isoStart);
+
+        if (closingIndex === -1) {
+          carry = combined.slice(markerIndex);
+          needsMore = true;
+          break;
+        }
+
+        const candidate = combined.slice(isoStart, closingIndex).trim();
+        if (isoRe.test(candidate)) {
+          return candidate;
+        }
+
+        searchIndex = markerIndex;
+      }
+
+      if (needsMore) {
+        continue;
+      }
+
+      carry = combined.slice(0, Math.min(overlap, combined.length));
     }
+
+    return null;
   } finally {
-    await new Promise((res) => out.end(res));
+    await handle.close();
   }
-
-  return { count: sorted.length, last: lastSuccess, lastCaptureUtc };
 }
-
-// [START CAPTURE BLOCK : 2025-06-07T01:45:00Z]
-
-// [END CAPTURE BLOCK : 2025-06-07T01:45:00Z]
 
 module.exports = get_new_files;

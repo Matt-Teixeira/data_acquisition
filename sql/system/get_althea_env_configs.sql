@@ -3,7 +3,8 @@ SELECT
     host_ip,
     debian_server_path,
     acquisition_script,
-    user_id
+    user_id,
+    host_path
 FROM
     config.acquisition
 WHERE

@@ -19,7 +19,6 @@ async function get_althea_env_data(run_log, capture_datetime) {
   const systems = await get_althea_env_systems();
 
   for await (const system of systems) {
-    console.log(system);
     await get_new_files(job_id, run_log, system, capture_datetime);
   }
 
