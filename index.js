@@ -1,6 +1,9 @@
 ("use strict");
 require("dotenv").config();
 const pgp = require("pg-promise")();
+const db_dock = require("./db/pgPool");
+const db_old = require("./db/pgPool_old");
+const update_db = require("./util/encrypt/old_to_new_process");
 const rsync_philips_mri = require("./jobs/philips_mri/rsync_philips-mri");
 const onBootMMB = require("./jobs/mmb");
 const get_hhm_data = require("./jobs/hhm");
@@ -11,7 +14,7 @@ const get_ip_sec_table = require("./jobs/tools/ip_sec");
 const {
   captureDatetime,
   insertHeartbeat,
-  increment_system_reset_totals
+  increment_system_reset_totals,
 } = require("./util");
 const mmb_configs = require("./jobs/tools/build_mmb_config");
 const update_pg_ipsec = require("./utils/vpn/update-pg-ipsec-table");
@@ -19,11 +22,11 @@ const [
   addLogEvent,
   writeLogEvents,
   dbInsertLogEvents,
-  makeAppRunLog
+  makeAppRunLog,
 ] = require("./utils/logger/log");
 const {
   type: { I, W, E },
-  tag: { cal, det, cat, seq, qaf }
+  tag: { cal, det, cat, seq, qaf },
 } = require("./utils/logger/enums");
 
 async function runJob(run_log, run_group, schedule, manufacturer, modality) {
@@ -32,7 +35,7 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
   let note = {
     run_group: run_group,
     schedule: schedule,
-    modality: modality
+    modality: modality,
   };
 
   await addLogEvent(I, run_log, "runJob", det, note, null);
@@ -45,6 +48,7 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
       await rsync_philips_mri(run_log, capture_datetime);
       break;
     case "hhm":
+      console.log("\nRUNNING HHM JOBS");
       await get_hhm_data(run_log, manufacturer, modality, capture_datetime);
       break;
     case "althea_env":
@@ -61,6 +65,8 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
       break;
     case "system_reset_totalizer":
       await increment_system_reset_totals(run_log);
+    case "update_db_creds":
+      await update_db();
       break;
     default:
       break;
@@ -75,7 +81,7 @@ const onBoot = async () => {
     LOGGER: process.env.LOGGER,
     REDIS_IP: process.env.REDIS_IP,
     PG_USER: process.env.PG_USER,
-    PG_DB: process.env.PG_DB
+    PG_DB: process.env.PG_DB,
   };
 
   await addLogEvent(I, run_log, "onBoot", cal, note, null);

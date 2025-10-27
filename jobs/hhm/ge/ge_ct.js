@@ -1,11 +1,15 @@
 const exec_hhm_data_grab = require("../../../read/exec-hhm_data_grab");
 const { get_hhm, getHhmCreds } = require("../../../sql/qf-provider");
 const { decryptString } = require("../../../util");
+const {
+  encrypt_string,
+  decrypt_string,
+} = require("../../../util/encrypt/decrypt");
 const { v4: uuidv4 } = require("uuid");
 const [addLogEvent] = require("../../../utils/logger/log");
 const {
   type: { I, W, E },
-  tag: { cal, det, cat, seq, qaf }
+  tag: { cal, det, cat, seq, qaf },
 } = require("../../../utils/logger/enums");
 
 async function get_ge_ct_data(run_log, capture_datetime) {
@@ -21,7 +25,7 @@ async function get_ge_ct_data(run_log, capture_datetime) {
     const job_id = uuidv4();
     let note = {
       job_id: job_id,
-      system
+      system,
     };
     try {
       await addLogEvent(I, run_log, "get_ge_ct_data", det, note, null);
@@ -32,8 +36,8 @@ async function get_ge_ct_data(run_log, capture_datetime) {
         if (credential.id == system.credentials_group) return true;
       });
 
-      const user = decryptString(system_creds.user_enc);
-      const pass = decryptString(system_creds.password_enc);
+      const user = decrypt_string(system_creds.user_enc);
+      const pass = decrypt_string(system_creds.password_enc);
 
       child_processes.push(
         async () =>
@@ -50,7 +54,7 @@ async function get_ge_ct_data(run_log, capture_datetime) {
     } catch (error) {
       let note = {
         job_id: job_id,
-        system
+        system,
       };
       await addLogEvent(E, run_log, "get_ge_ct_data", cat, note, error);
     }
@@ -70,6 +74,7 @@ async function get_ge_ct_data(run_log, capture_datetime) {
     // AWAIT PROMISIS
     await Promise.all(promises);
   } catch (error) {
+    console.log(error);
     await addLogEvent(
       E,
       run_log,

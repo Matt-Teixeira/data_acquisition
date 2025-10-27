@@ -1,19 +1,45 @@
-const fs = require('fs');
-const pgp = require('pg-promise')();
+// db/pg-pool.js
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const pgp = require("pg-promise")();
+
+function buildSsl() {
+  const mode = (process.env.PG_SSLMODE || "disable").toLowerCase();
+
+  if (mode === "disable") return false;
+
+  if (mode === "require") {
+    // encrypted but don’t verify CA
+    return { rejectUnauthorized: false };
+  }
+
+  // verify-ca / verify-full — require a CA file if provided
+  const caPath = process.env.PG_SSL_PATH;
+  if (caPath) {
+    const resolved = path.isAbsolute(caPath) ? caPath : path.resolve(process.cwd(), caPath);
+    if (fs.existsSync(resolved)) {
+      return { ca: fs.readFileSync(resolved, "utf8"), rejectUnauthorized: true };
+    } else {
+      console.warn(`[pg] PG_SSL_PATH not found at ${resolved}; falling back to 'require'.`);
+      return { rejectUnauthorized: false };
+    }
+  } else {
+    console.warn("[pg] PG_SSLMODE=verify-* but PG_SSL_PATH not set; falling back to 'require'.");
+    return { rejectUnauthorized: false };
+  }
+}
 
 const config = {
-   host: process.env.PG_HOST,
-   port: process.env.PG_PORT,
-   database: process.env.PG_DB,
-   user: process.env.PG_USER,
-   password: process.env.PG_PW,
-   ssl: {
-      require: true,
-      cert: fs.readFileSync(`./db/BaltimoreCyberTrustRoot.crt.pem`),
-      rejectUnauthorized: true,
-   },
+  // NOTE: use PGHOST/PGPORT/etc. (what you pass in docker run)
+  host: process.env.PGHOST || "pg_db",
+  port: Number(process.env.PGPORT || 5432),
+  database: process.env.PGDATABASE || "dev",
+  user: process.env.PGUSER || "postgres",
+  password: process.env.PGPASSWORD,
+  ssl: buildSsl(),
+  application_name: process.env.PG_APP_NAME || "pg_manage",
 };
 
-const db = pgp(config);
-
-module.exports = db;
+module.exports = pgp(config);

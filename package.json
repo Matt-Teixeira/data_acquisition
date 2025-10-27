@@ -28,7 +28,8 @@
     "schedule_5": "node index.js mmb 5",
     "schedule_6": "node index.js mmb 6",
     "schedule_7": "node index.js mmb 7",
-    "althea_env": "node index.js althea_env"
+    "althea_env": "node index.js althea_env",
+    "update_db_creds": "node index.js update_db_creds"
   },
   "keywords": [],
   "author": "",
