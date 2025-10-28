@@ -1,0 +1,29 @@
+version: "3.9"
+
+x-common-env: &common_env
+  env_file:
+    - .env
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+x-common-mounts: &common_mounts
+  working_dir: /usr/src/app
+  volumes:
+    - ./:/usr/src/app:rw
+    - node_modules_cache:/usr/src/app/node_modules
+
+services:
+  # Use this if you DON'T need apt packages (pure Node)
+  app:
+    image: node:lts
+    <<: [*common_env, *common_mounts]
+
+  # Use this if you DO need lftp/rsync etc. (tiny tools layer)
+  app_tools:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.runtime   # see below
+    <<: [*common_env, *common_mounts]
+
+volumes:
+  node_modules_cache:

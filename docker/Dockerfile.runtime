@@ -1,0 +1,6 @@
+FROM node:lts
+
+# Install CLI tools once (not every run)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends lftp rsync ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
