@@ -3,14 +3,15 @@ const execFile = util.promisify(require("child_process").execFile);
 const {
   add_to_redis_queue,
   add_to_online_queue,
-  add_system_reset_totalizer
+  add_system_reset_totalizer,
 } = require("../redis");
 const { extractConnectionError, connection_regexes } = require("../util");
 const [addLogEvent] = require("../utils/logger/log");
 const {
   type: { I, W, E },
-  tag: { cal, det, cat, seq, qaf }
+  tag: { cal, det, cat, seq, qaf },
 } = require("../utils/logger/enums");
+const path = require("path");
 
 const exec_hhm_data_grab = async (
   job_id,
@@ -24,11 +25,14 @@ const exec_hhm_data_grab = async (
 ) => {
   system.data_source = "hhm";
 
+  const fallback = path.join(process.cwd(), "files");
+
   let note = {
     job_id: job_id,
     system_id: system.id,
     execute_path: execPath,
-    args
+    file_path: fallback,
+    args,
   };
 
   console.log("\nExec Note");
@@ -38,7 +42,7 @@ const exec_hhm_data_grab = async (
   // NEED REXEX
 
   let data_store_path = "";
-  switch (process.env.RUN_ENV) {
+/*   switch (process.env.RUN_ENV) {
     case "dev":
       data_store_path = process.env.DEV_HHM_FILES;
       break;
@@ -50,7 +54,9 @@ const exec_hhm_data_grab = async (
       break;
     default:
       break;
-  }
+  } */
+
+  data_store_path = fallback;
 
   // EXAMPLE: /home/prod/hhm_data_acquisition/files/prod_hhm/GE/CT/SME00001
   // DEV: args.push(`${data_store_path}/${manufacturer}/${modality}/${sme}`);
@@ -58,7 +64,7 @@ const exec_hhm_data_grab = async (
 
   try {
     const { stdout, stderr } = await execFile(execPath, args);
-/*
+    /*
     console.log("\n*********** stdout *****************");
     console.log(system.id);
     console.log(stdout);
@@ -70,7 +76,7 @@ const exec_hhm_data_grab = async (
       job_id: job_id,
       system_id: system.id,
       stdout,
-      stderr
+      stderr,
     };
 
     await addLogEvent(I, run_log, "exec_hhm_data_grab", det, note, null);
@@ -87,7 +93,7 @@ const exec_hhm_data_grab = async (
           data_source: system.data_source,
           host_intervention: extracted_stdout.manual_intervention,
           connection_error: extracted_stdout.message,
-          conn_err: extracted_stdout.connection_error
+          conn_err: extracted_stdout.connection_error,
         });
 
         return false;
@@ -96,7 +102,7 @@ const exec_hhm_data_grab = async (
       await add_to_redis_queue(job_id, run_log, system);
       await add_system_reset_totalizer(job_id, run_log, {
         id: system.id,
-        data_source: system.data_source
+        data_source: system.data_source,
       });
       // ADD HERE: Place system daily_total and lifetime_total redis:queue
 
@@ -109,7 +115,7 @@ const exec_hhm_data_grab = async (
         job_id: job_id,
         system_id: system.id,
         stdout,
-        stderr
+        stderr,
       };
 
       await addLogEvent(W, run_log, "exec_hhm_data_grab", det, note, null);
@@ -125,7 +131,7 @@ const exec_hhm_data_grab = async (
           data_source: system.data_source,
           host_intervention: extracted_stderr.manual_intervention,
           connection_error: extracted_stderr.message,
-          conn_err: extracted_stderr.connection_error
+          conn_err: extracted_stderr.connection_error,
         });
 
         return false;
@@ -134,7 +140,7 @@ const exec_hhm_data_grab = async (
       await add_to_redis_queue(job_id, run_log, system);
       await add_system_reset_totalizer(job_id, run_log, {
         id: system.id,
-        data_source: system.data_source
+        data_source: system.data_source,
       });
       // ADD HERE: Place system daily_total and lifetime_total redis:queue
 
@@ -148,7 +154,7 @@ const exec_hhm_data_grab = async (
       data_source: system.data_source,
       host_intervention: false,
       connection_error: null,
-      conn_err: false
+      conn_err: false,
     });
 
     return stdout;
@@ -168,7 +174,7 @@ const exec_hhm_data_grab = async (
     ) {
       let note = {
         job_id,
-        system_id: system.id
+        system_id: system.id,
       };
 
       await addLogEvent(E, run_log, "exec_hhm_data_grab", cat, note, error);
@@ -183,7 +189,7 @@ const exec_hhm_data_grab = async (
           data_source: system.data_source,
           host_intervention: extracted_err_message.manual_intervention,
           connection_error: extracted_err_message.message,
-          conn_err: extracted_err_message.connection_error
+          conn_err: extracted_err_message.connection_error,
         });
 
         return false;
@@ -192,7 +198,7 @@ const exec_hhm_data_grab = async (
       await add_to_redis_queue(job_id, run_log, system);
       await add_system_reset_totalizer(job_id, run_log, {
         id: system.id,
-        data_source: system.data_source
+        data_source: system.data_source,
       });
 
       return false;
@@ -208,7 +214,7 @@ const exec_hhm_data_grab = async (
           data_source: system.data_source,
           host_intervention: false,
           connection_error: "hanging connection",
-          conn_err: true
+          conn_err: true,
         });
         return false;
       }
@@ -216,7 +222,7 @@ const exec_hhm_data_grab = async (
       await add_to_redis_queue(job_id, run_log, system);
       await add_system_reset_totalizer(job_id, run_log, {
         id: system.id,
-        data_source: system.data_source
+        data_source: system.data_source,
       });
 
       return false;
