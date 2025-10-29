@@ -12,8 +12,11 @@ x-common-env: &common_env
 x-common-mounts: &common_mounts
   working_dir: /workspace
   volumes:
+    # mount project source
     - ./:/workspace
-    - /home/mattteixeira/app/cache_node_mod:/workspace/node_modules
+    # move cached node_modules here
+    - /opt/resources/node_mod_cache/data_acq:/workspace/node_modules
+    - /opt/run-logs/data_acquisition:/opt/run-logs/data_acquisition  # <-- added for logs
 
 services:
   app:
