@@ -16,7 +16,7 @@ async function add_to_online_queue(job_id, run_log, system) {
 
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     await redisClient.sendCommand([
@@ -49,7 +49,7 @@ async function get_redis_online_queue() {
   //addLogEvent(I, run_log, "get_redis_online_queue", cal, note, null);
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     const queue_data = await redisClient.sendCommand([
@@ -72,7 +72,7 @@ async function get_redis_online_queue() {
 async function clear_redis_online_queue() {
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     const queue_data = await redisClient.sendCommand(["del", "online:queue"]);

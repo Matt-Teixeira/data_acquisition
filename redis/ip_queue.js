@@ -14,7 +14,7 @@ async function add_to_redis_queue(job_id, run_log, system) {
 
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     await redisClient.sendCommand([
@@ -46,7 +46,7 @@ async function add_to_redis_queue(job_id, run_log, system) {
 async function get_redis_ip_queue() {
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     const queue_data = await redisClient.sendCommand([
@@ -68,7 +68,7 @@ async function get_redis_ip_queue() {
 async function clear_redis_ip_queue() {
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     const queue_data = await redisClient.sendCommand(["del", "ip:queue"]);
@@ -91,7 +91,7 @@ async function add_system_reset_totalizer(job_id, run_log, system) {
 
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
 
   try {
@@ -138,7 +138,7 @@ async function add_system_reset_totalizer(job_id, run_log, system) {
 async function get_redis_system_total_queue() {
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     const queue_data = await redisClient.sendCommand([
@@ -160,7 +160,7 @@ async function get_redis_system_total_queue() {
 async function clear_redis_system_total_queue() {
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     const queue_data = await redisClient.sendCommand(["del", "system_reset_totalizer:queue"]);

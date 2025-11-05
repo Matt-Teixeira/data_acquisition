@@ -1,0 +1,61 @@
+1. Files made are of root root
+2. able to change that through docker-compose.yaml && .env
+.env 
+UID=1003
+DOCKER_GID=995
+uid=1003(mattteixeira) gid=1003(mattteixeira) groups=1003(mattteixeira),100(users),995(docker)
+
+    app_tools:
+    user: "${UID}:${DOCKER_GID}"
+    image: utility-app_tools:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.runtime # extends node:lts, adds lftp/rsync
+    <<: [*common_env, *common_mounts]
+
+3. ERROR NOW
+
+{ 
+code: 1, 
+killed: false, 
+signal: null, 
+cmd: './read/sh/GE/ge_ct_22_3.sh 10.87.143.223 service 4rhelp /workspace/files/SME00896', 
+stdout: '', 
+stderr: 'cd: Fatal error: max-retries exceeded (No user exists for uid 1003)\n' + 'mget: gesys*.log: Fatal error: max-retries exceeded (No user exists for uid 1003)'
+}
+
+4. ChatGPR INFO
+
+That error happens because you’re running the container as UID 1003 (via user: "${UID}:${DOCKER_GID}"), 
+but there’s no /etc/passwd entry for UID 1003 inside the container. Some programs (like lftp) 
+call getpwuid() and fail hard if the UID isn’t a known user, even if HOME is set. Hence: “No user exists for uid 1003.”
+
+
+5. Build-time user (most “proper,” requires rebuild)
+Refer to current Dockerfile.runtime
+
+6. Build it with your host IDs
+
+# Get your host IDs
+id -u         # -> e.g., 1003
+getent group docker | cut -d: -f3   # -> e.g., 995
+
+# Build (Compose will also do this if you run `docker compose build app_tools`)
+docker compose build \
+  --build-arg APP_UID="$(id -u)" \
+  --build-arg APP_GID="$(getent group docker | cut -d: -f3)" \
+  app_tools
+
+
+
+Notes / gotchas
+This image is now tied to the UID/GID provided at build time. If a teammate with different IDs builds it, they should pass their own APP_UID/APP_GID.
+Bind mounts still honor host-side permissions. Make sure your target dirs on the host allow group docker to write (one-time):
+
+This setup removes the need for entrypoint hacks, satisfies lftp’s user lookup, and ensures files the job creates are yourUID:docker with predictable permissions.
+
+How you’ve fixed it (build-time user)
+By baking a user into the image with:
+APP_UID=$(id -u) → 1003
+APP_GID=$(getent group docker | cut -d: -f3) → your docker group GID
+…you add an /etc/passwd entry for UID 1003 in the image. Now getpwuid(1003) succeeds and lftp stops complaining.

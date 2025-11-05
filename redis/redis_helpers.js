@@ -19,7 +19,7 @@ async function get_previous_dir(job_id, run_log, sme, type) {
 
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     const getKey = `${sme}.${type}`;
@@ -56,7 +56,7 @@ async function get_previous_dir(job_id, run_log, sme, type) {
 async function update_last_dir_date(sme, directory, type) {
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     const setKey = `${sme}.${type}`;
@@ -79,7 +79,7 @@ async function get_prev_file(job_id, run_log, sme, type) {
 
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     const getKey = `${sme}.${type}`;
@@ -116,7 +116,7 @@ async function get_prev_file(job_id, run_log, sme, type) {
 async function update_last_file(key, value) {
   const redisClient = await initRedis(
     process.env.REDIS_PORT,
-    process.env.REDIS_IP
+    process.env.REDIS_HOST
   );
   try {
     await redisClient.set(key, value);

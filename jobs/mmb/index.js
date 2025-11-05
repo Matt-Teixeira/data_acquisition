@@ -96,7 +96,7 @@ const runJob = async (run_log, config, capture_datetime) => {
 const onBootMMB = async (run_log, process_argv, capture_datetime) => {
   let note = {
     LOGGER: process.env.LOGGER,
-    REDIS_IP: process.env.REDIS_IP,
+    REDIS_IP: process.env.REDIS_HOST,
     PG_USER: process.env.PG_USER,
     PG_DB: process.env.PG_DB
   };

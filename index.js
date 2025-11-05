@@ -79,7 +79,7 @@ const onBoot = async () => {
 
   let note = {
     LOGGER: process.env.LOGGER,
-    REDIS_IP: process.env.REDIS_IP,
+    REDIS_IP: process.env.REDIS_HOST,
     PG_USER: process.env.PG_USER,
     PG_DB: process.env.PG_DB,
   };
