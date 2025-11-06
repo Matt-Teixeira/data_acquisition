@@ -26,12 +26,12 @@ x-common-mounts: &common_mounts
     - ./:/workspace
     
     # 2) Cache node_modules on host (survives container removal)
-    #    Make sure /opt/resources/node_mod_cache/dev/data_acquisition exists and is writable
-    #    Use when deploying: /opt/resources/node_mod_cache/staging/data_acquisition
-    - /opt/resources/node_mod_cache/dev/data_acquisition:/workspace/node_modules
+    #    Make sure NODE_MOD_CACHE_* exists and is writable
+    #    When ran in non-dev env: NODE_MOD_CACHE_STAGING/PROD
+    - ${NODE_MOD_CACHE_DEV}:/workspace/node_modules
 
-    # 3) Centralized run logs on host (ensure directory exists/writable)
-    - /opt/run-logs/data_acquisition:/opt/run-logs/data_acquisition
+    # 3) Centralized run logs on host (ensure directory exists/writable - .env)
+    - ${RUN_LOGS_DIR}
 
 # ---------- Services ----------
 services:
@@ -56,7 +56,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.runtime # extends node:lts, adds lftp/rsync
-    user: "${RUN_AS_USER}"             # ← switch with appA or appB
+    user: "${RUN_AS_USER}"             # ← switch with env var
     <<: [*common_env, *common_mounts]
     networks:
       - redis_net
