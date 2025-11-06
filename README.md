@@ -90,7 +90,7 @@ docker compose build app_tools
 docker compose run --rm app_tools bash -lc "npm run job_name"
 ```
 
-**Development (with fresh install):**
+**Development (with fresh install - first run):**
 ```bash
 docker compose run --rm app_tools bash -lc "npm ci --omit=dev && npm run job_name"
 ```
