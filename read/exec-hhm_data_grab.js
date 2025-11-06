@@ -42,7 +42,7 @@ const exec_hhm_data_grab = async (
   // NEED REXEX
 
   let data_store_path = "";
-/*   switch (process.env.RUN_ENV) {
+  switch (process.env.RUN_ENV) {
     case "dev":
       data_store_path = process.env.DEV_HHM_FILES;
       break;
@@ -54,7 +54,7 @@ const exec_hhm_data_grab = async (
       break;
     default:
       break;
-  } */
+  }
 
   data_store_path = fallback;
 
@@ -86,7 +86,7 @@ const exec_hhm_data_grab = async (
 
     if (extracted_stdout?.extraction_error) {
       if (ip_reset || !extracted_stdout.connection_error) {
-/*         await add_to_online_queue(job_id, run_log, {
+        await add_to_online_queue(job_id, run_log, {
           id: system.id,
           capture_datetime,
           successful_acquisition: extracted_stdout.successful_acquisition,
@@ -95,15 +95,15 @@ const exec_hhm_data_grab = async (
           connection_error: extracted_stdout.message,
           conn_err: extracted_stdout.connection_error,
         });
- */
+
         return false;
       }
 
       // await add_to_redis_queue(job_id, run_log, system);
-     /*  await add_system_reset_totalizer(job_id, run_log, {
+      await add_system_reset_totalizer(job_id, run_log, {
         id: system.id,
         data_source: system.data_source,
-      }); */
+      });
       // ADD HERE: Place system daily_total and lifetime_total redis:queue
 
       return false;
@@ -124,7 +124,7 @@ const exec_hhm_data_grab = async (
       // Reason: In initial data pull, if connection issue occurs, just send to ip:queue and make second attempt.
       // If connection issue occurs on second attempt (ip reset job), place in online:queue to then place in connection status table
       if (ip_reset) {
-        /* await add_to_online_queue(job_id, run_log, {
+        await add_to_online_queue(job_id, run_log, {
           id: system.id,
           capture_datetime,
           successful_acquisition: extracted_stderr.successful_acquisition,
@@ -132,22 +132,22 @@ const exec_hhm_data_grab = async (
           host_intervention: extracted_stderr.manual_intervention,
           connection_error: extracted_stderr.message,
           conn_err: extracted_stderr.connection_error,
-        }); */
+        });
 
         return false;
       }
 
       // await add_to_redis_queue(job_id, run_log, system);
-      /* await add_system_reset_totalizer(job_id, run_log, {
+      await add_system_reset_totalizer(job_id, run_log, {
         id: system.id,
         data_source: system.data_source,
-      }); */
+      });
       // ADD HERE: Place system daily_total and lifetime_total redis:queue
 
       return false;
     }
 
-    /* await add_to_online_queue(job_id, run_log, {
+    await add_to_online_queue(job_id, run_log, {
       id: system.id,
       capture_datetime,
       successful_acquisition: true,
@@ -155,7 +155,7 @@ const exec_hhm_data_grab = async (
       host_intervention: false,
       connection_error: null,
       conn_err: false,
-    }); */
+    });
 
     return stdout;
   } catch (error) {
@@ -182,7 +182,7 @@ const exec_hhm_data_grab = async (
       // IF IP RESET, JUST SEND TO QUEUE TO NOT RUN RESET AGAIN
       // TEST FOR THE PRESENCE OF extracted_err_message (present means connectivity, but file pull issue. Not connectivity)
       if (ip_reset || extracted_err_message?.extraction_error) {
-       /*  await add_to_online_queue(job_id, run_log, {
+        await add_to_online_queue(job_id, run_log, {
           id: system.id,
           capture_datetime,
           successful_acquisition: extracted_err_message.successful_acquisition,
@@ -190,16 +190,16 @@ const exec_hhm_data_grab = async (
           host_intervention: extracted_err_message.manual_intervention,
           connection_error: extracted_err_message.message,
           conn_err: extracted_err_message.connection_error,
-        }); */
+        });
 
         return false;
       }
 
-     /*  await add_to_redis_queue(job_id, run_log, system);
+      await add_to_redis_queue(job_id, run_log, system);
       await add_system_reset_totalizer(job_id, run_log, {
         id: system.id,
         data_source: system.data_source,
-      }); */
+      });
 
       return false;
     }
@@ -207,7 +207,7 @@ const exec_hhm_data_grab = async (
     // CHECK ERROR CODE
     if (error.code === 124) {
       if (ip_reset) {
-       /*  await add_to_online_queue(job_id, run_log, {
+        await add_to_online_queue(job_id, run_log, {
           id: system.id,
           capture_datetime,
           successful_acquisition: false,
@@ -215,15 +215,15 @@ const exec_hhm_data_grab = async (
           host_intervention: false,
           connection_error: "hanging connection",
           conn_err: true,
-        }); */
+        });
         return false;
       }
 
-     /*  await add_to_redis_queue(job_id, run_log, system);
+      await add_to_redis_queue(job_id, run_log, system);
       await add_system_reset_totalizer(job_id, run_log, {
         id: system.id,
         data_source: system.data_source,
-      }); */
+      });
 
       return false;
     }
