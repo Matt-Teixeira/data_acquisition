@@ -10,13 +10,18 @@ It also explains the role of the runtime image (`Dockerfile.runtime`), compose s
 ### 1. Clone Required Repositories
 ```bash
 # Main data acquisition app
-git clone git@github.com:Matt-Teixeira/hhm_data_acquisition.git
+git clone git@github.com:Matt-Teixeira/data_acquisition.git
 
 # Shared utilities repo
 git clone git@github.com:AvanteHS-RTT/utils.git
 ```
 
-### 2. Configure Git
+# Switch to docker branch (*_docker)
+```bash
+git switch -c DEV_docker --track origin/DEV_docker
+```
+
+### 2. Configure Git (If Completely New Env)
 ```bash
 git config --global user.email "matt.teixeira@avantehs.com"
 git config --global user.name "Matt Teixeira"
@@ -30,7 +35,7 @@ git config --global user.name "Matt Teixeira"
 Ensure your `.env` file contains all required variables (not displayed here).
 
 ### 4. Update `pgPool.js`
-Integrate the updated pool configuration with the `PROD_staging-docker` branch.
+Integrate the updated pool configuration with the `DEV_docker` branch.
 
 ### 5. Update Credentials
 Run the credentials update script using the legacy Node 16 image (for encryption/decryption compatibility):
@@ -44,11 +49,11 @@ This script uses `node:16.20.2` to ensure compatibility with existing encryption
 
 ## 🧱 Permissions & Directory Setup
 
-### 6. Adjust File Ownership
+<!-- ### 6. Adjust File Ownership
 From the app root:
 ```bash
 chgrp -R docker .
-```
+``` -->
 
 ### 7. Create the `files` Directory
 ```bash
@@ -58,17 +63,14 @@ mkdir files
 ### 8. Make the Directory Writable
 Ensure both your host user and service user (`svc-dev`) can modify files:
 ```bash
-sudo chmod -R g+rwX /home/mattteixeira/app/hhm_data_acquisition/files
-sudo chgrp -R docker .
+chmod -R g+rwX /home/mattteixeira/apps/data_acquisition/files
+chmod -R g+rwX /home/mattteixeira/apps/data_acquisition/utils
+chgrp -R docker .
 ```
-
-> **Tip:** To make new files always group-writable and inherit the `docker` group:
-> ```bash
-> sudo find /home/mattteixeira/app/hhm_data_acquisition/files -type d -exec chmod 2775 {} +
-> sudo setfacl -R -m g:docker:rwx -m d:g:docker:rwx /home/mattteixeira/app/hhm_data_acquisition/files
-> ```
-
 ---
+
+## STOP: Spin Up Redis
+Refer to redis-admin repo to create Redis containers then continue below.
 
 ## 🚀 Runtime and Job Execution
 
@@ -134,8 +136,13 @@ Update **utils/logger** path handling to dynamically adjust for Docker vs non-Do
 
 ## 🧠 Notes
 
-- Jobs currently execute via shell scripts (`run_scripts/`), which pull a fresh `node:lts` image and install dependencies (`rsync`, `lftp`) as needed.
 - The `Dockerfile.runtime` allows all required tools to be **baked once**, minimizing cold-start times.
+- The `Dockerfile.runtime` also requires two users: self and service user (mattteixeira & svc-dev). Users will need references to UID, for both users, annotated in .env. 
+
+mattteixeira=1003
+svc-dev=999
+docker=995
+
 - All containers use the **docker group (GID 995)** for file and log access, ensuring shared write/delete permissions between users (`svc-dev`, `mattteixeira`).
 
 ---
