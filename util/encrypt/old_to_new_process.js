@@ -51,8 +51,18 @@ const update_creds = async () => {
   }
 
   for await (let cred of credentials.new) {
-    await db_dock.any("UPDATE hhm_credentials SET user_enc = $1, password_enc = $2 WHERE id = $3", [cred.user, cred.password, cred.id])
+    await db_dock.any(
+      "UPDATE hhm_credentials SET user_enc = $1, password_enc = $2 WHERE id = $3",
+      [cred.user, cred.password, cred.id]
+    );
   }
+
+  let new_creds = await db_dock.any(
+    "SELECT * FROM hhm_credentials ORDER BY id ASC"
+  );
+
+  console.log("\n*** new_creds ***");
+  console.log(new_creds);
 };
 
 module.exports = update_creds;
