@@ -7,17 +7,22 @@ DOCKER="/usr/bin/docker"
 APP_DIR="/home/mattteixeira/apps/data_acquisition"
 ENV_FILE="$APP_DIR/.env"
 
-# 1) Ensure the image exists locally (pull if missing)
+# Ensure image exists
 if ! "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1; then
   echo "Image $IMAGE not found locally. Pulling..."
   "$DOCKER" pull "$IMAGE"
 fi
 
-# 2) Run
-exec "$DOCKER" run --rm \
+# Just in case a previous run created node_modules on the host
+rm -rf "$APP_DIR/node_modules" || true
+
+# Run with a tmpfs for node_modules so nothing lands on the host
+"$DOCKER" run --rm \
   -w /usr/src/app \
   -v "$APP_DIR":/usr/src/app \
   --env-file "$ENV_FILE" \
   --add-host=host.docker.internal:host-gateway \
+  --mount type=tmpfs,destination=/usr/src/app/node_modules \
+  -e NPM_CONFIG_CACHE=/tmp/.npm \
   "$IMAGE" \
   bash -lc 'npm ci --omit=dev && npm run update_db_creds'
