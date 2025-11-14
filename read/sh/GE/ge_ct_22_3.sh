@@ -3,7 +3,8 @@
 
 lftp -c "set sftp:connect-program 'ssh -o KexAlgorithms=diffie-hellman-group1-sha1'; 
 set net:timeout 10; 
-set ftp:ssl-allow off; 
+set ftp:ssl-allow off;
+set net:persist-retries 0;
 set net:reconnect-interval-base 5; 
 set net:max-retries 1; 
 set xfer:clobber true; 

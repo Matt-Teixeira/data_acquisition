@@ -8,12 +8,6 @@ RUN apt-get update \
       sshpass \
  && rm -rf /var/lib/apt/lists/*
 
-# lftp: auto-accept host keys AND use legacy ssh algorithms for old GE boxes
-RUN printf '%s\n' \
-  'set sftp:auto-confirm yes' \
-  'set sftp:connect-program "ssh -a -x -oKexAlgorithms=+diffie-hellman-group1-sha1 -oHostKeyAlgorithms=+ssh-rsa -oPubkeyAcceptedAlgorithms=+ssh-rsa"' \
-  > /etc/lftp.conf
-
 # Adjust this if your host's docker group GID is different
 ARG DOCKER_GID=995
 
