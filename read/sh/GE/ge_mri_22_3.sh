@@ -4,7 +4,7 @@ if { ! [file isdirectory $local_path] } {
     file mkdir $local_path
 }
 
-set timeout -1
+set timeout 45
 set host [lindex $argv 0]
 set user [lindex $argv 1]
 set password [lindex $argv 2]

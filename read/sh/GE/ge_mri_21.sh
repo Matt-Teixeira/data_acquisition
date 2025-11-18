@@ -2,7 +2,7 @@
 [ ! -d "$4" ] && mkdir $4
 
 lftp -c "
-set net:timeout 20; 
+set net:timeout 10; 
 set net:reconnect-interval-base 5;
 set net:reconnect-interval-max 5; 
 set net:max-retries 2; 

@@ -1,15 +1,17 @@
 const exec_phil_cv_data_grab = require("../../../read/exec-phil_cv_data_grab");
 const exec_phil_cv_unzip = require("../../../read/exec-phil_cv_unzip");
 const { get_hhm, getHhmCreds } = require("../../../sql/qf-provider");
-const { decryptString, list_new_phil_cv_files } = require("../../../util");
+const { list_new_phil_cv_files } = require("../../../util");
+const { decrypt_string } = require("../../../util/encrypt/decrypt");
 const { get_previous_dir } = require("../../../redis/redis_helpers");
 const { file_exists } = require("../../../util");
 const { v4: uuidv4 } = require("uuid");
+const path = require("path");
 
 const [addLogEvent] = require("../../../utils/logger/log");
 const {
   type: { I, W, E },
-  tag: { cal, det, cat, seq, qaf }
+  tag: { cal, det, cat, seq, qaf },
 } = require("../../../utils/logger/enums");
 
 async function get_philips_cv_data(run_log, capture_datetime) {
@@ -61,6 +63,7 @@ async function run_phil_cv(
   const daily_dir_acqu_script = `./read/sh/Philips/${system.acquisition_script}`;
   const lod_dir_acqu_script = `./read/sh/Philips/phil_cv_21_lod.sh`;
   const parse_event_zip = `./read/sh/Philips/parse_event_zip.sh`;
+  const fallback = path.join(process.cwd(), "files");
 
   if (!system.host_ip || !system.credentials_group) {
     let note = {
@@ -68,7 +71,7 @@ async function run_phil_cv(
       system: system.id,
       host_ip: system.host_ip,
       system: system.credentials_group,
-      message: "Missing host_ip and credentials_group"
+      message: "Missing host_ip and credentials_group",
     };
     await addLogEvent(I, run_log, "run_phil_cv", det, note, null);
   }
@@ -77,8 +80,8 @@ async function run_phil_cv(
     if (credential.id == system.credentials_group) return true;
   });
 
-  const user = decryptString(system_creds.user_enc);
-  const pass = decryptString(system_creds.password_enc);
+  const user = decrypt_string(system_creds.user_enc);
+  const pass = decrypt_string(system_creds.password_enc);
 
   // REDIS VALUE: GET PREVIOUS DAILY DIR PULLED FROM HOST STORED IN REDIS - Example: daily_2023_06_19 or daily_20230619
   const last_aquired_dir = await get_previous_dir(
@@ -110,7 +113,7 @@ async function run_phil_cv(
       system,
       capture_datetime
     );
-/* 
+  /* 
   console.log("\nPAIRED DOWN LIST:");
 
   console.log("\ndaily_files_to_pull");
@@ -120,9 +123,12 @@ async function run_phil_cv(
   console.log(lod_files_to_pull);
  */
   // CHECK FOR EventLog.txe within last_aquired_dir
-  if (process.env.RUN_ENV === "dev") {
+  /* if (process.env.RUN_ENV === "dev") {
     system.debian_server_path = `/home/matt-teixeira/hep3/hhm_data_acquisition/files/${system.id}`;
-  }
+  } */
+  console.log("\nsystem.debian_server_path");
+  system.debian_server_path = `${fallback}/files/${system.id}`;
+  console.log(system.debian_server_path);
 
   // BACKFILL ANY CURRENT DATA NOT PRESENT
   // WILL RUN EVEN IN ABSENCE OF daily_files_to_pull AND lod_files_to_pull AS A DOUBLE CHECK ON CURRENT STATE
@@ -242,7 +248,7 @@ async function get_trace_files(
 ) {
   let note = {
     job_id,
-    system
+    system,
   };
 
   await addLogEvent(I, run_log, "get_trace_files", cal, note, null);

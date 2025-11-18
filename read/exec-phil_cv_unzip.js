@@ -10,6 +10,7 @@ const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf }
 } = require("../utils/logger/enums");
+const path = require("path");
 
 const exec_phil_cv_unzip = async (
   job_id,
@@ -27,6 +28,8 @@ const exec_phil_cv_unzip = async (
   };
   await addLogEvent(I, run_log, "exec_phil_cv_unzip", cal, note, null);
 
+  const fallback = path.join(process.cwd(), "files");
+
   let data_store_path = "";
   switch (process.env.RUN_ENV) {
     case "dev":
@@ -41,6 +44,8 @@ const exec_phil_cv_unzip = async (
     default:
       break;
   }
+
+  data_store_path = fallback;
 
   // EXAMPLE: /home/prod/hhm_data_acquisition/files/prod_hhm/GE/CT/SME00001
   // DEV: args.push(`${data_store_path}/${manufacturer}/${modality}/${sme}`);

@@ -12,6 +12,7 @@ const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf }
 } = require("../utils/logger/enums");
+const path = require("path");
 
 const exec_phil_cv_data_grab = async (
   job_id,
@@ -33,6 +34,8 @@ const exec_phil_cv_data_grab = async (
   };
   await addLogEvent(I, run_log, "exec_phil_cv_data_grab", cal, note, null);
 
+  const fallback = path.join(process.cwd(), "files");
+
   let data_store_path = "";
   switch (process.env.RUN_ENV) {
     case "dev":
@@ -47,6 +50,10 @@ const exec_phil_cv_data_grab = async (
     default:
       break;
   }
+  data_store_path = fallback;
+
+  console.log("\ndata_store_path:");
+  console.log(data_store_path);
 
   // EXAMPLE: /home/prod/hhm_data_acquisition/files/prod_hhm/GE/CT/SME00001
   // DEV: args.push(`${data_store_path}/${manufacturer}/${modality}/${sme}`);
@@ -55,7 +62,7 @@ const exec_phil_cv_data_grab = async (
   try {
     const { stdout, stderr } = await execFile(execPath, args);
 
-/*     console.log("\n*********** stdout *****************");
+/*  console.log("\n*********** stdout *****************");
     console.log(system.id);
     console.log(stdout);
     console.log("\n*********** stderr *****************");

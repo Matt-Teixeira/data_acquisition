@@ -6,6 +6,8 @@ RUN apt-get update \
       rsync \
       ca-certificates \
       sshpass \
+      mdbtools \
+      expect \
  && rm -rf /var/lib/apt/lists/*
 
 # lftp: auto-accept host keys AND use legacy ssh algorithms for old GE boxes

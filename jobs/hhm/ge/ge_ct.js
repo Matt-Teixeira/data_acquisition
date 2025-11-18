@@ -1,10 +1,6 @@
 const exec_hhm_data_grab = require("../../../read/exec-hhm_data_grab");
 const { get_hhm, getHhmCreds } = require("../../../sql/qf-provider");
-const { decryptString } = require("../../../util");
-const {
-  encrypt_string,
-  decrypt_string,
-} = require("../../../util/encrypt/decrypt");
+const { decrypt_string } = require("../../../util/encrypt/decrypt");
 const { v4: uuidv4 } = require("uuid");
 const [addLogEvent] = require("../../../utils/logger/log");
 const {

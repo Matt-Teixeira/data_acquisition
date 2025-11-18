@@ -4,6 +4,7 @@ const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf }
 } = require("../../utils/logger/enums");
+const path = require("path");
 
 async function list_new_phil_cv_files(
   job_id,
@@ -28,6 +29,7 @@ async function list_new_phil_cv_files(
   await addLogEvent(I, run_log, "list_new_phil_cv_files", cal, note, null);
 
   const list_path = "./read/sh/Philips/phil_cv_file_list.sh";
+  const fallback = path.join(process.cwd(), "files");
 
   const files_list = await exec_list_dirs(
     job_id,
@@ -35,7 +37,7 @@ async function list_new_phil_cv_files(
     sme,
     list_path,
     system,
-    [ip_address, user, pass, `${process.env.DEV_HHM_FILES}/Philips/CV/${sme}`],
+    [ip_address, user, pass, `${fallback}/Philips/CV/${sme}`],
     capture_datetime,
     ip_reset
   );
