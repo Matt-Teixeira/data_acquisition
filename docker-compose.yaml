@@ -1,7 +1,7 @@
 # no "version" key
 
-x-common-env: &common_env
-# Load environment variables from .env in the project root
+x-common-env:
+  &common_env # Load environment variables from .env in the project root
   env_file:
     - .env
 
@@ -20,11 +20,11 @@ x-common-env: &common_env
 x-common-mounts: &common_mounts
   working_dir: /workspace
   volumes:
-  # --- Bind mounts (host paths must exist) ---
+    # --- Bind mounts (host paths must exist) ---
 
     # 1) Project source → live edit on host reflects in container
     - ./:/workspace
-    
+
     # 2) Cache node_modules on host (survives container removal)
     #    Make sure NODE_MOD_CACHE_* exists and is writable
     #    When ran in non-dev env: NODE_MOD_CACHE_STAGING/PROD
@@ -32,6 +32,9 @@ x-common-mounts: &common_mounts
 
     # 3) Centralized run logs on host (ensure directory exists/writable - .env)
     - ${RUN_LOGS_DIR}
+
+    # 4) Mount bundle read-only to a fixed path
+    - ${SSH_BUNDLE_DIR}:/opt/ssh_bundles/data_acquisition:ro
 
 # ---------- Services ----------
 services:
@@ -44,20 +47,23 @@ services:
     # Merge in common env + mounts
     <<: [*common_env, *common_mounts]
     networks:
-      - redis_net              # <-- attach to the external Redis network
+      - redis_net # <-- attach to the external Redis network
     environment:
       # Prefer hostname over container IP
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: "${REDIS_PORT}"
 
-# Tooling container that has extra CLI deps baked in: build from docker/Dockerfile.runtime
+  # Tooling container that has extra CLI deps baked in: build from docker/Dockerfile.runtime
   app_tools:
     image: utility-app_tools:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.runtime # extends node:lts, adds lftp/rsync
-    user: "${RUN_AS_USER}"             # ← switch with env var
+    user: "${RUN_AS_USER}" # ← switch with env var
     <<: [*common_env, *common_mounts]
+    environment:
+      HOME: /home/svcDev # or /home/another_user if you run as that: check with RUN_AS_USER value in .env
+      NPM_CONFIG_CACHE: /tmp/.npm
     networks:
       - redis_net
 
@@ -65,4 +71,4 @@ services:
 networks:
   redis_net:
     external: true
-    name: redis-admin_redis_net   # <-- replace with the exact name you found
+    name: redis-admin_redis_net # <-- replace with the exact name you found
