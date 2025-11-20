@@ -48,6 +48,11 @@ ENV BASH_ENV=/etc/profile.d/umask.sh
 # (optional) default UMASK value; can be overridden via compose env
 ENV UMASK=0002
 
+# ENTRYPOINT: copy SSH bundle into $HOME/.ssh for whatever user is running
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+ENTRYPOINT ["entrypoint.sh"]
+
 WORKDIR /workspace
 ENV NPM_CONFIG_CACHE=/tmp/.npm
 # (No USER here; choose at runtime via compose: user: appA|appB)
