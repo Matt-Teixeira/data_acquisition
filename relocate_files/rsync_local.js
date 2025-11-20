@@ -3,12 +3,12 @@ const exec_local_rsync = require("../read/exec-copy_local");
 const [addLogEvent] = require("../utils/logger/log");
 const {
   type: { I, W, E },
-  tag: { cal, det, cat, seq, qaf }
+  tag: { cal, det, cat, seq, qaf },
 } = require("../utils/logger/enums");
 
-async function rsync_local(run_log, rsync_path, system) {
+async function rsync_local(run_log, rsync_path, system, docker_path) {
   let note = {
-    system_id: system.id
+    system_id: system.id,
   };
   try {
     await addLogEvent(I, run_log, "rsync_local", cal, note, null);
@@ -19,8 +19,8 @@ async function rsync_local(run_log, rsync_path, system) {
         system.id,
         "./read/sh/rsync_monitoring_local.sh",
         [
-          `${system.debian_server_path}/host_logfiles/${system.log_config.file_name}`,
-          `${system.debian_server_path}/`
+          `${docker_path}/${system.id}/host_logfiles/${system.log_config.file_name}`,
+          `${docker_path}/${system.id}/logs`,
         ]
       );
     }
@@ -35,12 +35,12 @@ async function rsync_local(run_log, rsync_path, system) {
           system.id,
           "./read/sh/rsync_monitoring_local.sh",
           [
-            `${system.debian_server_path}/host_logfiles/${file.file_name}`,
-            `${system.debian_server_path}/monitoring`
+            `${docker_path}/${system.id}/host_logfiles/${file.file_name}`,
+            `${docker_path}/${system.id}/monitoring`,
           ]
         );
       } else if (key === "rmmu") {
-        const files = await fsp.readdir(rsync_path); // `${system.debian_server_path}/host_logfiles`
+        const files = await fsp.readdir(rsync_path);
         const rmmu_re_test = /rmmu\d+\.log/;
 
         // Gather only rmmu files. Example rmmu20140107030318.log
@@ -52,13 +52,13 @@ async function rsync_local(run_log, rsync_path, system) {
             system.id,
             "./read/sh/rsync_monitoring_local.sh",
             [
-              `${system.debian_server_path}/host_logfiles/${rmmu_file}`,
-              `${system.debian_server_path}/rmmu`
+              `${docker_path}/${system.id}/host_logfiles/${rmmu_file}`,
+              `${docker_path}/${system.id}/rmmu`,
             ]
           );
         }
       } else if (key === "rmmu_magnet") {
-        const files = await fsp.readdir(rsync_path); // `${system.debian_server_path}/host_logfiles`
+        const files = await fsp.readdir(rsync_path);
         const rmmu_re_test = /rmmu_magnet\d+\.log/;
 
         // Gather only rmmu files. Example rmmu20140107030318.log
@@ -70,13 +70,13 @@ async function rsync_local(run_log, rsync_path, system) {
             system.id,
             "./read/sh/rsync_monitoring_local.sh",
             [
-              `${system.debian_server_path}/host_logfiles/${rmmu_file}`,
-              `${system.debian_server_path}/rmmu_magnet`
+              `${docker_path}/${system.id}/host_logfiles/${rmmu_file}`,
+              `${docker_path}/${system.id}/rmmu_magnet`,
             ]
           );
         }
       } else if (key === "rmmu_long") {
-        const files = await fsp.readdir(rsync_path); // `${system.debian_server_path}/host_logfiles`
+        const files = await fsp.readdir(rsync_path); 
         const rmmu_re_test = /rmmu_long_cryogenic\d+\.log/;
 
         // Gather only rmmu files. Example rmmu20140107030318.log
@@ -88,13 +88,13 @@ async function rsync_local(run_log, rsync_path, system) {
             system.id,
             "./read/sh/rsync_monitoring_local.sh",
             [
-              `${system.debian_server_path}/host_logfiles/${rmmu_file}`,
-              `${system.debian_server_path}/rmmu_long`
+              `${docker_path}/${system.id}/host_logfiles/${rmmu_file}`,
+              `${docker_path}/${system.id}/rmmu_long`,
             ]
           );
         }
       } else if (key === "rmmu_short") {
-        const files = await fsp.readdir(rsync_path); // `${system.debian_server_path}/host_logfiles`
+        const files = await fsp.readdir(rsync_path); 
         const rmmu_re_test = /rmmu_short_cryogenic\d+\.log/;
 
         // Gather only rmmu files. Example rmmu20140107030318.log
@@ -106,8 +106,8 @@ async function rsync_local(run_log, rsync_path, system) {
             system.id,
             "./read/sh/rsync_monitoring_local.sh",
             [
-              `${system.debian_server_path}/host_logfiles/${rmmu_file}`,
-              `${system.debian_server_path}/rmmu_short`
+              `${docker_path}/${system.id}/host_logfiles/${rmmu_file}`,
+              `${docker_path}/${system.id}/rmmu_short`,
             ]
           );
         }
@@ -117,13 +117,14 @@ async function rsync_local(run_log, rsync_path, system) {
           system.id,
           "./read/sh/rsync_logcurrent_local.sh",
           [
-            `${system.debian_server_path}/host_logfiles/${file.file_name}`,
-            `${system.debian_server_path}`
+            `${docker_path}/${system.id}/host_logfiles/${file.file_name}`,
+            `${docker_path}/${system.id}`,
           ]
         );
       }
     }
   } catch (error) {
+    console.log("\nCatch Error");
     console.log(error);
     await addLogEvent(E, run_log, "rsync_local", cat, note, null);
   }

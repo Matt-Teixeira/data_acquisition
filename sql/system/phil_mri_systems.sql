@@ -64,6 +64,7 @@ WHERE
     sys.manufacturer = 'Philips'
     AND sys.modality LIKE 'MRI'
     AND ac.acqu_point = 'mmb'
+    AND sys.id = 'SME15805'
 GROUP BY
     sys.id,
     ac.system_id,

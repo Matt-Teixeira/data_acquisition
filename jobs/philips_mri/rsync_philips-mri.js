@@ -6,6 +6,7 @@ const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf }
 } = require("../../utils/logger/enums");
+const path = require("path");
 
 const rsync_philips_mri = async (run_log) => {
   const system_data = await get_phil_mri_systems();
@@ -27,46 +28,19 @@ const rsync_philips_mri = async (run_log) => {
 };
 
 async function group_processes(run_log, system) {
+  const fallback = path.join(process.cwd(), "files");
   addLogEvent(I, run_log, "rsync_philips_mri", cal, { system }, null);
   await exec_remote_rsync(run_log, system.id, "./read/sh/rsync_mmb.sh", [
     system.user_id,
     system.mmb_ip,
-    system.debian_server_path
+    `${fallback}/${system.id}`
   ]);
   await rsync_local(
     run_log,
-    `${system.debian_server_path}/host_logfiles`,
-    system
+    `${fallback}/${system.id}/host_logfiles`,
+    system,
+    fallback
   );
 }
 
 module.exports = rsync_philips_mri;
-
-/* mag
-]
-  {
-    id: 'SME15823',
-    manufacturer: 'Philips',
-    modality: 'MRI',
-    mmb_ip: '172.31.0.21',
-    acqu_point: 'mmb',
-    debian_server_path: '/home/matt-teixeira/hep3/hhm_data_acquisition/files/SME15823',
-    user_id: 'avante',
-    host: 'SME15823',
-    mag_data: [
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object],
-      [Object]
-    ]
-  }
-]
-
-LOG
-{ id: 'SME15581', log_config: [ [Object] ] }
-
-*/
