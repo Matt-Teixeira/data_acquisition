@@ -1,13 +1,32 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-# Copy SSH bundle into this user's home as ~/.ssh
-if [ -d /opt/ssh_bundles/data_acquisition ]; then
-  mkdir -p "${HOME}/.ssh"
-  cp /opt/ssh_bundles/data_acquisition/* "${HOME}/.ssh"/
-  chmod 700 "${HOME}/.ssh"
-  chmod 600 "${HOME}/.ssh"/mmb_google_deb || true
+BUNDLE_DIR="/opt/ssh_bundles/data_acquisition"
+SSH_DIR="${HOME}/.ssh"
+
+# 1️⃣ Before: copy bundle into this user's ~/.ssh
+if [ -d "$BUNDLE_DIR" ]; then
+  echo "[entrypoint] Found SSH bundle at $BUNDLE_DIR"
+
+  mkdir -p "$SSH_DIR"
+  cp "$BUNDLE_DIR"/* "$SSH_DIR"/
+
+  chmod 700 "$SSH_DIR" || true
+  chmod 600 "$SSH_DIR"/mmb_google_deb 2>/dev/null || true
+
+  echo "[entrypoint] Copied SSH bundle into $SSH_DIR"
 fi
 
-# Hand off to whatever command was given (node, bash, etc.)
-exec "$@"
+# 2️⃣ Run the actual command
+#    (this is your Node app, bash script, etc.)
+echo "[entrypoint] Running: $*"
+"$@"
+status=$?
+
+# 3️⃣ After: sync known_hosts back to bundle to persist new host keys
+if [ -d "$BUNDLE_DIR" ] && [ -f "$SSH_DIR/known_hosts" ]; then
+  echo "[entrypoint] Syncing known_hosts back to bundle"
+  cp "$SSH_DIR/known_hosts" "$BUNDLE_DIR/known_hosts"
+fi
+
+exit $status
