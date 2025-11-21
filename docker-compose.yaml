@@ -34,7 +34,7 @@ x-common-mounts: &common_mounts
     - ${RUN_LOGS_DIR}
 
     # 4) Mount bundle read-only to a fixed path
-    - ${SSH_BUNDLE_DIR}:/opt/ssh_bundles/data_acquisition:ro
+    - ${SSH_BUNDLE_DIR}:/opt/ssh_bundles/data_acquisition
 
 # ---------- Services ----------
 services:
