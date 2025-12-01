@@ -25,46 +25,26 @@ const exec_hhm_data_grab = async (
 ) => {
   system.data_source = "hhm";
 
-  const fallback = path.join(process.cwd(), "files");
+  // RESOLVES TO WITHIN CONTAINER: /workspace/files
+  const inner_container_path = path.join(process.cwd(), "files");
+
+  let data_store_path = `${inner_container_path}/${sme}`;
 
   let note = {
     job_id: job_id,
     system_id: system.id,
     execute_path: execPath,
-    file_path: fallback,
+    file_path: data_store_path,
     args,
   };
 
-  console.log("\nExec Note");
-  console.log(note);
   await addLogEvent(I, run_log, "exec_hhm_data_grab", cal, note, null);
 
-  // NEED REXEX
-
-  let data_store_path = "";
-  switch (process.env.RUN_ENV) {
-    case "dev":
-      data_store_path = process.env.DEV_HHM_FILES;
-      break;
-    case "staging":
-      data_store_path = process.env.STAGING_HHM_FILES;
-      break;
-    case "prod":
-      data_store_path = process.env.PROD_HHM_FILES;
-      break;
-    default:
-      break;
-  }
-
-  data_store_path = fallback;
-
-  // EXAMPLE: /home/prod/hhm_data_acquisition/files/prod_hhm/GE/CT/SME00001
-  // DEV: args.push(`${data_store_path}/${manufacturer}/${modality}/${sme}`);
-  args.push(`${data_store_path}/${sme}`);
+  args.push(data_store_path);
 
   try {
     const { stdout, stderr } = await execFile(execPath, args);
-    
+
     console.log("\n*********** stdout *****************");
     console.log(system.id);
     console.log(stdout);
