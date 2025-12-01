@@ -1,5 +1,3 @@
-# no "version" key
-
 x-common-env:
   &common_env # Load environment variables from .env in the project root
   env_file:
@@ -25,16 +23,17 @@ x-common-mounts: &common_mounts
     # 1) Project source → live edit on host reflects in container
     - ./:/workspace
 
-    # 2) Cache node_modules on host (survives container removal)
-    #    Make sure NODE_MOD_CACHE_* exists and is writable
-    #    When ran in non-dev env: NODE_MOD_CACHE_STAGING/PROD
+    # 2) node_modules cache
     - ${NODE_MOD_CACHE_DEV}:/workspace/node_modules
 
-    # 3) Centralized run logs on host (ensure directory exists/writable - .env)
+    # 3) Centralized run logs
     - ${RUN_LOGS_DIR}
 
-    # 4) Mount bundle read-only to a fixed path
+    # 4) SSH bundle
     - ${SSH_BUNDLE_DIR}:/opt/ssh_bundles/data_acquisition
+
+    # 5) ACQ files: host path -> container /workspace/files
+    - ${DATA_STORE_DEV}:/workspace/files
 
 # ---------- Services ----------
 services:
