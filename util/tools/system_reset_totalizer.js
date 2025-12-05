@@ -1,13 +1,13 @@
 const db = require("../../utils/db/pg-pool");
 const {
   get_redis_system_total_queue,
-  clear_redis_system_total_queue
+  clear_redis_system_total_queue,
 } = require("../../redis");
 
 const [addLogEvent] = require("../../utils/logger/log");
 const {
   type: { I, W, E },
-  tag: { cal, det, cat, seq, qaf }
+  tag: { cal, det, cat, seq, qaf },
 } = require("../../utils/logger/enums");
 
 async function increment_system_reset_totals(run_log) {
@@ -39,6 +39,7 @@ async function increment_system_reset_totals(run_log) {
 
 const update_system_reset_total = async (queue, run_log) => {
   await addLogEvent(I, run_log, "update_system_reset_total", cal, null, null);
+
   const query = `
     UPDATE alert.offline_hhm_conn
     SET 

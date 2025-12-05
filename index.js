@@ -44,7 +44,6 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
       await rsync_philips_mri(run_log, capture_datetime);
       break;
     case "hhm":
-      console.log("\nRUNNING HHM JOBS");
       await get_hhm_data(run_log, manufacturer, modality, capture_datetime);
       break;
     case "althea_env":
@@ -61,6 +60,7 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
       break;
     case "system_reset_totalizer":
       await increment_system_reset_totals(run_log);
+      break;
     case "update_db_creds":
       await update_db();
       break;
