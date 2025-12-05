@@ -1,6 +1,6 @@
 const exec_hhm_data_grab = require("../../../read/exec-hhm_data_grab");
 const { get_hhm, getHhmCreds } = require("../../../sql/qf-provider");
-const { decryptString } = require("../../../util");
+const { decrypt_string } = require("../../../util/encrypt/decrypt");
 const { v4: uuidv4 } = require("uuid");
 
 const [addLogEvent] = require("../../../utils/logger/log");
@@ -31,8 +31,8 @@ async function get_siemens_cv_data(run_log, capture_datetime) {
       const system_creds = credentials.find((credential) => {
         if (credential.id == system.credentials_group) return true;
       });
-      const user = decryptString(system_creds.user_enc);
-      const pass = decryptString(system_creds.password_enc);
+      const user = decrypt_string(system_creds.user_enc);
+      const pass = decrypt_string(system_creds.password_enc);
 
       if (system.acquisition_script && system.host_ip) {
         const cv_path = `./read/sh/Siemens/${system.acquisition_script}`;
