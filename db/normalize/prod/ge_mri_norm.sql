@@ -901,3 +901,63 @@ VALUES(
 	NULL,
 	NULL
 );
+
+--> NEW 01/02/26
+
+-->
+-->
+
+INSERT INTO config.acquisition(system_id, host_ip, mmb_ip, protocal, debian_server_path, credentials_group, acquisition_script, run_group, host, user_id, acqu_point)
+VALUES (
+	'SME21824',
+	'10.47.88.52',
+	NULL,
+	'lftp',
+	'/home/prod/hhm_data_acquisition/files/SME21824',
+	'5',
+	'ge_mri_22_1.sh',
+	1,
+	NULL,
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME21824',
+	'gesys_RVSTONEMR1.log',
+	'gesys',
+	ARRAY['block', 'sub_block'],
+	ARRAY['ge_mri_gesys'],
+	NULL,
+	NULL
+);
+
+-->
+-->
+
+INSERT INTO config.acquisition(system_id, host_ip, mmb_ip, protocal, debian_server_path, credentials_group, acquisition_script, run_group, host, user_id, acqu_point)
+VALUES (
+	'SME21917',
+	'192.168.110.31',
+	NULL,
+	'lftp',
+	'/home/prod/hhm_data_acquisition/files/SME21917',
+	'5',
+	'ge_mri_22_1.sh',
+	1,
+	NULL,
+	NULL,
+	NULL
+);
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME21917',
+	'gesys_VLGCTRMR1.log',
+	'gesys',
+	ARRAY['block', 'sub_block'],
+	ARRAY['ge_mri_gesys'],
+	NULL,
+	NULL
+);

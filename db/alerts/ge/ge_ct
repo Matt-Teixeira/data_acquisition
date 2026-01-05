@@ -1,0 +1,50 @@
+1) HIGH
+Message:
+Heater warnings
+
+Column:
+message
+
+Threshold:
+{"20-0251": "Heater 0: received command is not OK", "20-0252": "Heater 0: command not OK", "20-0253": "Heater 0: no CAN message received within 4 secs", "20-0254": "Heater 0: inverter overcurrent (inverter1) (<3 times)", "20-0255": "Heater 0: filament open circuit (inverter1) (<3 times)", "20-0256": "Heater 0: inverter short circuit (inverter1) (<3times)", "20-0258": "Heater 0: CAN Domain command number error", "20-0259": "Heater 0: CAN Domain request with no transfer init", "20-0260": "Heater 0: CAN Domain Toggle bit error", "20-0261": "Heater 0: CAN Domain less than 2 data to download", "20-0262": "Heater 0: CAN Domain Abort received & applied", "20-0263": "Heater 0: database download while heater not cut", "20-0299": "Heater 0: unknown warning"}
+
+2) HIGH
+Message:
+Rotation errors
+
+Column:
+message
+
+Threshold:
+{"40-0101": "No CAN message received within 5 sec", "40-0102": "Database not correct", "40-0103": "Current overload", "40-0104": "Openload", "40-0105": "Phases unbalanced", "40-0106": "Phases error", "40-0107": "Inverter permanent overcurrent", "40-0108": "Rotation command error", "40-0109": "MAINS_DROP has failed", "40-0110": "PRD error (Z3 Z4 = bitmap)", "40-0111": "F0 main frequency problem", "40-0112": "HW/FW config error", "40-0113": "IUVW short circuit error", "40-0114": "Rotor not at speed", "40-0149": "Unknown error"}
+
+3) HIGH
+Message:
+Spits errors
+
+Column:
+message
+
+Threshold:
+{"30-0305": "FPGA problem (restarting safety signal)", "30-0324": "Tube spit (all kV drop/regul errors)", "30-0328": "Warning, spit counter overflow", "30-0450": "Tube Curr max detected"}
+
+4) HIGH
+Message:
+Heater errors
+
+Column:
+message
+
+Threshold:
+{"50-0201": "Heater 0: no CAN message received within 5 secs", "50-0202": "Heater 0: database not correct", "50-0203": "Heater 0: inverter permanent overcurrent", "50-0204": "Heater 0: filament permanent open circuit", "50-0205": "Heater 0: inverter permanent short circuit", "50-0206": "Heater 0: filament Overload Pre-heat", "50-0207": "Heater 0: filament Overload Boost", "50-0208": "Heater 0: filament Overload Heat", "50-0210": "Heater 0: PWM rate too low", "50-0211": "Heater 0: PWM rate too high", "50-0212": "Heater 0: MAINS_DROP has failed", "50-0213": "Heater 0: PRD error (Z3 Z4 = bitmap)", "50-0214": "Heater 0: boost too long", "50-0215": "Heater 0: filament selection error", "50-0216": "Heater 0: current feedback not nul when inverter off", "50-0221": "Heater 0: filaments database tube1 err (Z3= LF Z4=SF)", "50-0222": "Heater 0: filaments database tube2 err (Z3= LF Z4=SF)", "50-0223": "Heater 0: filaments database tube3 err (Z3= LF Z4=SF)", "50-0224": "Heater 0: filaments database tube4 err (Z3= LF Z4=SF)", "50-0248": "Heater large focus error", "50-0249": "Heater small focus error"}
+
+5) HIGH
+Message:
+Exposure errors
+
+Column:
+message
+
+Threshold:
+{"60-0308": "No kV Feedback on anode and cathode", "60-0309": "kV detected during kV diag", "60-0310": "kV max detected", "60-0311": "ILP current not OK", "60-0312": "ILR current not OK", "60-0313": "ILR max current detected", "60-0314": "ILR current timeout", "60-0316": "Spit Max error", "60-0317": "Spit Ratio error", "60-0318": "kV did not reach 75%(rad) or 95%(gridded) after 20ms", "60-0320": "FPGA problem (safety signal)", "60-0323": "ILR and ILP current not OK", "60-0325": "DSP overload", "60-0326": "DSP exposure stop", "60-0332": "Too many kV regul", "60-0401": "No mA feedback", "60-0402": "mA scale error", "60-0403": "mA out of range", "60-0451": "mA meter saturated", "60-0504": "Inverter Gate Power Supply error", "60-0802": "Exposure backup time exceeded", "60-0803": "Exp cmd while gene not ready", "60-1409": "mAs meter saturated", "60-1410": "FPGA locked", "60-1411": "Time counter problem"}
+
