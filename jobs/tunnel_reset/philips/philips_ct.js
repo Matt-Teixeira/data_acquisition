@@ -24,8 +24,9 @@ async function get_philips_ct_data(
 
     const ct_path = `./read/sh/Philips/${system.acquisition_script}`;
 
+    // Convert both to strings for comparison (credential.id is number, credentials_group is string)
     const system_creds = credentials.find(
-      (credential) => credential.id === system.credentials_group
+      (credential) => String(credential.id) === String(system.credentials_group)
     );
 
     const user = decryptString(system_creds.user_enc);

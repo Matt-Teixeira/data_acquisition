@@ -71,8 +71,9 @@ async function run_phil_cv(
     await addLogEvent(I, run_log, "run_phil_cv", det, note, null);
   }
 
+  // Convert both to strings for comparison (credential.id is number, credentials_group is string)
   const system_creds = credentials.find(
-    (credential) => credential.id === system.credentials_group
+    (credential) => String(credential.id) === String(system.credentials_group)
   );
 
   const user = decryptString(system_creds.user_enc);

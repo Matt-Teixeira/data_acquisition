@@ -111,8 +111,9 @@ async function acquireHhmData(run_log, capture_datetime, manufacturer, modality)
       // Get credentials if needed
       let execArgs;
       if (config.useCredentials) {
+        // Convert both to strings for comparison (credential.id is number, credentials_group is string)
         const systemCreds = credentials.find(
-          (credential) => credential.id === system.credentials_group
+          (credential) => String(credential.id) === String(system.credentials_group)
         );
         if (!systemCreds) {
           await addLogEvent(W, run_log, funcName, cat, {

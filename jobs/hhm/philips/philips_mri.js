@@ -30,8 +30,9 @@ async function get_philips_mri_data(run_log, capture_datetime) {
       if (system.host_ip && system.credentials_group) {
         const mri_path = `./read/sh/Philips/${system.acquisition_script}`;
 
+        // Convert both to strings for comparison (credential.id is number, credentials_group is string)
         const system_creds = credentials.find(
-          (credential) => credential.id === system.credentials_group
+          (credential) => String(credential.id) === String(system.credentials_group)
         );
 
         const user = decryptString(system_creds.user_enc);

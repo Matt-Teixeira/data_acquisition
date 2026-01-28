@@ -57,11 +57,11 @@ async function reset_tunnel(run_log) {
     }
     // Reset tunnels
 
-    /* const [ip_tunnels_1, ip_tunnels_2] = split_array(tunnels_by_ip);
+    const [ip_tunnels_1, ip_tunnels_2] = split_array(tunnels_by_ip);
     await setTimeout(4_000);
     await resetTunnels(run_log, ip_tunnels_1);
     await setTimeout(5_000);
-    await resetTunnels(run_log, ip_tunnels_2);  */
+    await resetTunnels(run_log, ip_tunnels_2);
  
     // await resetTunnels(run_log, tunnels_by_ip);
 
@@ -167,3 +167,10 @@ async function reset_tunnel(run_log) {
 }
 
 module.exports = reset_tunnel;
+
+function split_array(arr) {
+  let mid_index = Math.ceil(arr.lengh / 2);
+  const first_half = arr.slice(0, mid_index);
+  const second_half = arr.slice(mid_index);
+  return [first_half, second_half];
+}

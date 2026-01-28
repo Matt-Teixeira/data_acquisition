@@ -28,8 +28,9 @@ async function get_siemens_cv_data(run_log, capture_datetime) {
     try {
       await addLogEvent(I, run_log, "get_siemens_cv_data", det, note, null);
 
+      // Convert both to strings for comparison (credential.id is number, credentials_group is string)
       const system_creds = credentials.find(
-        (credential) => credential.id === system.credentials_group
+        (credential) => String(credential.id) === String(system.credentials_group)
       );
 
       if (!system_creds) {

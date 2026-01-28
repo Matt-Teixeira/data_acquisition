@@ -25,8 +25,9 @@ async function get_philips_cv_data(
     const daily_dir_acqu_script = `./read/sh/Philips/${system.acquisition_script}`;
     const lod_dir_acqu_script = `./read/sh/Philips/phil_cv_21_lod.sh`;
 
+    // Convert both to strings for comparison (credential.id is number, credentials_group is string)
     const system_creds = credentials.find(
-      (credential) => credential.id === system.credentials_group
+      (credential) => String(credential.id) === String(system.credentials_group)
     );
 
     const user = decryptString(system_creds.user_enc);
