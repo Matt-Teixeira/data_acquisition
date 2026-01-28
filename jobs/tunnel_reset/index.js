@@ -69,9 +69,7 @@ async function reset_tunnel(run_log) {
     await clear_redis_ip_queue();
 
     // Timer set to allow tunnel resets to complete
-    console.log("Start of 5 second timer");
     await setTimeout(5_000);
-    console.log("End of timer");
 
     /* Re-run Data Acquisition */
     const jobs = [];
@@ -142,7 +140,7 @@ async function reset_tunnel(run_log) {
       // CREATE AN ARRAY OF PROMISES BY CALLING EACH child_process FUNCTION
       const promises = jobs.map((job) => job());
 
-      // AWAIT PROMISIS
+      // AWAIT PROMISES
       await Promise.all(promises);
 
       // Check queue for systems in which tunnel resets did not resolve connection issue
@@ -155,37 +153,17 @@ async function reset_tunnel(run_log) {
       if (!ip_queue_post_reset.length) return;
 
       // Else: log and insert into db, systems that timeout after tunnel reset
-      let note = {
+      const note = {
         message: "Data not acquired post tunnel reset",
         ip_queue_post_reset
       };
-      addLogEvent(I, run_log, "reset_tunnel", det, note, null);
+      await addLogEvent(I, run_log, "reset_tunnel", det, note, null);
     } catch (error) {
-      addLogEvent(E, run_log, "reset_tunnel", cat, null, error);
+      await addLogEvent(E, run_log, "reset_tunnel", cat, null, error);
     }
   } catch (error) {
-    addLogEvent(E, run_log, "reset_tunnel", cat, null, error);
+    await addLogEvent(E, run_log, "reset_tunnel", cat, null, error);
   }
 }
 
 module.exports = reset_tunnel;
-
-async function insertOfflineAlerts(ip_queue, capture_datetime) {
-  try {
-    //await insertAlertTable(ip_queue, capture_datetime);
-  } catch (error) {
-    let note = {
-      ip_queue,
-      capture_datetime
-    };
-    console.log(error);
-    addLogEvent(E, run_log, "insertOfflineAlerts", cat, note, error);
-  }
-}
-
-function split_array(arr) {
-  let mid_index = Math.ceil(arr.lengh / 2);
-  const first_half = arr.slice(0, mid_index);
-  const second_half = arr.slice(mid_index);
-  return [first_half, second_half];
-}

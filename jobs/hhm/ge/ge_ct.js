@@ -28,9 +28,9 @@ async function get_ge_ct_data(run_log, capture_datetime) {
 
       const ct_path = `./read/sh/GE/${system.acquisition_script}`;
 
-      const system_creds = credentials.find((credential) => {
-        if (credential.id == system.credentials_group) return true;
-      });
+      const system_creds = credentials.find(
+        (credential) => credential.id === system.credentials_group
+      );
 
       const user = decryptString(system_creds.user_enc);
       const pass = decryptString(system_creds.password_enc);

@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "start": "node index.js",
     "man": "node index.js manual",
     "ge_ct": "node index.js hhm null GE CT",
@@ -45,5 +48,8 @@
     "redis": "^4.6.7",
     "short-uuid": "^4.2.2",
     "winston": "^3.8.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
   }
 }

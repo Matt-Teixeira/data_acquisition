@@ -30,9 +30,9 @@ async function get_philips_ct_data(run_log, capture_datetime) {
       if (system.host_ip && system.credentials_group) {
         const ct_path = `./read/sh/Philips/${system.acquisition_script}`;
 
-        const system_creds = credentials.find((credential) => {
-          if (credential.id == system.credentials_group) return true;
-        });
+        const system_creds = credentials.find(
+          (credential) => credential.id === system.credentials_group
+        );
 
         const user = decryptString(system_creds.user_enc);
         const pass = decryptString(system_creds.password_enc);
@@ -51,12 +51,11 @@ async function get_philips_ct_data(run_log, capture_datetime) {
         );
       }
     } catch (error) {
-      console.log(error);
-      let note = {
-        job_id: job_id,
+      const errorNote = {
+        job_id,
         system
       };
-      await addLogEvent(E, run_log, "get_philips_ct_data", cat, note, error);
+      await addLogEvent(E, run_log, "get_philips_ct_data", cat, errorNote, error);
     }
   }
   try {

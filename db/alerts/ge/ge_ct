@@ -47,4 +47,3 @@ message
 
 Threshold:
 {"60-0308": "No kV Feedback on anode and cathode", "60-0309": "kV detected during kV diag", "60-0310": "kV max detected", "60-0311": "ILP current not OK", "60-0312": "ILR current not OK", "60-0313": "ILR max current detected", "60-0314": "ILR current timeout", "60-0316": "Spit Max error", "60-0317": "Spit Ratio error", "60-0318": "kV did not reach 75%(rad) or 95%(gridded) after 20ms", "60-0320": "FPGA problem (safety signal)", "60-0323": "ILR and ILP current not OK", "60-0325": "DSP overload", "60-0326": "DSP exposure stop", "60-0332": "Too many kV regul", "60-0401": "No mA feedback", "60-0402": "mA scale error", "60-0403": "mA out of range", "60-0451": "mA meter saturated", "60-0504": "Inverter Gate Power Supply error", "60-0802": "Exposure backup time exceeded", "60-0803": "Exp cmd while gene not ready", "60-1409": "mAs meter saturated", "60-1410": "FPGA locked", "60-1411": "Time counter problem"}
-

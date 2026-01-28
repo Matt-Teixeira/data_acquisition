@@ -15,19 +15,19 @@ async function get_philips_cv_data(
   capture_datetime,
   ip_reset
 ) {
-  let note = { job_id, system: system };
+  const note = { job_id, system_id: system.id };
   try {
-    addLogEvent(I, run_log, "get_philips_cv_data", cal, note, null);
+    await addLogEvent(I, run_log, "get_philips_cv_data", cal, note, null);
     const manufacturer = "Philips";
     const modality = "CV/IR";
-    const credentials = await getHhmCreds([manufacturer, modality]); // Change modality in hhm_credentials table to CV/IR
+    const credentials = await getHhmCreds([manufacturer, modality]);
 
     const daily_dir_acqu_script = `./read/sh/Philips/${system.acquisition_script}`;
     const lod_dir_acqu_script = `./read/sh/Philips/phil_cv_21_lod.sh`;
-    
-    const system_creds = credentials.find((credential) => {
-      if (credential.id == system.credentials_group) return true;
-    });
+
+    const system_creds = credentials.find(
+      (credential) => credential.id === system.credentials_group
+    );
 
     const user = decryptString(system_creds.user_enc);
     const pass = decryptString(system_creds.password_enc);
@@ -96,8 +96,7 @@ async function get_philips_cv_data(
       }
     }
   } catch (error) {
-    console.log(error);
-    addLogEvent(E, run_log, "get_philips_cv_data", cat, note, error);
+    await addLogEvent(E, run_log, "get_philips_cv_data", cat, note, error);
   }
 }
 

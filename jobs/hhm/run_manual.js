@@ -30,7 +30,7 @@ async function run_system_manual(
       let pass = "";
       if (credentials.length) {
         for (const cred of credentials) {
-          if (system[0].credentials_group == cred.id) {
+          if (system[0].credentials_group === cred.id) {
             user = decryptString(cred.user_enc);
             pass = decryptString(cred.password_enc);
           }

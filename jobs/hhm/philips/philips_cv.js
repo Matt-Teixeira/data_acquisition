@@ -35,18 +35,16 @@ async function get_philips_cv_data(run_log, capture_datetime) {
       );
     }
   } catch (error) {
-    console.log(error);
     await addLogEvent(E, run_log, "get_philips_cv_data", cat, null, error);
   }
   try {
     // CREATE AN ARRAY OF PROMISES BY CALLING EACH child_process FUNCTION
     const promises = child_processes.map((child_process) => child_process());
 
-    // AWAIT PROMISIS
+    // AWAIT PROMISES
     await Promise.all(promises);
   } catch (error) {
-    console.log(error);
-    await addLogEvent(E, run_log, "get_ge_cv_data", cat, null, error);
+    await addLogEvent(E, run_log, "get_philips_cv_data", cat, null, error);
   }
 }
 
@@ -73,9 +71,9 @@ async function run_phil_cv(
     await addLogEvent(I, run_log, "run_phil_cv", det, note, null);
   }
 
-  const system_creds = credentials.find((credential) => {
-    if (credential.id == system.credentials_group) return true;
-  });
+  const system_creds = credentials.find(
+    (credential) => credential.id === system.credentials_group
+  );
 
   const user = decryptString(system_creds.user_enc);
   const pass = decryptString(system_creds.password_enc);

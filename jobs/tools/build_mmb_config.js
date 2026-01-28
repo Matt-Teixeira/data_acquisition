@@ -60,12 +60,12 @@ function array_to_str(array) {
   let reg_str = "";
 
   for (let i = 0; i < array.length; i++) {
-    if (array.length - 1 == i) {
-      let s = `${array[i]}`;
+    if (array.length - 1 === i) {
+      const s = `${array[i]}`;
       reg_str += s;
       continue;
     }
-    let s = `${array[i]}, `;
+    const s = `${array[i]}, `;
     reg_str += s;
   }
 

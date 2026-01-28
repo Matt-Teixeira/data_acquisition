@@ -961,3 +961,78 @@ VALUES(
 	NULL,
 	NULL
 );
+
+--> 01/15/26
+-->
+
+UPDATE 
+	config.acquisition
+SET 
+	host_ip = '10.47.17.143',
+	debian_server_path = '/home/prod/hhm_data_acquisition/files/SME21914',
+	credentials_group = '4',
+	acquisition_script = 'ge_mri_22_1.sh',
+	run_group = 1
+WHERE 
+	system_id = 'SME21914';
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME21914',
+	'gesys_MARMR1.log',
+	'gesys',
+	ARRAY['block', 'sub_block'],
+	ARRAY['ge_mri_gesys'],
+	NULL,
+	NULL
+);
+
+--> 01/15/26
+-->
+
+UPDATE 
+	config.acquisition
+SET 
+	host_ip = '10.46.1.10',
+	debian_server_path = '/home/prod/hhm_data_acquisition/files/SME21923',
+	credentials_group = '5',
+	acquisition_script = 'ge_mri_22_1.sh',
+	run_group = 1
+WHERE 
+	system_id = 'SME21923';
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME21923',
+	'gesys_ALMR1.log',
+	'gesys',
+	ARRAY['block', 'sub_block'],
+	ARRAY['ge_mri_gesys'],
+	NULL,
+	NULL
+);
+
+--> 01/15/26
+-->
+
+UPDATE 
+	config.acquisition
+SET 
+	host_ip = '10.46.5.99',
+	debian_server_path = '/home/prod/hhm_data_acquisition/files/SME21920',
+	credentials_group = '5',
+	acquisition_script = 'ge_mri_22_1.sh',
+	run_group = 1
+WHERE 
+	system_id = 'SME21920';
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME21920',
+	'gesys_ALPEDSMR1.log',
+	'gesys',
+	ARRAY['block', 'sub_block'],
+	ARRAY['ge_mri_gesys'],
+	NULL,
+	NULL
+);

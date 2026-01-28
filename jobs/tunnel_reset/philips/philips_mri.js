@@ -14,9 +14,9 @@ async function get_philips_mri_data(
   capture_datetime,
   ip_reset
 ) {
-  let note = { job_id, system: system };
+  const note = { job_id, system_id: system.id };
   try {
-    addLogEvent(I, run_log, "get_philips_mri_data", cal, note, null);
+    await addLogEvent(I, run_log, "get_philips_mri_data", cal, note, null);
 
     const manufacturer = "Philips";
     const modality = "MRI";
@@ -24,10 +24,9 @@ async function get_philips_mri_data(
 
     const mri_path = `./read/sh/Philips/${system.acquisition_script}`;
 
-    const system_creds = credentials.find((credential) => {
-      if (credential.id == system.credentials_group)
-        return true;
-    });
+    const system_creds = credentials.find(
+      (credential) => credential.id === system.credentials_group
+    );
 
     const user = decryptString(system_creds.user_enc);
     const pass = decryptString(system_creds.password_enc);
@@ -43,8 +42,7 @@ async function get_philips_mri_data(
       ip_reset
     );
   } catch (error) {
-    console.log(error);
-    addLogEvent(E, run_log, "get_philips_mri_data", cat, note, error);
+    await addLogEvent(E, run_log, "get_philips_mri_data", cat, note, error);
   }
 }
 

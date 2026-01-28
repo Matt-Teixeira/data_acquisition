@@ -14,9 +14,9 @@ async function get_ge_ct_data(
   capture_datetime,
   ip_reset
 ) {
-  let note = { job_id, system_id: system };
+  const note = { job_id, system_id: system.id };
   try {
-    addLogEvent(I, run_log, "get_ge_ct_data", cal, note, null);
+    await addLogEvent(I, run_log, "get_ge_ct_data", cal, note, null);
 
     const manufacturer = "GE";
     const modality = "CT";
@@ -25,9 +25,9 @@ async function get_ge_ct_data(
     if (system.host_ip && system.credentials_group) {
       const ct_path = `./read/sh/GE/${system.acquisition_script}`;
 
-      const system_creds = credentials.find((credential) => {
-        if (credential.id == system.credentials_group) return true;
-      });
+      const system_creds = credentials.find(
+        (credential) => credential.id === system.credentials_group
+      );
 
       const user = decryptString(system_creds.user_enc);
       const pass = decryptString(system_creds.password_enc);
@@ -44,8 +44,7 @@ async function get_ge_ct_data(
       );
     }
   } catch (error) {
-    console.log(error);
-    addLogEvent(E, run_log, "get_ge_ct_data", cat, note, error);
+    await addLogEvent(E, run_log, "get_ge_ct_data", cat, note, error);
   }
 }
 

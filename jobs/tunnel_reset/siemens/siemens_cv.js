@@ -1,9 +1,8 @@
-const { log } = require("../../../logger");
 const exec_hhm_data_grab = require("../../../read/exec-hhm_data_grab");
 const [addLogEvent] = require("../../../utils/logger/log");
 const {
-  type: { I, W, E },
-  tag: { cal, det, cat, seq, qaf }
+  type: { I, E },
+  tag: { cal, cat }
 } = require("../../../utils/logger/enums");
 
 async function get_siemens_cv_data(
@@ -13,9 +12,9 @@ async function get_siemens_cv_data(
   capture_datetime,
   ip_reset
 ) {
-  let note = { job_id, system: system };
+  const note = { job_id, system_id: system.id };
   try {
-    addLogEvent(I, run_log, "get_siemens_cv_data", cal, note, null);
+    await addLogEvent(I, run_log, "get_siemens_cv_data", cal, note, null);
 
     const cv_path = `./read/sh/Siemens/${system.acquisition_script}`;
 
@@ -30,8 +29,7 @@ async function get_siemens_cv_data(
       ip_reset
     );
   } catch (error) {
-    console.log(error);
-    addLogEvent(E, run_log, "get_siemens_cv_data", cat, note, error);
+    await addLogEvent(E, run_log, "get_siemens_cv_data", cat, note, error);
   }
 }
 

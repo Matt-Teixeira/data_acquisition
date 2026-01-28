@@ -5,7 +5,6 @@ const rsync_philips_mri = require("./jobs/philips_mri/rsync_philips-mri");
 const onBootMMB = require("./jobs/mmb");
 const get_hhm_data = require("./jobs/hhm");
 const { get_althea_env_data } = require("./jobs/server_hop");
-const run_system_manual = require("./jobs/hhm/run_manual");
 const reset_tunnel = require("./jobs/tunnel_reset");
 const get_ip_sec_table = require("./jobs/tools/ip_sec");
 const {
@@ -86,16 +85,6 @@ const onBoot = async () => {
     const manufacturer = process.argv[4] || null;
     const modality = process.argv[5] || null;
 
-    // Supply one or more SMEs in first arg array, but must be same manufac. & modality
-    if (run_group === "manual") {
-      const capture_datetime = captureDatetime();
-      await run_system_manual(
-        run_log,
-        ["SME17372"],
-        ["Philips", "CT"],
-        capture_datetime
-      );
-    }
     if (run_group === "ip_sec") {
       await get_ip_sec_table();
     }

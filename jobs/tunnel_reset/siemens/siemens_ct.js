@@ -12,24 +12,23 @@ async function get_siemens_ct_data(
   capture_datetime,
   ip_reset
 ) {
-  let note = { job_id, system: system };
+  const note = { job_id, system_id: system.id };
   try {
-    addLogEvent(I, run_log, "get_siemens_ct_data", cal, note, null);
+    await addLogEvent(I, run_log, "get_siemens_ct_data", cal, note, null);
 
-    const cv_path = `./read/sh/Siemens/${system.acquisition_script}`;
+    const ct_path = `./read/sh/Siemens/${system.acquisition_script}`;
     await exec_hhm_data_grab(
       job_id,
       run_log,
       system.id,
-      cv_path,
+      ct_path,
       system,
       [system.host_ip],
       capture_datetime,
       ip_reset
     );
   } catch (error) {
-    console.log(error);
-    addLogEvent(E, run_log, "get_siemens_ct_data", cal, null, error);
+    await addLogEvent(E, run_log, "get_siemens_ct_data", cat, note, error);
   }
 }
 
