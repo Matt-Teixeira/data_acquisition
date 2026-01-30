@@ -56,10 +56,10 @@ async function list_new_phil_cv_files(
   );
 
   // IF daily_files_to_pull IS null, BREAK EARLY DUE TO CONNECTION ISSUE
-  if (!daily_files_to_pull) {
+  /* if (!daily_files_to_pull) {
     let lod_files_to_pull = null;
     return { daily_files_to_pull, lod_files_to_pull };
-  }
+  } */
 
   const lod_files_to_pull = await list_new_lod_files(
     job_id,
