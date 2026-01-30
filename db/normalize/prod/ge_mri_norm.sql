@@ -961,3 +961,44 @@ VALUES(
 	NULL,
 	NULL
 );
+
+-->
+--> 01/28/26
+/*
+INSERT INTO config.acquisition(system_id, host_ip, mmb_ip, protocal, debian_server_path, credentials_group, acquisition_script, run_group, host, user_id, acqu_point)
+VALUES (
+	'SME21932',
+	'10.47.20.62',
+	NULL,
+	'lftp',
+	'/home/prod/hhm_data_acquisition/files/SME21932',
+	'4',
+	'ge_mri_22_1.sh',
+	1,
+	NULL,
+	NULL,
+	NULL
+);
+*/
+
+UPDATE 
+	config.acquisition
+SET 
+	host_ip = '10.47.20.62',
+	debian_server_path = '/home/prod/hhm_data_acquisition/files/SME21932',
+	credentials_group = '4',
+	acquisition_script = 'ge_mri_22_1.sh',
+	run_group = 1
+WHERE 
+	system_id = 'SME21932';
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME21932',
+	'gesys_DAWSONMR.log',
+	'gesys',
+	ARRAY['block', 'sub_block'],
+	ARRAY['ge_mri_gesys'],
+	NULL,
+	NULL
+);
