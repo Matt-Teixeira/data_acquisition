@@ -21,6 +21,9 @@ async function get_philips_cv_data(run_log, capture_datetime) {
     const systems = await get_hhm([manufacturer, modality]);
     const credentials = await getHhmCreds([manufacturer, modality]);
 
+    console.log("\nsystems");
+    console.log(systems);
+
     for (const system of systems) {
       const job_id = uuidv4();
       child_processes.push(
@@ -59,7 +62,12 @@ async function run_phil_cv(
 ) {
   await addLogEvent(I, run_log, "run_phil_cv", cal, { job_id, system }, null);
   const daily_dir_acqu_script = `./read/sh/Philips/${system.acquisition_script}`;
-  const lod_dir_acqu_script = `./read/sh/Philips/phil_cv_21_lod.sh`;
+
+  // Extract port from acquisition_script name (e.g., "phil_cv_21.sh" → "21")
+  const port_match = system.acquisition_script.match(/phil_cv_(\d+)/);
+  const port = port_match ? port_match[1] : "21";
+
+  const lod_dir_acqu_script = `./read/sh/Philips/phil_cv_${port}_lod.sh`;
   const parse_event_zip = `./read/sh/Philips/parse_event_zip.sh`;
 
   if (!system.host_ip || !system.credentials_group) {
@@ -88,6 +96,9 @@ async function run_phil_cv(
     "last_phil_cv_daily"
   );
 
+  console.log("\nlast_aquired_dir");
+  console.log(last_aquired_dir);
+
   // REDIS VALUE: GET PREVIOUS LOD DIR PULLED FROM HOST STORED IN REDIS - Example: lod_20231114_0953
   const last_lod_file = await get_previous_dir(
     job_id,
@@ -95,6 +106,9 @@ async function run_phil_cv(
     system.id,
     "last_phil_cv_lod"
   );
+
+  console.log("\nlast_lod_file");
+  console.log(last_lod_file);
 
   // REQUIRES HOST CONNECTIVITY: PASS IN PREVIOUS FILE NAMES AND RETURN 1 OR MORE LOD OR DAILY DIRs TO PULL
   const { daily_files_to_pull, lod_files_to_pull } =
@@ -110,7 +124,7 @@ async function run_phil_cv(
       system,
       capture_datetime
     );
-/* 
+  /* 
   console.log("\nPAIRED DOWN LIST:");
 
   console.log("\ndaily_files_to_pull");

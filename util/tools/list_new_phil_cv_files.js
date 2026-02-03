@@ -27,7 +27,11 @@ async function list_new_phil_cv_files(
 
   await addLogEvent(I, run_log, "list_new_phil_cv_files", cal, note, null);
 
-  const list_path = "./read/sh/Philips/phil_cv_file_list.sh";
+  // Extract port from acquisition_script name (e.g., "phil_cv_21.sh" → "21")
+  const port_match = system.acquisition_script.match(/phil_cv_(\d+)/);
+  const port = port_match ? port_match[1] : "21";
+
+  const list_path = `./read/sh/Philips/phil_cv_${port}_file_list.sh`;
 
   const files_list = await exec_list_dirs(
     job_id,
@@ -35,7 +39,7 @@ async function list_new_phil_cv_files(
     sme,
     list_path,
     system,
-    [ip_address, user, pass, `${process.env.DEV_HHM_FILES}/Philips/CV/${sme}`],
+    [ip_address, user, pass, `${process.env.DEV_HHM_FILES}/${sme}`],
     capture_datetime,
     ip_reset
   );
