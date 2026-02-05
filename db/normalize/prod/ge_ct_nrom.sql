@@ -2995,7 +2995,6 @@ VALUES
 	);
 
 --> NEW: 01/02/26
-
 -->
 --> 
 INSERT INTO
@@ -3353,6 +3352,162 @@ VALUES
 	(
 		'SME21854',
 		'gesys_NSFRTCT.log',
+		'gesys',
+		ARRAY ['block', 'sub_block'],
+		ARRAY ['ge_ct_gesys'],
+		NULL,
+		NULL
+	);
+
+--> 02/03/26
+--> 
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME20594',
+		'172.16.11.73',
+		NULL,
+		'ftp',
+		'/home/prod/hhm_data_acquisition/files/SME20594',
+		'2',
+		'ge_ct_21.sh',
+		1,
+		NULL,
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME20594',
+		'gesys_hrc3.log',
+		'gesys',
+		ARRAY ['block', 'sub_block'],
+		ARRAY ['ge_ct_gesys'],
+		NULL,
+		NULL
+	);
+
+-->
+--> 
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME20608',
+		'10.20.15.21',
+		NULL,
+		'ssh',
+		'/home/prod/hhm_data_acquisition/files/SME20608',
+		'2',
+		'ge_ct_22_1.sh',
+		1,
+		NULL,
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME20608',
+		'gesys_PETCC.log',
+		'gesys',
+		ARRAY ['block', 'sub_block'],
+		ARRAY ['ge_ct_gesys'],
+		NULL,
+		NULL
+	);
+
+--> 02/04/26
+--> 
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME21870',
+		'192.168.129.21',
+		NULL,
+		'ssh',
+		'/home/prod/hhm_data_acquisition/files/SME21870',
+		'3',
+		'ge_ct_22_1.sh',
+		1,
+		NULL,
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME21870',
+		'gesys_WARCT1.log',
 		'gesys',
 		ARRAY ['block', 'sub_block'],
 		ARRAY ['ge_ct_gesys'],

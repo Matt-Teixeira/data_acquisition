@@ -253,3 +253,28 @@ VALUES(
 	NULL,
 	NULL
 );
+
+--> 02/04/26
+-->
+
+UPDATE 
+	config.acquisition
+SET
+	host_ip = '10.209.112.31',
+	debian_server_path = '/home/prod/hhm_data_acquisition/files/SME21915',
+	acquisition_script = 'siemens_80_data_grab.sh',
+	run_group = 1,
+	file_version = 'win_10'
+WHERE 
+	system_id = 'SME21915';
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME21915',
+	'Application.log',
+	'Application',
+	ARRAY['re_v1'], -- regex
+	ARRAY['siemens_mri'], -- tables
+	NULL,
+	NULL
+);

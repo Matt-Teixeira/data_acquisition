@@ -1002,3 +1002,28 @@ VALUES(
 	NULL,
 	NULL
 );
+
+-->
+--> 02/04/26
+
+UPDATE 
+	config.acquisition
+SET 
+	host_ip = '10.208.105.31',
+	debian_server_path = '/home/prod/hhm_data_acquisition/files/SME21922',
+	credentials_group = '6',
+	acquisition_script = 'ge_mri_22_1.sh',
+	run_group = 1
+WHERE 
+	system_id = 'SME21922';
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME21922',
+	'gesys_GNSVLMR2.log',
+	'gesys',
+	ARRAY['block', 'sub_block'],
+	ARRAY['ge_mri_gesys'],
+	NULL,
+	NULL
+);

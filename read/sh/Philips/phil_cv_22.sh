@@ -8,10 +8,3 @@ lftp -c "set sftp:connect-program 'ssh -oKexAlgorithms=diffie-hellman-group1-sha
 cd /cygdrive/c/ftproot/SaveDevData/$4;
 mget Event.zip -O $5/$4;
 quit"
-
-# RECENTFILE="$(find $5/*/* -type f -name 'Event.zip' -printf "%T+ - %p\n" | sort -n | tail -1 | awk '{print $3}')"
-# unzip -o "$RECENTFILE" -d $5
-
-## --{ Get Trace Dir
-# cd /SaveDevData/$4;
-# mirror -c --verbose Trace $5/$4/Trace;

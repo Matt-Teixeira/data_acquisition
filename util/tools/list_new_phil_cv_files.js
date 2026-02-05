@@ -33,47 +33,56 @@ async function list_new_phil_cv_files(
 
   const list_path = `./read/sh/Philips/phil_cv_${port}_file_list.sh`;
 
-  const files_list = await exec_list_dirs(
-    job_id,
-    run_log,
-    sme,
-    list_path,
-    system,
-    [ip_address, user, pass, `${process.env.DEV_HHM_FILES}/${sme}`],
-    capture_datetime,
-    ip_reset
-  );
+  try {
+    const files_list = await exec_list_dirs(
+      job_id,
+      run_log,
+      sme,
+      list_path,
+      system,
+      [
+        ip_address,
+        user,
+        pass,
+        `${process.env.DEV_HHM_FILES}/Philips/CV/${sme}`
+      ],
+      capture_datetime,
+      ip_reset
+    );
 
-  // IF files_list IS null/false, BREAK EARLY DUE TO POSSIBLE CONNECTION ISSUE
-  if (!files_list) {
-    let daily_files_to_pull = null;
-    let lod_files_to_pull = null;
-    return { daily_files_to_pull, lod_files_to_pull };
-  }
+    // IF files_list IS null/false, BREAK EARLY DUE TO POSSIBLE CONNECTION ISSUE
+    if (!files_list) {
+      let daily_files_to_pull = null;
+      let lod_files_to_pull = null;
+      return { daily_files_to_pull, lod_files_to_pull };
+    }
 
-  const daily_files_to_pull = await list_new_daily_files(
-    job_id,
-    run_log,
-    sme,
-    previous_daily_file,
-    files_list
-  );
+    const daily_files_to_pull = await list_new_daily_files(
+      job_id,
+      run_log,
+      sme,
+      previous_daily_file,
+      files_list
+    );
 
-  // IF daily_files_to_pull IS null, BREAK EARLY DUE TO CONNECTION ISSUE
-  /* if (!daily_files_to_pull) {
+    // IF daily_files_to_pull IS null, BREAK EARLY DUE TO CONNECTION ISSUE
+    /* if (!daily_files_to_pull) {
     let lod_files_to_pull = null;
     return { daily_files_to_pull, lod_files_to_pull };
   } */
 
-  const lod_files_to_pull = await list_new_lod_files(
-    job_id,
-    run_log,
-    sme,
-    previous_lod_file,
-    files_list
-  );
+    const lod_files_to_pull = await list_new_lod_files(
+      job_id,
+      run_log,
+      sme,
+      previous_lod_file,
+      files_list
+    );
 
-  return { daily_files_to_pull, lod_files_to_pull };
+    return { daily_files_to_pull, lod_files_to_pull };
+  } catch (error) {
+    console.log(error);
+  }
 }
 
 async function list_new_daily_files(
