@@ -33,18 +33,17 @@ const exec_list_dirs = async (
   };
   await addLogEvent(I, run_log, "exec_list_dirs", cal, note, null);
 
-  console.log("\nargs");
-  console.log(args);
   try {
     const { stdout, stderr } = await execFile(path, args);
-
-    /*     console.log("\n*********** stdout *****************");
+    /*
+    console.log("\n*********** stdout *****************");
     console.log(system.id);
     console.log(stdout);
     console.log("\n*********** stderr *****************");
     console.log(system.id);
     console.log(stderr);
- */
+    */
+
     const extracted_stderr = extractConnectionError(stderr, connection_regexes);
     const extracted_stdout = extractConnectionError(stdout, connection_regexes);
 
@@ -120,7 +119,7 @@ const exec_list_dirs = async (
       host_intervention: false
     });
 
-    return stdout;
+    return stdout.trim();
   } catch (error) {
     console.log("\n*********** Catch Error *****************");
     console.log(error);
