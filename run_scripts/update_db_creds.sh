@@ -18,11 +18,22 @@ rm -rf "$APP_DIR/node_modules" || true
 
 # Run with a tmpfs for node_modules so nothing lands on the host
 "$DOCKER" run --rm \
+  --network redis-admin_redis_net \
   -w /usr/src/app \
   -v "$APP_DIR":/usr/src/app \
   --env-file "$ENV_FILE" \
-  --add-host=host.docker.internal:host-gateway \
   --mount type=tmpfs,destination=/usr/src/app/node_modules \
   -e NPM_CONFIG_CACHE=/tmp/.npm \
   "$IMAGE" \
   bash -lc 'npm ci --omit=dev && npm run update_db_creds'
+
+
+# "$DOCKER" run --rm \
+#   -w /usr/src/app \
+#   -v "$APP_DIR":/usr/src/app \
+#   --env-file "$ENV_FILE" \
+#   --add-host=host.docker.internal:host-gateway \
+#   --mount type=tmpfs,destination=/usr/src/app/node_modules \
+#   -e NPM_CONFIG_CACHE=/tmp/.npm \
+#   "$IMAGE" \
+#   bash -lc 'npm ci --omit=dev && npm run update_db_creds'

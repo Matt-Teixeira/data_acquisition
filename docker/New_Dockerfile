@@ -1,0 +1,70 @@
+#------------------#
+# DOCKERFILE -> UTIL HYBRIDE
+#------------------#
+FROM node:lts
+ 
+# Build-time arguments
+ARG DOCKER_GID        # Docker group ID
+ARG UID_0             # svc-dev (primary user)
+ARG UID_1             # svc-prod
+ARG UID_2             # jonathanpope
+ARG UID_3             # mattteixeira
+ 
+SHELL ["/bin/bash", "-c"]
+ 
+# Tooling
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      lftp \
+      rsync \
+      ca-certificates \
+      sshpass \
+      mdbtools \
+      expect \
+ && rm -rf /var/lib/apt/lists/*
+ 
+# lftp: auto-accept host keys AND use legacy ssh algorithms for old GE hhm
+RUN printf '%s\n' \
+  'set sftp:auto-confirm yes' \
+  'set sftp:connect-program "ssh -a -x -oKexAlgorithms=+diffie-hellman-group1-sha1 -oHostKeyAlgorithms=+ssh-rsa -oPubkeyAcceptedAlgorithms=+ssh-rsa"' \
+  > /etc/lftp.conf
+ 
+# Create docker group first
+RUN groupadd -g ${DOCKER_GID} docker
+ 
+# USER: svc-dev (PRIMARY)
+# Keep a home directory for Node/scripts that rely on $HOME
+RUN useradd -u ${UID_0} -g docker -m -d /home/svc-dev -s /bin/bash svc-dev
+ 
+# USER: svc-prod
+# RUN useradd -u ${UID_1} -g docker -m -d /home/svc-prod -s /bin/bash svc-prod
+ 
+# USER: jonathanpope
+RUN useradd -u ${UID_2} -g docker -m -d /home/jonathanpope -s /bin/bash jonathanpope
+ 
+# USER: mattteixeira
+RUN useradd -u ${UID_3} -g docker -m -d /home/mattteixeira -s /bin/bash mattteixeira
+ 
+# ----------------------------------------------------------
+# TO ADD ANOTHER USER IN THE FUTURE:
+# 1) Add a new ARG at the top: ARG UID_NEXT_IDX
+# 2) Copy one of the blocks above and change the username:
+#      RUN useradd -u ${UID_NEXT_IDX} -g docker -m -d /home/newuser -s /bin/bash newuser
+# 3) Pass --build-arg UID_NEXT_IDX=$(id -u newuser) in the build command
+# ----------------------------------------------------------
+ 
+# Set a cooperative umask for all shells
+# - /etc/profile.d: login shells
+# - /etc/bash.bashrc: interactive non-login shells
+# - BASH_ENV: non-interactive shells (e.g., `bash -lc`, `bash -c`)
+RUN printf 'umask ${UMASK:-0002}\n' > /etc/profile.d/umask.sh \
+  && chmod 644 /etc/profile.d/umask.sh \
+  && printf '\n# cooperative umask for all users\numask ${UMASK:-0002}\n' >> /etc/bash.bashrc
+ 
+# Ensure non-interactive bash picks it up
+ENV BASH_ENV=/etc/profile.d/umask.sh
+ 
+# Default to primary user
+USER svc-dev
+WORKDIR /workspace
+ENV HOME=/home/svc-dev
