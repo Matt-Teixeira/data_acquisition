@@ -49,19 +49,17 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: "${REDIS_PORT}"
 
-  # Tooling container with extra CLI deps: built from docker/New_Dockerfile
+  # Tooling container: built from docker/Dockerfile_2 (gosu entrypoint)
   app_tools:
-    image: util-hybride-full:latest
+    image: util-hybride-ep:latest
     build:
       context: .
-      dockerfile: docker/New_Dockerfile
+      dockerfile: docker/Dockerfile_2
       args:
         DOCKER_GID: ${DOCKER_GID}
         UID_0: ${UID_0}
-        # UID_1: ${UID_1}     # svc-prod (disabled)
+        UID_1: ${UID_1}
         UID_2: ${UID_2}
-        UID_3: ${UID_3}
-    user: "${RUN_AS_USER}"
     <<: *common_env
     working_dir: /workspace
     volumes:
@@ -69,10 +67,10 @@ services:
       - ${NODE_MOD_CACHE_DEV}:/workspace/node_modules
       - ${RUN_LOGS_DIR}
       - ${DATA_STORE_DEV}:/workspace/files
-      # Shared SSH directory (read-only)
-      - /opt/resources/ssh:/opt/resources/ssh:ro
+      # Shared resources: entrypoint + SSH (read-only)
+      - /opt/resources:/opt/resources:ro
     environment:
-      HOME: /home/${RUN_AS_USER}
+      RUN_USER: ${RUN_USER}
       NPM_CONFIG_CACHE: /tmp/.npm
       SSH_KEY: ${SSH_KEY}
     networks:
