@@ -29,10 +29,7 @@ x-common-mounts: &common_mounts
     # 3) Centralized run logs
     - ${RUN_LOGS_DIR}
 
-    # 4) SSH bundle
-    - ${SSH_BUNDLE_DIR}:/opt/ssh_bundles/data_acquisition
-
-    # 5) ACQ files: host path -> container /workspace/files
+    # 4) ACQ files: host path -> container /workspace/files
     - ${DATA_STORE_DEV}:/workspace/files
 
 # ---------- Services ----------
@@ -52,16 +49,30 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: "${REDIS_PORT}"
 
-  # Tooling container that has extra CLI deps baked in: build from docker/Dockerfile.runtime
+  # Tooling container with extra CLI deps: built from docker/New_Dockerfile
   app_tools:
-    image: utility-app_tools:latest
+    image: util-hybride-full:latest
     build:
       context: .
-      dockerfile: docker/Dockerfile.runtime # extends node:lts, adds lftp/rsync
-    user: "${RUN_AS_USER}" # ← switch with env var
-    <<: [*common_env, *common_mounts]
+      dockerfile: docker/New_Dockerfile
+      args:
+        DOCKER_GID: ${DOCKER_GID}
+        UID_0: ${UID_0}
+        # UID_1: ${UID_1}     # svc-prod (disabled)
+        UID_2: ${UID_2}
+        UID_3: ${UID_3}
+    user: "${RUN_AS_USER}"
+    <<: *common_env
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+      - ${NODE_MOD_CACHE_DEV}:/workspace/node_modules
+      - ${RUN_LOGS_DIR}
+      - ${DATA_STORE_DEV}:/workspace/files
+      # SSH bundle mounted directly as ~/.ssh (no entrypoint copy needed)
+      - ${SSH_BUNDLE_DIR}:/home/${RUN_AS_USER}/.ssh
     environment:
-      HOME: /home/svcDev # or /home/another_user if you run as that: check with RUN_AS_USER value in .env
+      HOME: /home/${RUN_AS_USER}
       NPM_CONFIG_CACHE: /tmp/.npm
     networks:
       - redis_net
