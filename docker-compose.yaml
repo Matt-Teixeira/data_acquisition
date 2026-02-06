@@ -69,11 +69,12 @@ services:
       - ${NODE_MOD_CACHE_DEV}:/workspace/node_modules
       - ${RUN_LOGS_DIR}
       - ${DATA_STORE_DEV}:/workspace/files
-      # SSH bundle mounted directly as ~/.ssh (no entrypoint copy needed)
-      - ${SSH_BUNDLE_DIR}:/home/${RUN_AS_USER}/.ssh
+      # Shared SSH directory (read-only)
+      - /opt/resources/ssh:/opt/resources/ssh:ro
     environment:
       HOME: /home/${RUN_AS_USER}
       NPM_CONFIG_CACHE: /tmp/.npm
+      SSH_KEY: ${SSH_KEY}
     networks:
       - redis_net
 
