@@ -3359,3 +3359,262 @@ VALUES
 		NULL,
 		NULL
 	);
+
+--> 02/10/26
+--> 
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME21928',
+		'10.44.64.101',
+		NULL,
+		'ssh',
+		'/home/prod/hhm_data_acquisition/files/SME21928',
+		'3',
+		'ge_ct_22_1.sh',
+		1,
+		NULL,
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME21928',
+		'gesys_NSCMOB_CT101.log',
+		'gesys',
+		ARRAY ['block', 'sub_block'],
+		ARRAY ['ge_ct_gesys'],
+		NULL,
+		NULL
+	);
+
+--> 
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME21858',
+		'10.47.80.52',
+		NULL,
+		'ssh',
+		'/home/prod/hhm_data_acquisition/files/SME21858',
+		'3',
+		'ge_ct_22_1.sh',
+		1,
+		NULL,
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME21858',
+		'gesys_MBMLCT1.log',
+		'gesys',
+		ARRAY ['block', 'sub_block'],
+		ARRAY ['ge_ct_gesys'],
+		NULL,
+		NULL
+	);
+
+--> 
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME21924',
+		'10.47.98.20',
+		NULL,
+		'ssh',
+		'/home/prod/hhm_data_acquisition/files/SME21924',
+		'3',
+		'ge_ct_22_1.sh',
+		1,
+		NULL,
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME21924',
+		'gesys_ctaoct.log',
+		'gesys',
+		ARRAY ['block', 'sub_block'],
+		ARRAY ['ge_ct_gesys'],
+		NULL,
+		NULL
+	);
+
+--> 02/12/26
+-->
+
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME21853',
+		'10.208.102.21',
+		NULL,
+		'ssh',
+		'/home/prod/hhm_data_acquisition/files/SME21853',
+		'3',
+		'ge_ct_22_1.sh',
+		1,
+		NULL,
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME21853',
+		'gesys_DEKCT1.log',
+		'gesys',
+		ARRAY ['block', 'sub_block'],
+		ARRAY ['ge_ct_gesys'],
+		NULL,
+		NULL
+	);
+
+-->
+
+INSERT INTO
+	config.acquisition(
+		system_id,
+		host_ip,
+		mmb_ip,
+		protocal,
+		debian_server_path,
+		credentials_group,
+		acquisition_script,
+		run_group,
+		host,
+		user_id,
+		acqu_point
+	)
+VALUES
+	(
+		'SME21929',
+		'10.201.130.26',
+		NULL,
+		'ssh',
+		'/home/prod/hhm_data_acquisition/files/SME21929',
+		'3',
+		'ge_ct_22_1.sh',
+		1,
+		NULL,
+		NULL,
+		NULL
+	);
+
+INSERT INTO
+	config.log (
+		system_id,
+		file_name,
+		dir_name,
+		regex_models,
+		pg_tables,
+		column_name,
+		agg
+	)
+VALUES
+	(
+		'SME21929',
+		'gesys_NSMRTCT.log',
+		'gesys',
+		ARRAY ['block', 'sub_block'],
+		ARRAY ['ge_ct_gesys'],
+		NULL,
+		NULL
+	);
