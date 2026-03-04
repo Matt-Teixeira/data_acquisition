@@ -1,0 +1,227 @@
+INSERT INTO
+    config.acquisition(
+        system_id,
+        host_ip,
+        mmb_ip,
+        protocal,
+        debian_server_path,
+        credentials_group,
+        acquisition_script,
+        run_group,
+        host,
+        user_id,
+        acqu_point,
+        last_updated_by
+    )
+VALUES
+    (
+        'SME20288',
+        '20.55.232.226',
+        NULL,
+        NULL,
+        '/home/prod/hhm_data_acquisition/files/SME20288_temp',
+        NULL,
+        'althea_server_pull.sh',
+        1,
+        NULL,
+        'mattteixeira',
+        'althea_vm',
+        'matt.teixeira@avantehs.com'
+    );
+
+INSERT INTO
+    config.acquisition(
+        system_id,
+        host_ip,
+        mmb_ip,
+        protocal,
+        debian_server_path,
+        credentials_group,
+        acquisition_script,
+        run_group,
+        host,
+        user_id,
+        acqu_point,
+        last_updated_by
+    )
+VALUES
+    (
+        'SME20291',
+        '20.55.232.226',
+        NULL,
+        NULL,
+        '/home/prod/hhm_data_acquisition/files/SME20291_temp',
+        NULL,
+        'althea_server_pull.sh',
+        1,
+        NULL,
+        'mattteixeira',
+        'althea_vm',
+        'matt.teixeira@avantehs.com'
+    );
+
+--> 02-24-2026
+-->
+
+INSERT INTO
+    config.acquisition(
+        system_id,
+        host_ip,
+        mmb_ip,
+        protocal,
+        debian_server_path,
+        credentials_group,
+        acquisition_script,
+        run_group,
+        host,
+        user_id,
+        acqu_point,
+        last_updated_by
+    )
+VALUES
+    (
+        'SME10456',
+        '20.55.232.226',
+        NULL,
+        NULL,
+        '/home/prod/hhm_data_acquisition/files/SME10456_temp',
+        NULL,
+        'althea_server_pull.sh',
+        1,
+        NULL,
+        'mattteixeira',
+        'althea_vm',
+        'matt.teixeira@avantehs.com'
+    );
+
+-->
+
+INSERT INTO
+    config.acquisition(
+        system_id,
+        host_ip,
+        mmb_ip,
+        protocal,
+        debian_server_path,
+        credentials_group,
+        acquisition_script,
+        run_group,
+        host,
+        user_id,
+        acqu_point,
+        last_updated_by
+    )
+VALUES
+    (
+        'SME20292',
+        '20.55.232.226',
+        NULL,
+        NULL,
+        '/home/prod/hhm_data_acquisition/files/SME20292_temp',
+        NULL,
+        'althea_server_pull.sh',
+        1,
+        NULL,
+        'mattteixeira',
+        'althea_vm',
+        'matt.teixeira@avantehs.com'
+    );
+
+-->
+
+INSERT INTO
+    config.acquisition(
+        system_id,
+        host_ip,
+        mmb_ip,
+        protocal,
+        debian_server_path,
+        credentials_group,
+        acquisition_script,
+        run_group,
+        host,
+        user_id,
+        acqu_point,
+        last_updated_by
+    )
+VALUES
+    (
+        'SME20293',
+        '20.55.232.226',
+        NULL,
+        NULL,
+        '/home/prod/hhm_data_acquisition/files/SME20293_temp',
+        NULL,
+        'althea_server_pull.sh',
+        1,
+        NULL,
+        'mattteixeira',
+        'althea_vm',
+        'matt.teixeira@avantehs.com'
+    );
+
+-->
+
+INSERT INTO
+    config.acquisition(
+        system_id,
+        host_ip,
+        mmb_ip,
+        protocal,
+        debian_server_path,
+        credentials_group,
+        acquisition_script,
+        run_group,
+        host,
+        user_id,
+        acqu_point,
+        last_updated_by
+    )
+VALUES
+    (
+        'SME20295',
+        '20.55.232.226',
+        NULL,
+        NULL,
+        '/home/prod/hhm_data_acquisition/files/SME20295_temp',
+        NULL,
+        'althea_server_pull.sh',
+        1,
+        NULL,
+        'mattteixeira',
+        'althea_vm',
+        'matt.teixeira@avantehs.com'
+    );
+
+-->
+
+INSERT INTO
+    config.acquisition(
+        system_id,
+        host_ip,
+        mmb_ip,
+        protocal,
+        debian_server_path,
+        credentials_group,
+        acquisition_script,
+        run_group,
+        host,
+        user_id,
+        acqu_point,
+        last_updated_by
+    )
+VALUES
+    (
+        'SME20296',
+        '20.55.232.226',
+        NULL,
+        NULL,
+        '/home/prod/hhm_data_acquisition/files/SME20296_temp',
+        NULL,
+        'althea_server_pull.sh',
+        1,
+        NULL,
+        'mattteixeira',
+        'althea_vm',
+        'matt.teixeira@avantehs.com'
+    );
