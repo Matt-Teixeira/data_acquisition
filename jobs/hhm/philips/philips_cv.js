@@ -59,7 +59,12 @@ async function run_phil_cv(
 ) {
   await addLogEvent(I, run_log, "run_phil_cv", cal, { job_id, system }, null);
   const daily_dir_acqu_script = `./read/sh/Philips/${system.acquisition_script}`;
-  const lod_dir_acqu_script = `./read/sh/Philips/phil_cv_21_lod.sh`;
+
+  // Extract port from acquisition_script name (e.g., "phil_cv_21.sh" → "21")
+  const port_match = system.acquisition_script.match(/phil_cv_(\d+)/);
+  const port = port_match ? port_match[1] : "21";
+
+  const lod_dir_acqu_script = `./read/sh/Philips/phil_cv_${port}_lod.sh`;
   const parse_event_zip = `./read/sh/Philips/parse_event_zip.sh`;
 
   if (!system.host_ip || !system.credentials_group) {
@@ -110,15 +115,17 @@ async function run_phil_cv(
       system,
       capture_datetime
     );
-/* 
+
+  
   console.log("\nPAIRED DOWN LIST:");
 
   console.log("\ndaily_files_to_pull");
   console.log(daily_files_to_pull);
-
+/*
   console.log("\nlod_files_to_pull");
   console.log(lod_files_to_pull);
- */
+  */
+
   // CHECK FOR EventLog.txe within last_aquired_dir
   if (process.env.RUN_ENV === "dev") {
     system.debian_server_path = `/home/matt-teixeira/hep3/hhm_data_acquisition/files/${system.id}`;

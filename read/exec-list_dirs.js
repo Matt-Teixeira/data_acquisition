@@ -35,14 +35,15 @@ const exec_list_dirs = async (
 
   try {
     const { stdout, stderr } = await execFile(path, args);
-
-/*     console.log("\n*********** stdout *****************");
+    /*
+    console.log("\n*********** stdout *****************");
     console.log(system.id);
     console.log(stdout);
     console.log("\n*********** stderr *****************");
     console.log(system.id);
     console.log(stderr);
- */
+    */
+
     const extracted_stderr = extractConnectionError(stderr, connection_regexes);
     const extracted_stdout = extractConnectionError(stdout, connection_regexes);
 
@@ -109,7 +110,7 @@ const exec_list_dirs = async (
 
       return false;
     }
-    
+
     await add_to_online_queue(job_id, run_log, {
       id: system.id,
       capture_datetime,
@@ -117,9 +118,8 @@ const exec_list_dirs = async (
       data_source: system.data_source,
       host_intervention: false
     });
-  
 
-    return stdout;
+    return stdout.trim();
   } catch (error) {
     console.log("\n*********** Catch Error *****************");
     console.log(error);
