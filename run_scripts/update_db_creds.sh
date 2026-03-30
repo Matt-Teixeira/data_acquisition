@@ -4,7 +4,7 @@ set -euo pipefail
 IMAGE="${IMAGE:-node:16.20.2}"
 DOCKER="/usr/bin/docker"
 
-APP_DIR="/home/mattteixeira/apps/data_acquisition"
+APP_DIR="/home/matt-teixeira/apps/data_acquisition"
 ENV_FILE="$APP_DIR/.env"
 
 # Ensure image exists
@@ -18,7 +18,7 @@ rm -rf "$APP_DIR/node_modules" || true
 
 # Run with a tmpfs for node_modules so nothing lands on the host
 "$DOCKER" run --rm \
-  --network redis-admin_redis_net \
+  --network pg_net \
   -w /usr/src/app \
   -v "$APP_DIR":/usr/src/app \
   --env-file "$ENV_FILE" \
