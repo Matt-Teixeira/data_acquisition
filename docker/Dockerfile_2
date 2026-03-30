@@ -51,3 +51,32 @@ ENV BASH_ENV=/etc/profile.d/umask.sh
 WORKDIR /workspace
 ENTRYPOINT ["/opt/resources/entrypoint.sh"]
 CMD ["bash"]
+ 
+DOCKER COMPOSE
+services:
+    run-remote:
+        image: util-hybride-ep
+        environment:
+            - RUN_USER=svc-dev
+            - REMOTE_USER=avante
+            - REMOTE_HOST=170.232.108.74
+            - SSH_KEY=id_dev
+            - REMOTE_CMD=date
+        volumes:
+            - ./:/workspace
+            - /opt/run-logs/odd-jobs:/workspace/utils/logger/logs
+            - /opt/resources:/opt/resources:ro
+        command: node /workspace/index.js run-remote
+ 
+ENTRY POINT
+#!/bin/bash
+set -e
+ 
+# Default to svc-dev if RUN_USER not specified
+RUN_USER="${RUN_USER:-svc-dev}"
+ 
+# Dynamically set HOME based on user
+export HOME="/home/$RUN_USER"
+ 
+# Execute command as the specified user
+exec gosu "$RUN_USER" "$@"

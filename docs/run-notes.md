@@ -20,6 +20,8 @@ RUN ON FIRST DEPLOY TO NUKE AND UPDATE node_moduels CACHE: fresh install before 
 
 ```sh
 docker compose run --rm app_tools bash -lc "npm ci --omit=dev && npm run <job_name>"
+# or
+docker compose run --rm app_tools bash -lc "npm ci --omit=dev --no-audit --no-fund && npm run <job_name>"
 ```
 
 ### Command breakdown
