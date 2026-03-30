@@ -75,9 +75,12 @@ services:
       SSH_KEY: ${SSH_KEY}
     networks:
       - redis_net
+      - pg_net
 
 # Declare the external network from the Redis compose project
 networks:
   redis_net:
     external: true
-    name: redis-admin_redis_net # <-- replace with the exact name you found
+    name: redis-admin_redis_net
+  pg_net:
+    external: true

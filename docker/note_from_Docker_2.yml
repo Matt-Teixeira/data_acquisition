@@ -1,0 +1,16 @@
+DOCKER COMPOSE
+services:
+    run-remote:
+        image: util-hybride-ep
+        environment:
+            - RUN_USER=svc-dev
+            - REMOTE_USER=avante
+            - REMOTE_HOST=170.232.108.74
+            - SSH_KEY=id_dev
+            - REMOTE_CMD=date
+        volumes:
+            - ./:/workspace
+            - /opt/run-logs/odd-jobs:/workspace/utils/logger/logs
+            - /opt/resources:/opt/resources:ro
+        command: node /workspace/index.js run-remote
+ 
