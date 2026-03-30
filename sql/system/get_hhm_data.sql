@@ -16,5 +16,6 @@ FROM
 WHERE
     manufacturer = $1
     AND modality LIKE $2
-    AND process_log = true;
+    AND process_log = true
+    LIMIT 20;
     --AND sys.id IN ('SME00882');
