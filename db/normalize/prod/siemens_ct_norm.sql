@@ -953,11 +953,16 @@ VALUES(
 	NULL
 );
 
+<<<<<<< HEAD
 --> 02/04/26
+=======
+--> 3-11-26
+>>>>>>> STAGING
 -->
 
 INSERT INTO config.acquisition(system_id, host_ip, mmb_ip, protocal, debian_server_path, credentials_group, acquisition_script, run_group, host, user_id, acqu_point, file_version)
 VALUES (
+<<<<<<< HEAD
 	'SME21863',
 	'10.80.1.8',
 	NULL,
@@ -965,6 +970,15 @@ VALUES (
 	'/home/prod/hhm_data_acquisition/files/SME21863',
 	NULL,
 	'siemens_80_data_grab.sh',
+=======
+	'SME01427',
+	'172.20.231.246',
+	NULL,
+	'lftp',
+	'/home/prod/hhm_data_acquisition/files/SME01427',
+	NULL,
+	'siemens_443_data_grab.sh',
+>>>>>>> STAGING
 	1,
 	NULL,
 	NULL,
@@ -974,7 +988,11 @@ VALUES (
 
 INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
 VALUES(
+<<<<<<< HEAD
 	'SME21863',
+=======
+	'SME01427',
+>>>>>>> STAGING
 	'Application.log',
 	'Application',
 	ARRAY['re_v1'], -- regex

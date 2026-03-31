@@ -1027,3 +1027,28 @@ VALUES(
 	NULL,
 	NULL
 );
+
+-->
+--> 03/10/26
+
+UPDATE 
+	config.acquisition
+SET 
+	host_ip = '10.154.16.103',
+	debian_server_path = '/home/prod/hhm_data_acquisition/files/SME21284',
+	credentials_group = '5',
+	acquisition_script = 'ge_mri_22_1.sh',
+	run_group = 1
+WHERE 
+	system_id = 'SME21284';
+
+INSERT INTO config.log (system_id, file_name, dir_name, regex_models, pg_tables, column_name, agg)
+VALUES(
+	'SME21284',
+	'gesys_HCMR01.log',
+	'gesys',
+	ARRAY['block', 'sub_block'],
+	ARRAY['ge_mri_gesys'],
+	NULL,
+	NULL
+);
