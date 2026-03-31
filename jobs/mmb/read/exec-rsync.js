@@ -38,7 +38,7 @@ const execRsync = async (
   };
   await addLogEvent(I, run_log, "execRsync", cal, note, null);
 
-  const connection_test_1 = /Connection timed out/g;
+  const connection_error = /Connection timed out|connection unexpectedly closed|Broken pipe|error in rsync protocol data stream/;
 
   try {
     const { stdout } = await execFile(rsyncShPath, rsyncShArgs);
@@ -72,7 +72,7 @@ const execRsync = async (
     await addLogEvent(E, run_log, "execRsync", cat, note, error);
     //console.log(error);
 
-    if (connection_test_1.test(error)) {
+    if (connection_error.test(error)) {
       let system = {
         id: rsyncShArgs[0],
         vpn: vpn,
