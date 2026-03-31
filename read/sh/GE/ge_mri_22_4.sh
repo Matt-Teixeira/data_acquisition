@@ -20,7 +20,7 @@ SSH_OPTS=(
 # Get file list and FILTER OUT remote banner noise
 file_list="$(
   sshpass -p "$pass" ssh "${SSH_OPTS[@]}" "$user@$host" \
-    "/bin/sh -lc 'ls -1 /usr/g/service/log/gesys*.log 2>/dev/null || true'" \
+    "/bin/sh -c 'for f in /usr/g/service/log/gesys*.log; do [ -f \"\$f\" ] && echo \"\$f\"; done'" \
   | tr -d '\r' \
   | grep -E '^/usr/g/service/log/gesys.*\.log$' \
   || true
@@ -31,6 +31,10 @@ if [[ -z "${file_list//$'\n'/}" ]]; then
   exit 0
 fi
 
+echo "File list:"
+echo "$file_list"
+
+errors=0
 while IFS= read -r remote_file; do
   [[ -z "$remote_file" ]] && continue
 
@@ -40,12 +44,27 @@ while IFS= read -r remote_file; do
 
   echo "Downloading $remote_file -> $out"
 
-  sshpass -p "$pass" ssh "${SSH_OPTS[@]}" "$user@$host" \
-    "/bin/sh -lc 'cat \"$remote_file\"'" \
-  | sed '/^DICTIONARYDIR is not set - defaulting to /d;
-         /^ODINA_DICTIONARY is not set - defaulting to /d;
-         /^DICOM_DICTIONARY is not set - defaulting to /d;' \
-  > "$tmp"
-
-  mv -f "$tmp" "$out"
+  if sshpass -p "$pass" ssh "${SSH_OPTS[@]}" "$user@$host" \
+    "/bin/sh -c 'cat \"$remote_file\"'" < /dev/null \
+    | sed '/^DICTIONARYDIR is not set/d;
+           /^ODINA_DICTIONARY is not set/d;
+           /^DICOM_DICTIONARY is not set/d;
+           /can'\''t set the locale/d;
+           /^chown: /d;
+           /BrainWave\.config: Permission denied/d;
+           /^\/usr\/ucb\/tset/d;
+           /^?$/d' \
+    > "$tmp"
+  then
+    mv -f "$tmp" "$out"
+  else
+    echo "WARNING: Failed to download $remote_file" >&2
+    rm -f "$tmp"
+    errors=$((errors + 1))
+  fi
 done <<< "$file_list"
+
+if [[ $errors -gt 0 ]]; then
+  echo "$errors file(s) failed to download." >&2
+  exit 1
+fi
