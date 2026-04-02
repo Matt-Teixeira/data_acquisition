@@ -18,7 +18,7 @@ exit"
 
 if [ $? -ne 0 ]; then
     echo "Connection timed out" >&2
-    exit
+    exit 1
 fi
 
 chmod +0644 $4/Logger.mdb

@@ -9,7 +9,7 @@ mget Logger.mdb;"
 
 if [ $? -ne 0 ]; then
     echo "Connection timed out" >&2
-    exit
+    exit 1
 fi
 # mv Logger.mdb Output.mdb
 #chmod +0644 $4/Output.mdb
