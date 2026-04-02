@@ -8,7 +8,7 @@ current_year_month=$(date +%Y%m)
 [ ! -d "$4/rmmu_short" ] && mkdir $4/rmmu_short
 [ ! -d "$4/rmmu_magnet" ] && mkdir $4/rmmu_magnet
 
-lftp -c "set sftp:connect-program 'ssh -oKexAlgorithms=diffie-hellman-group14-sha1'; set net:timeout 10; set ftp:ssl-allow off; set net:reconnect-interval-base 5; set net:max-retries 1; set xfer:clobber true; open sftp://$2:$3@$1; 
+lftp -c "set sftp:connect-program 'ssh -oKexAlgorithms=+diffie-hellman-group14-sha1 -oHostKeyAlgorithms=+ssh-rsa,ssh-dss -oPubkeyAcceptedAlgorithms=+ssh-rsa -oStrictHostKeyChecking=accept-new'; set net:timeout 10; set ftp:ssl-allow off; set net:reconnect-interval-base 5; set net:max-retries 1; set xfer:clobber true; open sftp://$2:$3@$1; 
 cd /cygdrive/g/Site; 
 mget rmmu_short_cryogenic$current_year_month* -O $4/rmmu_short; 
 mget rmmu_magnet$current_year_month* -O $4/rmmu_magnet; 
