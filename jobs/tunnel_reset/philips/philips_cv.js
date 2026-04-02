@@ -1,6 +1,7 @@
 const exec_phil_cv_data_grab = require("../../../read/exec-phil_cv_data_grab");
 const { getHhmCreds } = require("../../../sql/qf-provider");
-const { decryptString, list_new_phil_cv_files } = require("../../../util");
+const { decrypt_string } = require("../../../util/encrypt/decrypt");
+const { list_new_phil_cv_files } = require("../../../util");
 const { get_previous_dir } = require("../../../redis/redis_helpers");
 const [addLogEvent] = require("../../../utils/logger/log");
 const {
@@ -29,8 +30,8 @@ async function get_philips_cv_data(
       if (credential.id == system.credentials_group) return true;
     });
 
-    const user = decryptString(system_creds.user_enc);
-    const pass = decryptString(system_creds.password_enc);
+    const user = decrypt_string(system_creds.user_enc);
+    const pass = decrypt_string(system_creds.password_enc);
 
     const last_aquired_dir = await get_previous_dir(
       job_id,

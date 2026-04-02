@@ -1,7 +1,8 @@
 const exec_hhm_data_grab = require("../../read/exec-hhm_data_grab");
 const exec_phil_cv_data_grab = require("../../read/exec-phil_cv_data_grab");
 const { getHhmCreds, getOneSystem } = require("../../sql/qf-provider");
-const { decryptString, list_new_files } = require("../../util");
+const { decrypt_string } = require("../../util/encrypt/decrypt");
+const { list_new_files } = require("../../util");
 const { get_last_dir_date } = require("../../redis/redis_helpers");
 const { run_phil_cv } = require("./philips/philips_cv");
 
@@ -31,8 +32,8 @@ async function run_system_manual(
       if (credentials.length) {
         for (const cred of credentials) {
           if (system[0].credentials_group == cred.id) {
-            user = decryptString(cred.user_enc);
-            pass = decryptString(cred.password_enc);
+            user = decrypt_string(cred.user_enc);
+            pass = decrypt_string(cred.password_enc);
           }
         }
         if ((man_mod[0] !== "Siemens" && user === "") || pass === "") {
