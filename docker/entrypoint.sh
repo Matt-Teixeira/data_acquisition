@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BUNDLE_DIR="/opt/ssh_bundles/data_acquisition"
+BUNDLE_DIR="/opt/resources/ssh"
 SSH_DIR="${HOME}/.ssh"
 
 # 1️⃣ Before: copy bundle into this user's ~/.ssh
