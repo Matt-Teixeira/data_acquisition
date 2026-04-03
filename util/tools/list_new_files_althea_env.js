@@ -22,18 +22,10 @@ async function get_new_files(job_id, run_log, system, capture_datetime) {
   // SHELL SCRIPT EXEC PATHS
   const pull_path = `./read/sh/althea-env/${system.acquisition_script}`;
 
-  console.log("\ncapture_datetime");
-  console.log(capture_datetime);
-
-  if (process.env.RUN_ENV === "dev") {
-    system.debian_server_path =
-      "/home/matt-teixeira/hep3/hhm_data_acquisition/files";
-  }
+  const local_files_dir = path.join(process.cwd(), "files");
 
   const remote_path = `${system.host_path}/${system.system_id}.v3_ge_mm3.log`;
-  const local_path = `${system.debian_server_path}/${system.system_id}.v3_ge_mm3.log`;
-
-  console.log(system);
+  const local_path = `${local_files_dir}/${system.system_id}.v3_ge_mm3.log`;
 
   try {
     await exec_pull_vm_files(run_log, job_id, pull_path, [
