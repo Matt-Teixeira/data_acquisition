@@ -40,9 +40,17 @@ async function increment_system_reset_totals(run_log) {
 const update_system_reset_total = async (queue, run_log) => {
   await addLogEvent(I, run_log, "update_system_reset_total", cal, null, null);
 
-  const query = `
+  const hhm_query = `
     UPDATE alert.offline_hhm_conn
-    SET 
+    SET
+      daily_total = daily_total + 1,
+      lifetime_total = lifetime_total + 1
+    WHERE system_id = $1;
+  `;
+
+  const mmb_query = `
+    UPDATE alert.offline_mmb_conn
+    SET
       daily_total = daily_total + 1,
       lifetime_total = lifetime_total + 1
     WHERE system_id = $1;
@@ -58,7 +66,9 @@ const update_system_reset_total = async (queue, run_log) => {
 
     try {
       if (system.data_source === "hhm") {
-        await db.any(query, [system.id]);
+        await db.any(hhm_query, [system.id]);
+      } else if (system.data_source === "mmb") {
+        await db.any(mmb_query, [system.id]);
       }
     } catch (error) {
       console.log(error);

@@ -10,6 +10,14 @@ const {
   tag: { cal, det, cat, seq, qaf }
 } = require("../../utils/logger/enums");
 
+// Minimal SQL-literal safety for strings that get interpolated into VALUES.
+// The DB accepts null for missing values; quoting is deferred to sqlLit.
+const sqlLit = (v) => {
+  if (v === null || v === undefined) return "NULL";
+  return `'${String(v).replace(/'/g, "''")}'`;
+};
+const sqlBool = (v) => (v === null || v === undefined ? "NULL" : v ? "TRUE" : "FALSE");
+
 async function insertHeartbeat(run_log) {
   await addLogEvent(I, run_log, "insertHeartbeat", cal, null, null);
   const queue = await get_redis_online_queue();
@@ -43,24 +51,24 @@ const upsert_query_builder = async (queue) => {
   console.log(failed_queue);
 
   const hhm_success_values = [];
-  const hhm_insert_str = `INSERT INTO alert.offline_hhm_conn (system_id, capture_datetime, successful_acquisition, host_intervention, connection_error) VALUES `;
+  const hhm_insert_str = `INSERT INTO alert.offline_hhm_conn (system_id, capture_datetime, successful_acquisition, host_intervention, connection_error, error_category, phase) VALUES `;
   const hhm_on_conflict = `ON CONFLICT (system_id) DO UPDATE SET `;
-  const hhm_set_str = `capture_datetime = EXCLUDED.capture_datetime, inserted_at = EXCLUDED.inserted_at, successful_acquisition = EXCLUDED.successful_acquisition, host_intervention = EXCLUDED.host_intervention, connection_error = EXCLUDED.connection_error;`;
+  const hhm_set_str = `capture_datetime = EXCLUDED.capture_datetime, inserted_at = EXCLUDED.inserted_at, successful_acquisition = EXCLUDED.successful_acquisition, host_intervention = EXCLUDED.host_intervention, connection_error = EXCLUDED.connection_error, error_category = EXCLUDED.error_category, phase = EXCLUDED.phase;`;
 
   const hhm_failed_values = [];
-  const hhm_failed_insert_str = `INSERT INTO alert.offline_hhm_conn (system_id, successful_acquisition, host_intervention, connection_error) VALUES `;
+  const hhm_failed_insert_str = `INSERT INTO alert.offline_hhm_conn (system_id, successful_acquisition, host_intervention, connection_error, error_category, phase) VALUES `;
   const hhm_failed_on_conflict = `ON CONFLICT (system_id) DO UPDATE SET `;
-  const hhm_failed_set_str = `inserted_at = EXCLUDED.inserted_at, successful_acquisition = EXCLUDED.successful_acquisition, host_intervention = EXCLUDED.host_intervention, connection_error = EXCLUDED.connection_error;`;
+  const hhm_failed_set_str = `inserted_at = EXCLUDED.inserted_at, successful_acquisition = EXCLUDED.successful_acquisition, host_intervention = EXCLUDED.host_intervention, connection_error = EXCLUDED.connection_error, error_category = EXCLUDED.error_category, phase = EXCLUDED.phase;`;
 
   const mmb_success_values = [];
-  const mmb_insert_str = `INSERT INTO alert.offline_mmb_conn (system_id, capture_datetime) VALUES `;
+  const mmb_insert_str = `INSERT INTO alert.offline_mmb_conn (system_id, capture_datetime, successful_acquisition, host_intervention, connection_error, error_category, phase) VALUES `;
   const mmb_on_conflict = `ON CONFLICT (system_id) DO UPDATE SET `;
-  const mmb_set_str = `capture_datetime = EXCLUDED.capture_datetime, inserted_at = EXCLUDED.inserted_at;`;
+  const mmb_set_str = `capture_datetime = EXCLUDED.capture_datetime, inserted_at = EXCLUDED.inserted_at, successful_acquisition = EXCLUDED.successful_acquisition, host_intervention = EXCLUDED.host_intervention, connection_error = EXCLUDED.connection_error, error_category = EXCLUDED.error_category, phase = EXCLUDED.phase;`;
 
   const mmb_failed_values = [];
-  const mmb_failed_insert_str = `INSERT INTO alert.offline_mmb_conn (system_id) VALUES `;
+  const mmb_failed_insert_str = `INSERT INTO alert.offline_mmb_conn (system_id, successful_acquisition, host_intervention, connection_error, error_category, phase) VALUES `;
   const mmb_failed_on_conflict = `ON CONFLICT (system_id) DO UPDATE SET `;
-  const mmb_failed_set_str = `inserted_at = EXCLUDED.inserted_at;`;
+  const mmb_failed_set_str = `inserted_at = EXCLUDED.inserted_at, successful_acquisition = EXCLUDED.successful_acquisition, host_intervention = EXCLUDED.host_intervention, connection_error = EXCLUDED.connection_error, error_category = EXCLUDED.error_category, phase = EXCLUDED.phase;`;
 
   // SEPARATE SUCCESSFUL HHM AND MMB. FILTER DUPLICATE ENTRIES.
   for (const system of success_queue) {
@@ -69,15 +77,13 @@ const upsert_query_builder = async (queue) => {
       let is_duplicate = dup_systems.hhm.indexOf(system.id);
       if (is_duplicate !== -1) continue;
 
-      if (system.connection_error === null) {
-        hhm_success_values.push(
-          `('${system.id}', '${system.capture_datetime}', ${system.successful_acquisition}, ${system.host_intervention}, ${system.connection_error})`
-        );
-      } else {
-        hhm_success_values.push(
-          `('${system.id}', '${system.capture_datetime}', ${system.successful_acquisition}, ${system.host_intervention}, '${system.connection_error}')`
-        );
-      }
+      hhm_success_values.push(
+        `(${sqlLit(system.id)}, ${sqlLit(system.capture_datetime)}, ${sqlBool(
+          system.successful_acquisition
+        )}, ${sqlBool(system.host_intervention)}, ${sqlLit(
+          system.connection_error
+        )}, ${sqlLit(system.error_category)}, ${sqlLit(system.phase)})`
+      );
 
       dup_systems.hhm.push(system.id);
     }
@@ -87,7 +93,13 @@ const upsert_query_builder = async (queue) => {
       let is_duplicate = dup_systems.mmb.indexOf(system.id);
       if (is_duplicate !== -1) continue;
 
-      mmb_success_values.push(`('${system.id}', '${system.capture_datetime}')`);
+      mmb_success_values.push(
+        `(${sqlLit(system.id)}, ${sqlLit(system.capture_datetime)}, ${sqlBool(
+          system.successful_acquisition
+        )}, ${sqlBool(system.host_intervention)}, ${sqlLit(
+          system.connection_error
+        )}, ${sqlLit(system.error_category)}, ${sqlLit(system.phase)})`
+      );
 
       dup_systems.mmb.push(system.id);
     }
@@ -128,15 +140,13 @@ const upsert_query_builder = async (queue) => {
       if (is_duplicate !== -1) continue;
       dup_systems.hhm.push(system.id);
 
-      if (system.connection_error === null) {
-        hhm_failed_values.push(
-          `('${system.id}', ${system.successful_acquisition}, ${system.host_intervention}, ${system.connection_error})`
-        );
-      } else {
-        hhm_failed_values.push(
-          `('${system.id}', ${system.successful_acquisition}, ${system.host_intervention}, '${system.connection_error}')`
-        );
-      }
+      hhm_failed_values.push(
+        `(${sqlLit(system.id)}, ${sqlBool(
+          system.successful_acquisition
+        )}, ${sqlBool(system.host_intervention)}, ${sqlLit(
+          system.connection_error
+        )}, ${sqlLit(system.error_category)}, ${sqlLit(system.phase)})`
+      );
     }
 
     if (system.data_source === "mmb") {
@@ -145,7 +155,13 @@ const upsert_query_builder = async (queue) => {
       if (is_duplicate !== -1) continue;
       dup_systems.mmb.push(system.id);
 
-      mmb_failed_values.push(`('${system.id}')`);
+      mmb_failed_values.push(
+        `(${sqlLit(system.id)}, ${sqlBool(
+          system.successful_acquisition
+        )}, ${sqlBool(system.host_intervention)}, ${sqlLit(
+          system.connection_error
+        )}, ${sqlLit(system.error_category)}, ${sqlLit(system.phase)})`
+      );
     }
   }
 

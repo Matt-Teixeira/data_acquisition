@@ -38,6 +38,7 @@ async function reset_tunnel(run_log) {
       run_log,
       parsed_data.ip_addresses
     );
+
     await addLogEvent(
       I,
       run_log,
@@ -57,12 +58,14 @@ async function reset_tunnel(run_log) {
     }
     // Reset tunnels
 
-    /* const [ip_tunnels_1, ip_tunnels_2] = split_array(tunnels_by_ip);
+    /* 
+    const [ip_tunnels_1, ip_tunnels_2] = split_array(tunnels_by_ip);
     await setTimeout(4_000);
     await resetTunnels(run_log, ip_tunnels_1);
     await setTimeout(5_000);
-    await resetTunnels(run_log, ip_tunnels_2);  */
- 
+    await resetTunnels(run_log, ip_tunnels_2);  
+    */
+
     // await resetTunnels(run_log, tunnels_by_ip);
 
     // Clear Redis queue
@@ -164,6 +167,7 @@ async function reset_tunnel(run_log) {
       addLogEvent(E, run_log, "reset_tunnel", cat, null, error);
     }
   } catch (error) {
+    console.log(error);
     addLogEvent(E, run_log, "reset_tunnel", cat, null, error);
   }
 }

@@ -15,6 +15,8 @@ const {
   tag: { cal, det, cat, seq, qaf }
 } = require("../utils/logger/enums");
 
+const PHASE = "list";
+
 const exec_list_dirs = async (
   job_id,
   run_log,
@@ -36,13 +38,6 @@ const exec_list_dirs = async (
   try {
     const { stdout, stderr } = await execFile(path, args);
 
-/*     console.log("\n*********** stdout *****************");
-    console.log(system.id);
-    console.log(stdout);
-    console.log("\n*********** stderr *****************");
-    console.log(system.id);
-    console.log(stderr);
- */
     const extracted_stderr = extractConnectionError(stderr, connection_regexes);
     const extracted_stdout = extractConnectionError(stdout, connection_regexes);
 
@@ -56,7 +51,9 @@ const exec_list_dirs = async (
           data_source: system.data_source,
           host_intervention: extracted_stdout.manual_intervention,
           connection_error: extracted_stdout.message,
-          conn_err: extracted_stdout.connection_error
+          conn_err: extracted_stdout.connection_error,
+          error_category: extracted_stdout.error_category,
+          phase: PHASE
         });
 
         return false;
@@ -94,7 +91,9 @@ const exec_list_dirs = async (
           data_source: system.data_source,
           host_intervention: extracted_stderr.manual_intervention,
           connection_error: extracted_stderr.message,
-          conn_err: extracted_stderr.connection_error
+          conn_err: extracted_stderr.connection_error,
+          error_category: extracted_stderr.error_category,
+          phase: PHASE
         });
 
         return false;
@@ -109,20 +108,36 @@ const exec_list_dirs = async (
 
       return false;
     }
-    
+
     await add_to_online_queue(job_id, run_log, {
       id: system.id,
       capture_datetime,
       successful_acquisition: true,
       data_source: system.data_source,
-      host_intervention: false
+      host_intervention: false,
+      connection_error: null,
+      conn_err: false,
+      error_category: null,
+      phase: PHASE
     });
-  
+
 
     return stdout;
   } catch (error) {
     console.log("\n*********** Catch Error *****************");
     console.log(error);
+
+    // Classify against everything we have: node's error wrapper (error.message),
+    // plus the child's captured stdout/stderr at the moment of failure.
+    // Critical for lftp-style partial-pull failures where mget errors live
+    // in stderr and are missing from the short error.message snippet.
+    const error_text = [error.message, error.stderr, error.stdout]
+      .filter(Boolean)
+      .join("\n");
+    const extracted_err_message = extractConnectionError(
+      error_text,
+      connection_regexes
+    );
 
     if (
       extracted_err_message?.connection_error ||
@@ -145,7 +160,9 @@ const exec_list_dirs = async (
           data_source: system.data_source,
           host_intervention: extracted_err_message.manual_intervention,
           connection_error: extracted_err_message.message,
-          conn_err: extracted_err_message.connection_error
+          conn_err: extracted_err_message.connection_error,
+          error_category: extracted_err_message.error_category,
+          phase: PHASE
         });
 
         return false;
@@ -160,7 +177,7 @@ const exec_list_dirs = async (
       return false;
     }
 
-    // CHECK ERROR CODE
+    // CHECK ERROR CODE - execFile timeout
     if (error.code === 124) {
       if (ip_reset) {
         await add_to_online_queue(job_id, run_log, {
@@ -169,8 +186,10 @@ const exec_list_dirs = async (
           successful_acquisition: false,
           data_source: system.data_source,
           host_intervention: false,
-          connection_error: "hanging connection",
-          conn_err: true
+          connection_error: "execFile timed out",
+          conn_err: true,
+          error_category: "hanging_exec",
+          phase: PHASE
         });
         return false;
       }
@@ -183,6 +202,21 @@ const exec_list_dirs = async (
 
       return false;
     }
+
+    // UNKNOWN EXCEPTION - surface it to the DB as error_category="unknown"
+    // so it is visible for manual review rather than silently returning null.
+    await addLogEvent(E, run_log, "exec_list_dirs", cat, { job_id, system_id: system.id }, error);
+    await add_to_online_queue(job_id, run_log, {
+      id: system.id,
+      capture_datetime,
+      successful_acquisition: false,
+      data_source: system.data_source,
+      host_intervention: false,
+      connection_error: (error?.message || "unknown error").slice(0, 500),
+      conn_err: true,
+      error_category: "unknown",
+      phase: PHASE
+    });
     return null;
   }
 };
