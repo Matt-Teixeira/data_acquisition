@@ -18,7 +18,7 @@ async function get_philips_cv_data(
 ) {
   let note = { job_id, system: system };
   try {
-    addLogEvent(I, run_log, "get_philips_cv_data", cal, note, null);
+    await addLogEvent(I, run_log, "get_philips_cv_data", cal, note, null);
     const manufacturer = "Philips";
     const modality = "CV/IR";
     const credentials = await getHhmCreds([manufacturer, modality]); // Change modality in hhm_credentials table to CV/IR
@@ -98,7 +98,7 @@ async function get_philips_cv_data(
     }
   } catch (error) {
     console.log(error);
-    addLogEvent(E, run_log, "get_philips_cv_data", cat, note, error);
+    await addLogEvent(E, run_log, "get_philips_cv_data", cat, note, error);
   }
 }
 
