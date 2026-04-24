@@ -19,12 +19,12 @@ const {
 const PHASE = "remote_rsync";
 
 const exec_remote_rsync = async (
+  job_id,
   run_log,
   sme,
   rsyncShPath,
   rsyncShArgs,
   capture_datetime = null,
-  job_id = null,
   ip_reset = false
 ) => {
   let note = {

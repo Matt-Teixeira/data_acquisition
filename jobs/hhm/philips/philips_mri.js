@@ -77,7 +77,7 @@ async function get_philips_mri_data(run_log, capture_datetime) {
       }
     } catch (error) {
       console.log(error);
-      addLogEvent(E, run_log, "get_philips_mri_data", cat, note, error);
+      await addLogEvent(E, run_log, "get_philips_mri_data", cat, note, error);
     }
   }
   try {
@@ -92,7 +92,7 @@ async function get_philips_mri_data(run_log, capture_datetime) {
     });
   } catch (error) {
     console.log(error);
-    addLogEvent(E, run_log, "get_philips_mri_data", cat, null, error);
+    await addLogEvent(E, run_log, "get_philips_mri_data", cat, null, error);
   }
 }
 

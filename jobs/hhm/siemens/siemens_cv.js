@@ -53,7 +53,7 @@ async function get_siemens_cv_data(run_log, capture_datetime) {
       }
     } catch (error) {
       console.log(error);
-      await addLogEvent(E, run_log, "get_siemens_ct_data", cat, note, error);
+      await addLogEvent(E, run_log, "get_siemens_cv_data", cat, note, error);
     }
   }
 
@@ -65,7 +65,7 @@ async function get_siemens_cv_data(run_log, capture_datetime) {
     await Promise.all(promises);
   } catch (error) {
     console.log(error);
-    await addLogEvent(E, run_log, "get_siemens_ct_data", cat, null, error);
+    await addLogEvent(E, run_log, "get_siemens_cv_data", cat, null, error);
   }
 }
 

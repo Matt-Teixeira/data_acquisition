@@ -59,12 +59,12 @@ async function group_processes(run_log, system, capture_datetime, job_id) {
   startTimer(run_log, remote_label);
   try {
     await exec_remote_rsync(
+      job_id,
       run_log,
       system.id,
       "./read/sh/rsync_mmb.sh",
       [system.user_id, system.mmb_ip, `${fallback}/${system.id}`],
-      capture_datetime,
-      job_id
+      capture_datetime
     );
   } finally {
     await endTimer(run_log, remote_label, {

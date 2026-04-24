@@ -52,7 +52,7 @@ async function get_siemens_mri_data(run_log, capture_datetime) {
     // AWAIT PROMISIS
     await Promise.all(promises);
   } catch (error) {
-    addLogEvent(E, run_log, "get_siemens_ct_data", cat, null, error);
+    await addLogEvent(E, run_log, "get_siemens_mri_data", cat, null, error);
   }
 }
 
