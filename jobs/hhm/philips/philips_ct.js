@@ -16,6 +16,7 @@ const get_philips_ct_data = async (run_log, capture_datetime) =>
       decrypt_string(creds.user_enc),
       decrypt_string(creds.password_enc),
     ],
+    postProcessScript: "./read/sh/Philips/phil_ct_convert.sh",
   });
 
 module.exports = get_philips_ct_data;

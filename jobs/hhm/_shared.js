@@ -14,6 +14,7 @@ const {
   tag: { cal, det, cat },
 } = require("../../utils/logger/enums");
 const exec_hhm_data_grab = require("../../read/exec-hhm_data_grab");
+const exec_hhm_postprocess = require("../../read/exec-hhm_postprocess");
 
 // Shared runner for the 8 similar HHM jobs under jobs/hhm/{ge,philips,siemens}/.
 // Not used by philips_cv (multi-stage outlier) or any tunnel_reset path.
@@ -31,6 +32,10 @@ const exec_hhm_data_grab = require("../../read/exec-hhm_data_grab");
 //                      or acquisition_script && host_ip (without). Override when the job needs both.
 //   extraExecArgs    — positional args appended after ip_reset=false. Used by philips_mri to pass
 //                      PHILIPS_MRI_SHELL_TIMEOUT_S as arg 9 to exec_hhm_data_grab.
+//   postProcessScript — optional shell script run after a successful acquisition, with its own
+//                      (generally more generous) timeout via exec_hhm_postprocess. Used by
+//                      philips_ct to detach mdb-export conversion from the 90s acquisition
+//                      wrap so long conversions don't get truncated.
 const runHhmJob = async (run_log, capture_datetime, config) => {
   const {
     jobName,
@@ -43,6 +48,7 @@ const runHhmJob = async (run_log, capture_datetime, config) => {
     argsBuilder,
     hostPredicate,
     extraExecArgs = [],
+    postProcessScript,
   } = config;
 
   await addLogEvent(I, run_log, logLabel, cal, null, null);
@@ -76,20 +82,30 @@ const runHhmJob = async (run_log, capture_datetime, config) => {
         : null;
       const execArgs = argsBuilder(system, creds);
 
-      child_processes.push(
-        async () =>
-          await exec_hhm_data_grab(
+      child_processes.push(async () => {
+        const result = await exec_hhm_data_grab(
+          job_id,
+          run_log,
+          system.id,
+          execPath,
+          system,
+          execArgs,
+          capture_datetime,
+          false,
+          ...extraExecArgs
+        );
+        if (postProcessScript && result !== false && result !== null) {
+          await exec_hhm_postprocess(
             job_id,
             run_log,
             system.id,
-            execPath,
+            postProcessScript,
             system,
-            execArgs,
-            capture_datetime,
-            false,
-            ...extraExecArgs
-          )
-      );
+            capture_datetime
+          );
+        }
+        return result;
+      });
     } catch (error) {
       await addLogEvent(E, run_log, logLabel, cat, note, error);
     }
