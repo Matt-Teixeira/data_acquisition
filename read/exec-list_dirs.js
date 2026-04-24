@@ -18,6 +18,14 @@ const {
 
 const PHASE = "list";
 
+// Shell-level timeout fires first (coreutils `timeout`, clean exit 124);
+// the Node backstop fires for scripts that trap TERM. Matches the pattern
+// in exec-hhm_data_grab so unreachable hosts fail as `hanging_exec` rather
+// than hanging indefinitely.
+const SHELL_TIMEOUT_S = Number(process.env.SHELL_TIMEOUT_S) || 90;
+const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS) || 120_000;
+const EXEC_MAX_BUFFER = 10 * 1024 * 1024;
+
 const exec_list_dirs = async (
   job_id,
   run_log,
@@ -37,7 +45,19 @@ const exec_list_dirs = async (
   await addLogEvent(I, run_log, "exec_list_dirs", cal, note, null);
 
   try {
-    const { stdout, stderr } = await execFile(path, args);
+    const resolvedExecMs = Math.max(
+      EXEC_TIMEOUT_MS,
+      SHELL_TIMEOUT_S * 1000 + 30_000
+    );
+    const { stdout, stderr } = await execFile(
+      "timeout",
+      [`${SHELL_TIMEOUT_S}s`, path, ...args],
+      {
+        timeout: resolvedExecMs,
+        killSignal: "SIGKILL",
+        maxBuffer: EXEC_MAX_BUFFER,
+      }
+    );
 
     const extracted_stderr = extractConnectionError(stderr, connection_regexes);
     const extracted_stdout = extractConnectionError(stdout, connection_regexes);
@@ -179,7 +199,9 @@ const exec_list_dirs = async (
     }
 
     // CHECK ERROR CODE - execFile timeout
-    if (error.code === 124) {
+    // error.code === 124: coreutils `timeout` wrapper killed the child.
+    // error.killed === true: Node's execFile { timeout } option fired SIGKILL.
+    if (error.code === 124 || error.killed === true) {
       if (ip_reset) {
         await add_to_online_queue(job_id, run_log, {
           id: system.id,

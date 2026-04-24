@@ -18,6 +18,14 @@ const {
 
 const PHASE = "remote_rsync";
 
+// Rsync transfers can legitimately exceed the default SHELL_TIMEOUT_S, so
+// this helper uses a dedicated (longer) shell timeout. Same two-layer pattern
+// as exec-hhm_data_grab: coreutils `timeout` fires first (exit 124); Node
+// backstop fires for scripts that trap TERM.
+const RSYNC_SHELL_TIMEOUT_S = Number(process.env.RSYNC_SHELL_TIMEOUT_S) || 600;
+const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS) || 120_000;
+const EXEC_MAX_BUFFER = 10 * 1024 * 1024;
+
 const exec_remote_rsync = async (
   job_id,
   run_log,
@@ -37,7 +45,19 @@ const exec_remote_rsync = async (
 
   try {
     await addLogEvent(I, run_log, "exec_remote_rsync", cal, note, null);
-    const { stdout, stderr } = await execFile(rsyncShPath, rsyncShArgs);
+    const resolvedExecMs = Math.max(
+      EXEC_TIMEOUT_MS,
+      RSYNC_SHELL_TIMEOUT_S * 1000 + 30_000
+    );
+    const { stdout, stderr } = await execFile(
+      "timeout",
+      [`${RSYNC_SHELL_TIMEOUT_S}s`, rsyncShPath, ...rsyncShArgs],
+      {
+        timeout: resolvedExecMs,
+        killSignal: "SIGKILL",
+        maxBuffer: EXEC_MAX_BUFFER,
+      }
+    );
 
     // Check for classifiable signals even on success (rsync can exit 0
     // while logging skipped files).
@@ -123,7 +143,9 @@ const exec_remote_rsync = async (
       return null;
     }
 
-    if (error.code === 124) {
+    // error.code === 124: coreutils `timeout` wrapper killed the child.
+    // error.killed === true: Node's execFile { timeout } option fired SIGKILL.
+    if (error.code === 124 || error.killed === true) {
       if (ip_reset) {
         await add_to_online_queue(job_id, run_log, {
           id: sme,
