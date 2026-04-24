@@ -1,6 +1,7 @@
 const util = require("util");
 const execFile = util.promisify(require("child_process").execFile);
 const { add_to_redis_queue, add_to_online_queue } = require("../../redis");
+const { redactArgsForLog } = require("../../util/log_shapes");
 const [addLogEvent] = require("../../utils/logger/log");
 const {
   type: { I, W, E },
@@ -11,7 +12,7 @@ const exec_hhm_data_grab = async (run_log, sme, execPath, system, args) => {
   let note = {
     system_id: system.id,
     execute_path: execPath,
-    args,
+    args: redactArgsForLog(args),
   };
   await addLogEvent(I, run_log, "exec_hhm_data_grab", cal, note, null);
 

@@ -10,6 +10,7 @@ const {
   connection_regexes
 } = require("../util/tools/connection_regex");
 const [addLogEvent] = require("../utils/logger/log");
+const { redactArgsForLog } = require("../util/log_shapes");
 const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf }
@@ -31,7 +32,7 @@ const exec_list_dirs = async (
   let note = {
     job_id,
     system_id: sme,
-    args
+    args: redactArgsForLog(args)
   };
   await addLogEvent(I, run_log, "exec_list_dirs", cal, note, null);
 

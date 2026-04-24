@@ -1,10 +1,24 @@
-const fsp = require("node:fs/promises");
 const exec_local_rsync = require("../read/exec-copy_local");
 const [addLogEvent] = require("../utils/logger/log");
 const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf },
 } = require("../utils/logger/enums");
+
+// One rsync invocation per category (source dir + dest dir + filename glob),
+// replacing the prior per-file fork loop. See read/sh/rsync_pattern_local.sh.
+async function sync_pattern(run_log, system, docker_path, include_glob, subdir) {
+  return exec_local_rsync(
+    run_log,
+    system.id,
+    "./read/sh/rsync_pattern_local.sh",
+    [
+      `${docker_path}/${system.id}/host_logfiles`,
+      `${docker_path}/${system.id}/${subdir}`,
+      include_glob,
+    ]
+  );
+}
 
 async function rsync_local(run_log, rsync_path, system, docker_path) {
   let note = {
@@ -40,77 +54,13 @@ async function rsync_local(run_log, rsync_path, system, docker_path) {
           ]
         );
       } else if (key === "rmmu") {
-        const files = await fsp.readdir(rsync_path);
-        const rmmu_re_test = /rmmu\d+\.log/;
-
-        // Gather only rmmu files. Example rmmu20140107030318.log
-        const rmmu_files = files.filter((f) => rmmu_re_test.test(f) === true);
-
-        for (const rmmu_file of rmmu_files) {
-          await exec_local_rsync(
-            run_log,
-            system.id,
-            "./read/sh/rsync_monitoring_local.sh",
-            [
-              `${docker_path}/${system.id}/host_logfiles/${rmmu_file}`,
-              `${docker_path}/${system.id}/rmmu`,
-            ]
-          );
-        }
+        await sync_pattern(run_log, system, docker_path, "rmmu[0-9]*.log", "rmmu");
       } else if (key === "rmmu_magnet") {
-        const files = await fsp.readdir(rsync_path);
-        const rmmu_re_test = /rmmu_magnet\d+\.log/;
-
-        // Gather only rmmu files. Example rmmu20140107030318.log
-        const rmmu_files = files.filter((f) => rmmu_re_test.test(f) === true);
-
-        for (const rmmu_file of rmmu_files) {
-          await exec_local_rsync(
-            run_log,
-            system.id,
-            "./read/sh/rsync_monitoring_local.sh",
-            [
-              `${docker_path}/${system.id}/host_logfiles/${rmmu_file}`,
-              `${docker_path}/${system.id}/rmmu_magnet`,
-            ]
-          );
-        }
+        await sync_pattern(run_log, system, docker_path, "rmmu_magnet[0-9]*.log", "rmmu_magnet");
       } else if (key === "rmmu_long") {
-        const files = await fsp.readdir(rsync_path); 
-        const rmmu_re_test = /rmmu_long_cryogenic\d+\.log/;
-
-        // Gather only rmmu files. Example rmmu20140107030318.log
-        const rmmu_files = files.filter((f) => rmmu_re_test.test(f) === true);
-
-        for (const rmmu_file of rmmu_files) {
-          await exec_local_rsync(
-            run_log,
-            system.id,
-            "./read/sh/rsync_monitoring_local.sh",
-            [
-              `${docker_path}/${system.id}/host_logfiles/${rmmu_file}`,
-              `${docker_path}/${system.id}/rmmu_long`,
-            ]
-          );
-        }
+        await sync_pattern(run_log, system, docker_path, "rmmu_long_cryogenic[0-9]*.log", "rmmu_long");
       } else if (key === "rmmu_short") {
-        const files = await fsp.readdir(rsync_path); 
-        const rmmu_re_test = /rmmu_short_cryogenic\d+\.log/;
-
-        // Gather only rmmu files. Example rmmu20140107030318.log
-        const rmmu_files = files.filter((f) => rmmu_re_test.test(f) === true);
-
-        for (const rmmu_file of rmmu_files) {
-          await exec_local_rsync(
-            run_log,
-            system.id,
-            "./read/sh/rsync_monitoring_local.sh",
-            [
-              `${docker_path}/${system.id}/host_logfiles/${rmmu_file}`,
-              `${docker_path}/${system.id}/rmmu_short`,
-            ]
-          );
-        }
+        await sync_pattern(run_log, system, docker_path, "rmmu_short_cryogenic[0-9]*.log", "rmmu_short");
       } else if (key === "stt_magnet") {
         await exec_local_rsync(
           run_log,

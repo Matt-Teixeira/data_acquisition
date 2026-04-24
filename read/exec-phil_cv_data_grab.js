@@ -7,7 +7,16 @@ const {
   update_last_dir_date
 } = require("../redis");
 const { extractConnectionError, connection_regexes } = require("../util");
-const [addLogEvent] = require("../utils/logger/log");
+const { redactArgsForLog } = require("../util/log_shapes");
+const [
+  addLogEvent,
+  ,
+  ,
+  ,
+  ,
+  startTimer,
+  endTimer,
+] = require("../utils/logger/log");
 const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf }
@@ -15,6 +24,15 @@ const {
 const path = require("path");
 
 const PHASE = "transfer";
+// Shell-level timeout fires first (coreutils `timeout`, clean exit 124,
+// preserves stdout/stderr); EXEC_TIMEOUT_MS is the Node backstop for scripts
+// that trap TERM. Keep EXEC_TIMEOUT_MS > SHELL_TIMEOUT_S * 1000 to avoid a race.
+const SHELL_TIMEOUT_S = Number(process.env.SHELL_TIMEOUT_S) || 90;
+const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS) || 120_000;
+const EXEC_MAX_BUFFER = 10 * 1024 * 1024;
+// Per-call counter: this function is invoked multiple times per system
+// (per file), so timer labels must be unique per call to avoid Map collisions.
+let call_seq = 0;
 
 const exec_phil_cv_data_grab = async (
   job_id,
@@ -32,7 +50,7 @@ const exec_phil_cv_data_grab = async (
     job_id,
     system_id: system.id,
     execute_path: execPath,
-    args
+    args: redactArgsForLog(args)
   };
   await addLogEvent(I, run_log, "exec_phil_cv_data_grab", cal, note, null);
 
@@ -61,8 +79,19 @@ const exec_phil_cv_data_grab = async (
   // DEV: args.push(`${data_store_path}/${manufacturer}/${modality}/${sme}`);
   args.push(`${data_store_path}/${sme}`);
 
+  const timer_label = `exec.${system.id}.${++call_seq}`;
+  startTimer(run_log, timer_label);
   try {
-    const { stdout, stderr } = await execFile(execPath, args);
+  try {
+    const { stdout, stderr } = await execFile(
+      "timeout",
+      [`${SHELL_TIMEOUT_S}s`, execPath, ...args],
+      {
+        timeout: EXEC_TIMEOUT_MS,
+        killSignal: "SIGKILL",
+        maxBuffer: EXEC_MAX_BUFFER,
+      }
+    );
 
 /*  console.log("\n*********** stdout *****************");
     console.log(system.id);
@@ -223,7 +252,9 @@ const exec_phil_cv_data_grab = async (
     }
 
     // CHECK ERROR CODE - execFile timeout
-    if (error.code === 124) {
+    // error.code === 124: coreutils `timeout` wrapper killed the child.
+    // error.killed === true: Node's execFile { timeout } option fired SIGKILL.
+    if (error.code === 124 || error.killed === true) {
       if (ip_reset) {
         await add_to_online_queue(job_id, run_log, {
           id: system.id,
@@ -263,6 +294,13 @@ const exec_phil_cv_data_grab = async (
       phase: PHASE
     });
     return null;
+  }
+  } finally {
+    await endTimer(run_log, timer_label, {
+      sme: system.id,
+      host_ip: system.host_ip,
+      type,
+    });
   }
 };
 

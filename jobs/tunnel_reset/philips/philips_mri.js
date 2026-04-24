@@ -2,6 +2,9 @@ const exec_hhm_data_grab = require("../../../read/exec-hhm_data_grab");
 const { getHhmCreds } = require("../../../sql/qf-provider");
 const { decrypt_string } = require("../../../util/encrypt/decrypt");
 const [addLogEvent] = require("../../../utils/logger/log");
+
+const PHILIPS_MRI_SHELL_TIMEOUT_S =
+  Number(process.env.PHILIPS_MRI_SHELL_TIMEOUT_S) || 300;
 const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf }
@@ -40,7 +43,8 @@ async function get_philips_mri_data(
       system,
       [system.host_ip, user, pass],
       capture_datetime,
-      ip_reset
+      ip_reset,
+      PHILIPS_MRI_SHELL_TIMEOUT_S
     );
   } catch (error) {
     console.log(error);

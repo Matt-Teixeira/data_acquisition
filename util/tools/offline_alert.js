@@ -32,11 +32,26 @@ const upsert_query_builder = async (queue) => {
     hhm: []
   };
 
+  // A single system can push multiple entries into online:queue within one
+  // run (e.g. list-step success followed by transfer-step failure). Redis
+  // RPUSH + LRANGE returns items in chronological order, so the LAST entry
+  // represents the most-final processing-stage classification. Dedupe by
+  // (data_source, id) keeping the last seen, before partitioning - otherwise
+  // the later stage's state gets dropped by the first-wins dup_systems check
+  // and the alert row misrepresents reality (e.g. a transfer failure gets
+  // masked by an earlier successful list step).
+  const latestByKey = new Map();
+  for (const system of queue) {
+    const key = `${system.data_source}:${system.id}`;
+    latestByKey.set(key, system);
+  }
+  const deduped_queue = [...latestByKey.values()];
+
   const success_queue = [];
   const failed_queue = [];
 
   // Seperate queued systems based on successful acquisition
-  for (let system of queue) {
+  for (let system of deduped_queue) {
     if (!system.conn_err) {
       success_queue.push(system);
     }

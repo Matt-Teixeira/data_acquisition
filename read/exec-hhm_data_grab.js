@@ -6,14 +6,38 @@ const {
   add_system_reset_totalizer,
 } = require("../redis");
 const { extractConnectionError, connection_regexes } = require("../util");
-const [addLogEvent] = require("../utils/logger/log");
+const [
+  addLogEvent,
+  ,
+  ,
+  ,
+  ,
+  startTimer,
+  endTimer,
+] = require("../utils/logger/log");
 const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf },
 } = require("../utils/logger/enums");
 const path = require("path");
+const { redactArgsForLog } = require("../util/log_shapes");
 
 const PHASE = "grab";
+// Shell-level timeout fires first (coreutils `timeout`, clean exit 124, preserves
+// stdout/stderr); the Node backstop fires for scripts that trap TERM. Callers
+// can override the shell timeout per-call via the last argument; the Node
+// backstop auto-scales to stay >= shellTimeoutS*1000 + 30s.
+const SHELL_TIMEOUT_S = Number(process.env.SHELL_TIMEOUT_S) || 90;
+const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS) || 120_000;
+const EXEC_MAX_BUFFER = 10 * 1024 * 1024;
+const MAX_STREAM_CHARS = 4096;
+
+// Preserve the tail of a long stream (errors usually live at the end) and
+// prepend a marker indicating how many chars were dropped.
+const truncateStream = (s) => {
+  if (typeof s !== "string" || s.length <= MAX_STREAM_CHARS) return s;
+  return `...[truncated ${s.length - MAX_STREAM_CHARS} chars]\n${s.slice(-MAX_STREAM_CHARS)}`;
+};
 
 const exec_hhm_data_grab = async (
   job_id,
@@ -23,8 +47,14 @@ const exec_hhm_data_grab = async (
   system,
   args,
   capture_datetime,
-  ip_reset = false
+  ip_reset = false,
+  shellTimeoutS
 ) => {
+  const resolvedShellS = shellTimeoutS ?? SHELL_TIMEOUT_S;
+  const resolvedExecMs = Math.max(
+    EXEC_TIMEOUT_MS,
+    resolvedShellS * 1000 + 30_000
+  );
   system.data_source = "hhm";
 
   // RESOLVES TO WITHIN CONTAINER: /workspace/files
@@ -37,15 +67,26 @@ const exec_hhm_data_grab = async (
     system_id: system.id,
     execute_path: execPath,
     file_path: data_store_path,
-    args,
+    args: redactArgsForLog(args),
   };
 
   await addLogEvent(I, run_log, "exec_hhm_data_grab", cal, note, null);
 
   args.push(data_store_path);
 
+  const timer_label = `exec.${system.id}`;
+  startTimer(run_log, timer_label);
   try {
-    const { stdout, stderr } = await execFile(execPath, args);
+  try {
+    const { stdout, stderr } = await execFile(
+      "timeout",
+      [`${resolvedShellS}s`, execPath, ...args],
+      {
+        timeout: resolvedExecMs,
+        killSignal: "SIGKILL",
+        maxBuffer: EXEC_MAX_BUFFER,
+      }
+    );
 
     console.log("\n*********** stdout *****************");
     console.log(system.id);
@@ -57,8 +98,8 @@ const exec_hhm_data_grab = async (
     let note = {
       job_id: job_id,
       system_id: system.id,
-      stdout,
-      stderr,
+      stdout: truncateStream(stdout),
+      stderr: truncateStream(stderr),
     };
 
     await addLogEvent(I, run_log, "exec_hhm_data_grab", det, note, null);
@@ -98,8 +139,8 @@ const exec_hhm_data_grab = async (
       let note = {
         job_id: job_id,
         system_id: system.id,
-        stdout,
-        stderr,
+        stdout: truncateStream(stdout),
+        stderr: truncateStream(stderr),
       };
 
       await addLogEvent(W, run_log, "exec_hhm_data_grab", det, note, null);
@@ -201,7 +242,9 @@ const exec_hhm_data_grab = async (
     }
 
     // CHECK ERROR CODE - execFile timeout
-    if (error.code === 124) {
+    // error.code === 124: coreutils `timeout` wrapper killed the child.
+    // error.killed === true: Node's execFile { timeout } option fired SIGKILL.
+    if (error.code === 124 || error.killed === true) {
       if (ip_reset) {
         await add_to_online_queue(job_id, run_log, {
           id: system.id,
@@ -241,6 +284,12 @@ const exec_hhm_data_grab = async (
       phase: PHASE,
     });
     return null;
+  }
+  } finally {
+    await endTimer(run_log, timer_label, {
+      sme: system.id,
+      host_ip: system.host_ip,
+    });
   }
 };
 

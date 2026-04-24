@@ -19,6 +19,10 @@ const [
   writeLogEvents,
   dbInsertLogEvents,
   makeAppRunLog,
+  ,
+  ,
+  ,
+  addRunSummary,
 ] = require("./utils/logger/log");
 const {
   type: { I, E },
@@ -94,6 +98,7 @@ const onBoot = async () => {
 
     await runJob(run_log, run_group, schedule, manufacturer, modality);
 
+    await addRunSummary(run_log);
     await dbInsertLogEvents(pgp, run_log);
     await writeLogEvents(run_log);
     console.log("\n********** END **********");
@@ -101,6 +106,7 @@ const onBoot = async () => {
   } catch (error) {
     console.log(error);
     await addLogEvent(E, run_log, "onBoot", cat, null, error);
+    await addRunSummary(run_log);
     await dbInsertLogEvents(pgp, run_log);
     await writeLogEvents(run_log);
   }

@@ -3,6 +3,7 @@ const { get_hhm } = require("../../../sql/qf-provider");
 const { v4: uuidv4 } = require("uuid");
 
 const [addLogEvent] = require("../../../utils/logger/log");
+const { systemLogShape } = require("../../../util/log_shapes");
 const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf },
@@ -20,7 +21,7 @@ async function get_siemens_mri_data(run_log, capture_datetime) {
     const job_id = uuidv4();
     let note = {
       job_id,
-      system,
+      system: systemLogShape(system),
     };
     try {
       await addLogEvent(I, run_log, "get_siemens_mri_data", det, note, null);

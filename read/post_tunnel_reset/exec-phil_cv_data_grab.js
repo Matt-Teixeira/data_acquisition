@@ -5,6 +5,7 @@ const {
   add_to_online_queue,
   update_last_dir_date,
 } = require("../../redis");
+const { redactArgsForLog } = require("../../util/log_shapes");
 const [addLogEvent] = require("../../utils/logger/log");
 const {
   type: { I, W, E },
@@ -15,7 +16,7 @@ const exec_phil_cv_data_grab = async (run_log, sme, execPath, system, args) => {
   let note = {
     system_id: system.id,
     execute_path: execPath,
-    args,
+    args: redactArgsForLog(args),
   };
   await addLogEvent(I, run_log, "exec_phil_cv_data_grab", cal, note, null);
 

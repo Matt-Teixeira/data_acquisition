@@ -8,7 +8,16 @@ const { file_exists } = require("../../../util");
 const { v4: uuidv4 } = require("uuid");
 const path = require("path");
 
-const [addLogEvent] = require("../../../utils/logger/log");
+const [
+  addLogEvent,
+  ,
+  ,
+  ,
+  ,
+  startTimer,
+  endTimer,
+] = require("../../../utils/logger/log");
+const { systemLogShape } = require("../../../util/log_shapes");
 const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf },
@@ -20,8 +29,13 @@ async function get_philips_cv_data(run_log, capture_datetime) {
     await addLogEvent(I, run_log, "get_philips_cv_data", cal, null, null);
     const manufacturer = "Philips";
     const modality = "CV/IR";
+    startTimer(run_log, "philips_cv.sql_fetch");
     const systems = await get_hhm([manufacturer, modality]);
     const credentials = await getHhmCreds([manufacturer, modality]);
+    await endTimer(run_log, "philips_cv.sql_fetch", {
+      system_count: systems.length,
+      credential_count: credentials.length,
+    });
 
     for (const system of systems) {
       const job_id = uuidv4();
@@ -45,7 +59,11 @@ async function get_philips_cv_data(run_log, capture_datetime) {
     const promises = child_processes.map((child_process) => child_process());
 
     // AWAIT PROMISIS
+    startTimer(run_log, "philips_cv.promise_all_wait");
     await Promise.all(promises);
+    await endTimer(run_log, "philips_cv.promise_all_wait", {
+      child_process_count: child_processes.length,
+    });
   } catch (error) {
     console.log(error);
     await addLogEvent(E, run_log, "get_ge_cv_data", cat, null, error);
@@ -59,7 +77,7 @@ async function run_phil_cv(
   credentials,
   capture_datetime
 ) {
-  await addLogEvent(I, run_log, "run_phil_cv", cal, { job_id, system }, null);
+  await addLogEvent(I, run_log, "run_phil_cv", cal, { job_id, system: systemLogShape(system) }, null);
   const daily_dir_acqu_script = `./read/sh/Philips/${system.acquisition_script}`;
   const lod_dir_acqu_script = `./read/sh/Philips/phil_cv_21_lod.sh`;
   const parse_event_zip = `./read/sh/Philips/parse_event_zip.sh`;
@@ -138,9 +156,14 @@ async function run_phil_cv(
       system.debian_server_path,
       `${last_aquired_dir}/Event.zip`
     );
-    // 2) IF Event.zip NOT PRESENT: PULL DIR FROM HOST AGAIN
+    // 2) IF Event.zip NOT PRESENT: PULL DIR FROM HOST AGAIN.
+    // Track whether the re-pull succeeded: a truthy return means the fetch
+    // completed cleanly; a falsy return means it was killed (timeout) or
+    // errored, leaving the zip partial. If we didn't need to re-pull, treat
+    // the existing Event.zip as valid (repull_ok = true).
+    let repull_ok = true;
     if (!event_zip_there) {
-      await exec_phil_cv_data_grab(
+      const result = await exec_phil_cv_data_grab(
         job_id,
         run_log,
         system.id,
@@ -150,6 +173,11 @@ async function run_phil_cv(
         "last_phil_cv_daily",
         capture_datetime
       );
+      // Contract: exec_phil_cv_data_grab returns `false` or `null` on any
+      // failure path (timeout kill, connection error, extraction error,
+      // unknown exception); a successful fetch returns `stdout` (a string,
+      // which can legitimately be empty when lftp emits no stdout).
+      repull_ok = result !== false && result !== null;
     }
 
     // 1) CHECK FOR PRESENCE OF EventLog.txe WITHIN last_aquired_dir
@@ -158,7 +186,11 @@ async function run_phil_cv(
       `${last_aquired_dir}/EventLog.txe`
     );
 
-    if (!event_log_there) {
+    // Skip unzip if we just attempted a re-pull that was killed/errored:
+    // the Event.zip is partial and unzip would guarantee-fail, generating
+    // noise and potentially producing a misleading EventLog.txe from a
+    // stale backup zip found by parse_event_zip.sh's recursive find.
+    if (!event_log_there && repull_ok) {
       await exec_phil_cv_unzip(
         job_id,
         run_log,
@@ -176,8 +208,15 @@ async function run_phil_cv(
 
   // GET ALL DIRECTORIES FROM HOST BASED ON DELTA LIST FROM daily_files_to_pull. EXAMPLE: ["daily_2025_05_06", "daily_2025_05_08"]
   if (daily_files_to_pull !== null && daily_files_to_pull !== false) {
+    // Only unzip dirs whose fetch completed cleanly. Contract:
+    // exec_phil_cv_data_grab returns `false` or `null` on any failure path
+    // (timeout kill, connection error, extraction error, unknown exception).
+    // A successful fetch returns `stdout` - a STRING, which can legitimately
+    // be empty (lftp often produces no stdout even on success). So we check
+    // for the explicit failure sentinels rather than falsiness.
+    const successful_fetches = [];
     for await (const file of daily_files_to_pull) {
-      await exec_phil_cv_data_grab(
+      const result = await exec_phil_cv_data_grab(
         job_id,
         run_log,
         system.id,
@@ -187,10 +226,11 @@ async function run_phil_cv(
         "last_phil_cv_daily",
         capture_datetime
       );
+      if (result !== false && result !== null) successful_fetches.push(file);
     }
 
     // NOTE: LOOP THROUGH EACH DIRECTORY BROUGHT OVER FROM HOST, UNZIP AND FORMAT INTO EventLog.txe
-    for await (const daily_dir of daily_files_to_pull) {
+    for await (const daily_dir of successful_fetches) {
       await exec_phil_cv_unzip(
         job_id,
         run_log,
@@ -248,7 +288,7 @@ async function get_trace_files(
 ) {
   let note = {
     job_id,
-    system,
+    system: systemLogShape(system),
   };
 
   await addLogEvent(I, run_log, "get_trace_files", cal, note, null);

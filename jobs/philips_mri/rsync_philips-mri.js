@@ -2,7 +2,16 @@ const exec_remote_rsync = require("../../read/exec-remote_rsync");
 const rsync_local = require("../../relocate_files/rsync_local");
 const { get_phil_mri_systems } = require("../../sql/qf-provider");
 const captureDatetime = require("../../util/tools/captureDatetime");
-const [addLogEvent] = require("../../utils/logger/log");
+const [
+  addLogEvent,
+  ,
+  ,
+  ,
+  ,
+  startTimer,
+  endTimer,
+] = require("../../utils/logger/log");
+const { systemLogShape } = require("../../util/log_shapes");
 const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf }
@@ -10,7 +19,11 @@ const {
 const path = require("path");
 
 const rsync_philips_mri = async (run_log, job_id = null) => {
+  startTimer(run_log, "philips_mri_mmb.sql_fetch");
   const system_data = await get_phil_mri_systems();
+  await endTimer(run_log, "philips_mri_mmb.sql_fetch", {
+    system_count: Array.isArray(system_data) ? system_data.length : undefined,
+  });
 
   // Single capture_datetime for the whole cycle so all per-SME queue entries
   // share a timestamp (mirrors the schedule-based MMB driver pattern).
@@ -28,7 +41,11 @@ const rsync_philips_mri = async (run_log, job_id = null) => {
     const promises = child_processes.map((child_process) => child_process());
 
     // AWAIT PROMISIS
+    startTimer(run_log, "philips_mri_mmb.promise_all_wait");
     await Promise.all(promises);
+    await endTimer(run_log, "philips_mri_mmb.promise_all_wait", {
+      child_process_count: child_processes.length,
+    });
   } catch (error) {
     addLogEvent(E, run_log, "rsync_philips_mri", cat, null, error);
   }
@@ -36,21 +53,38 @@ const rsync_philips_mri = async (run_log, job_id = null) => {
 
 async function group_processes(run_log, system, capture_datetime, job_id) {
   const fallback = path.join(process.cwd(), "files");
-  addLogEvent(I, run_log, "rsync_philips_mri", cal, { system }, null);
-  await exec_remote_rsync(
-    run_log,
-    system.id,
-    "./read/sh/rsync_mmb.sh",
-    [system.user_id, system.mmb_ip, `${fallback}/${system.id}`],
-    capture_datetime,
-    job_id
-  );
-  await rsync_local(
-    run_log,
-    `${fallback}/${system.id}/host_logfiles`,
-    system,
-    fallback
-  );
+  addLogEvent(I, run_log, "rsync_philips_mri", cal, { system: systemLogShape(system) }, null);
+
+  const remote_label = `remote_rsync.${system.id}`;
+  startTimer(run_log, remote_label);
+  try {
+    await exec_remote_rsync(
+      run_log,
+      system.id,
+      "./read/sh/rsync_mmb.sh",
+      [system.user_id, system.mmb_ip, `${fallback}/${system.id}`],
+      capture_datetime,
+      job_id
+    );
+  } finally {
+    await endTimer(run_log, remote_label, {
+      sme: system.id,
+      mmb_ip: system.mmb_ip,
+    });
+  }
+
+  const local_label = `local_rsync.${system.id}`;
+  startTimer(run_log, local_label);
+  try {
+    await rsync_local(
+      run_log,
+      `${fallback}/${system.id}/host_logfiles`,
+      system,
+      fallback
+    );
+  } finally {
+    await endTimer(run_log, local_label, { sme: system.id });
+  }
 }
 
 module.exports = rsync_philips_mri;

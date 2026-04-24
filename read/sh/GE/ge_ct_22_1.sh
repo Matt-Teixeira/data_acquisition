@@ -19,7 +19,6 @@ cd /usr/g/service/state;
 mget ssw.dastools.hist* -O $4; 
 mget ssw.calreport.hist -O $4;
 mget ssw.GenCal.hist -O $4;
-mget ssw.GenCal.hist -O $4;
 mget ssw.tube_align.hist -O $4;
 mget air_bubble_detection_result.csv -O $4;
 mget TubeSpits.csv -O $4;

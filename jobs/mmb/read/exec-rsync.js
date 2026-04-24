@@ -11,6 +11,7 @@ const {
 } = require("../../../util/tools/connection_regex");
 
 const [addLogEvent] = require("../../../utils/logger/log");
+const { redactArgsForLog } = require("../../../util/log_shapes");
 const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf }
@@ -43,7 +44,8 @@ const execRsync = async (
     job_id,
     sme: sme,
     rsyncShPath: rsyncShPath,
-    rsyncShArgs: rsyncShArgs
+    // rsyncShArgs = [sme, remote_path, local_path, ip_address, user_id]; redact user_id at index 4.
+    rsyncShArgs: redactArgsForLog(rsyncShArgs, [4])
   };
   await addLogEvent(I, run_log, "execRsync", cal, note, null);
 

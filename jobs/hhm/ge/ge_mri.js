@@ -3,7 +3,16 @@ const { get_hhm, getHhmCreds } = require("../../../sql/qf-provider");
 const { decrypt_string } = require("../../../util/encrypt/decrypt");
 const { v4: uuidv4 } = require("uuid");
 
-const [addLogEvent] = require("../../../utils/logger/log");
+const [
+  addLogEvent,
+  ,
+  ,
+  ,
+  ,
+  startTimer,
+  endTimer,
+] = require("../../../utils/logger/log");
+const { systemLogShape } = require("../../../util/log_shapes");
 const {
   type: { I, W, E },
   tag: { cal, det, cat, seq, qaf }
@@ -14,15 +23,20 @@ async function get_ge_mri_data(run_log, capture_datetime) {
 
   const manufacturer = "GE";
   const modality = "MRI";
+  startTimer(run_log, "ge_mri.sql_fetch");
   const systems = await get_hhm([manufacturer, modality]);
   const credentials = await getHhmCreds([manufacturer, modality]);
+  await endTimer(run_log, "ge_mri.sql_fetch", {
+    system_count: systems.length,
+    credential_count: credentials.length,
+  });
 
   const child_processes = [];
   for (const system of systems) {
     const job_id = uuidv4();
     let note = {
       job_id,
-      system
+      system: systemLogShape(system)
     };
     try {
       await addLogEvent(I, run_log, "get_ge_mri_data", det, note, null);
@@ -52,7 +66,7 @@ async function get_ge_mri_data(run_log, capture_datetime) {
     } catch (error) {
       let note = {
         job_id: job_id,
-        system
+        system: systemLogShape(system)
       };
       await addLogEvent(E, run_log, "get_ge_mri_data", cat, note, error);
     }
@@ -71,7 +85,11 @@ async function get_ge_mri_data(run_log, capture_datetime) {
     const promises = child_processes.map((child_process) => child_process());
 
     // AWAIT PROMISIS
+    startTimer(run_log, "ge_mri.promise_all_wait");
     await Promise.all(promises);
+    await endTimer(run_log, "ge_mri.promise_all_wait", {
+      child_process_count: child_processes.length,
+    });
   } catch (error) {
     await addLogEvent(
       E,
