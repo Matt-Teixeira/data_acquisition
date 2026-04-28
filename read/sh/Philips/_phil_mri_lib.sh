@@ -11,8 +11,8 @@
 # deprecated algorithms (+ssh-rsa/ssh-dss + group14-sha1 enabled, strict
 # host-key check relaxed to accept-new).
 
-SSH_OPTS_MODERN='-oConnectTimeout=15 -oKexAlgorithms=diffie-hellman-group14-sha1'
-SSH_OPTS_LEGACY='-oConnectTimeout=15 -oKexAlgorithms=+diffie-hellman-group14-sha1 -oHostKeyAlgorithms=+ssh-rsa,ssh-dss -oPubkeyAcceptedAlgorithms=+ssh-rsa -oStrictHostKeyChecking=accept-new'
+SSH_OPTS_MODERN='-oConnectTimeout=10 -oServerAliveInterval=10 -oServerAliveCountMax=6 -oKexAlgorithms=diffie-hellman-group14-sha1'
+SSH_OPTS_LEGACY='-oConnectTimeout=10 -oServerAliveInterval=10 -oServerAliveCountMax=6 -oKexAlgorithms=+diffie-hellman-group14-sha1 -oHostKeyAlgorithms=+ssh-rsa,ssh-dss -oPubkeyAcceptedAlgorithms=+ssh-rsa -oStrictHostKeyChecking=accept-new'
 
 # ensure_dirs DEST SUBDIR1 [SUBDIR2 ...]
 # Creates DEST then each SUBDIR under it (only if missing).

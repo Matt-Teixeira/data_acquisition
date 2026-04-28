@@ -3,7 +3,7 @@ source "$(dirname "$0")/_phil_mri_lib.sh"
 
 ensure_dirs "$4" monitoring
 
-lftp -c "set sftp:connect-program 'ssh $SSH_OPTS_LEGACY'; set net:timeout 10; set ftp:ssl-allow off; set net:reconnect-interval-base 5; set net:max-retries 1; set xfer:clobber true; open sftp://$2:$3@$1;
+lftp -c "set sftp:connect-program 'ssh $SSH_OPTS_LEGACY'; set net:timeout 10; set ftp:ssl-allow off; set net:reconnect-interval-base 5; set net:max-retries 1; set net:persist-retries 0; set cmd:fail-exit yes; set xfer:clobber true; open sftp://$2:$3@$1;
 cd /cygdrive/g/Site;
 mget monitor_System* -O $4/monitoring;
 mget monitor_cryocompressor* -O $4/monitoring;
