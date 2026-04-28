@@ -12,7 +12,7 @@ set remote_path "/usr/g/service/log"
 set file_pattern "gesys*.log"
 set local_path [lindex $argv 3]
 
-spawn bash -c "ssh -oKexAlgorithms=diffie-hellman-group14-sha1 $user@$host 'cd $remote_path && tar -cf - $file_pattern' | tar -xf - -C $local_path"
+spawn timeout 240 bash -c "ssh -oKexAlgorithms=diffie-hellman-group14-sha1 -oConnectTimeout=10 -oServerAliveInterval=10 -oServerAliveCountMax=6 $user@$host 'cd $remote_path && tar -cf - $file_pattern' | tar -xf - -C $local_path"
 
 expect {
     "*assword:*" {

@@ -6,9 +6,9 @@ SSH_OPTS="
   -o KexAlgorithms=+diffie-hellman-group14-sha1  \
   -o HostKeyAlgorithms=+ssh-rsa \
   -o PubkeyAcceptedAlgorithms=+ssh-rsa \
-  -o ConnectTimeout=5 \
+  -o ConnectTimeout=10 \
   -o ServerAliveInterval=10 \
   -o ServerAliveCountMax=6
 "
 
-sshpass -p $3 scp $SSH_OPTS $2@$1:'/C/Program\ Files/GE\ Medical\ Systems/DL/Log/sysError.log' $4
+timeout 240 sshpass -p $3 scp $SSH_OPTS $2@$1:'/C/Program\ Files/GE\ Medical\ Systems/DL/Log/sysError.log' $4

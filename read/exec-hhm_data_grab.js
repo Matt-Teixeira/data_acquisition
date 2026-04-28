@@ -27,7 +27,7 @@ const PHASE = "grab";
 // stdout/stderr); the Node backstop fires for scripts that trap TERM. Callers
 // can override the shell timeout per-call via the last argument; the Node
 // backstop auto-scales to stay >= shellTimeoutS*1000 + 30s.
-const SHELL_TIMEOUT_S = Number(process.env.SHELL_TIMEOUT_S) || 90;
+const SHELL_TIMEOUT_S = Number(process.env.SHELL_TIMEOUT_S) || 840;
 const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS) || 120_000;
 const EXEC_MAX_BUFFER = 10 * 1024 * 1024;
 const MAX_STREAM_CHARS = 4096;

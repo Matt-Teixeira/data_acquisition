@@ -1,8 +1,9 @@
 #!/bin/bash
 [ ! -d "$4" ] && mkdir $4
 
-lftp -c "set sftp:connect-program 'ssh -o KexAlgorithms=ecdh-sha2-nistp256'; 
-set net:timeout 10; 
+timeout 240 lftp -c "set sftp:connect-program 'ssh -o KexAlgorithms=ecdh-sha2-nistp256 -oConnectTimeout=10 -oServerAliveInterval=10 -oServerAliveCountMax=6';
+set cmd:fail-exit yes;
+set net:timeout 10;
 set ftp:ssl-allow off;
 set net:persist-retries 0;
 set net:reconnect-interval-base 5; 

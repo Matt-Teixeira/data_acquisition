@@ -4,13 +4,14 @@
 # Single lftp sftp session (replaces prior 11 parallel scp invocations).
 # Eliminates per-file SSH handshake cost and sidesteps sshd MaxStartups
 # rate-limiting that required `sleep 1` staggers under the old scp pattern.
-lftp -c "set sftp:connect-program 'ssh -a -x \
+timeout 240 lftp -c "set sftp:connect-program 'ssh -a -x \
     -oKexAlgorithms=+diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha256 \
     -oHostKeyAlgorithms=+ssh-rsa \
     -oPubkeyAcceptedAlgorithms=+ssh-rsa \
     -oConnectTimeout=10 \
     -oServerAliveInterval=10 \
     -oServerAliveCountMax=6';
+set cmd:fail-exit yes;
 set net:timeout 10;
 set ftp:ssl-allow off;
 set net:persist-retries 0;

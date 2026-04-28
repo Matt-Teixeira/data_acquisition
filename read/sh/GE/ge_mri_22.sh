@@ -20,7 +20,7 @@ SSH_OPTS=(
   -o ServerAliveCountMax=6
 )
 
-sshpass -p "$password" scp \
+timeout 240 sshpass -p "$password" scp \
   "${SSH_OPTS[@]}" \
   "${user}@${host}:/usr/g/service/log/gesys*.log" \
   "$dest_dir"

@@ -1,13 +1,15 @@
 #!/bin/bash
 [ ! -d "$4" ] && mkdir $4
 
-lftp -c "
-set net:timeout 10; 
+timeout 240 lftp -c "
+set cmd:fail-exit yes;
+set net:timeout 10;
+set net:persist-retries 0;
 set net:reconnect-interval-base 5;
-set net:reconnect-interval-max 5; 
-set net:max-retries 2; 
+set net:reconnect-interval-max 5;
+set net:max-retries 1;
 set ftp:ssl-allow off;
-set xfer:clobber true; 
-open ftp://$2:$3@$1; 
-cd /usr/g/service/log/; 
+set xfer:clobber true;
+open ftp://$2:$3@$1;
+cd /usr/g/service/log/;
 mget gesys_*.log -O $4"

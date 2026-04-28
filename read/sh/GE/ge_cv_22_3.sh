@@ -10,4 +10,4 @@ SSH_OPTS="
   -o ServerAliveInterval=10 \
   -o ServerAliveCountMax=6
 "
-sshpass -p $3 scp $SSH_OPTS $2@$1:'/c/Program\ Files/GE\ Medical\ Systems/DL/Log/sysError.log' $4
+timeout 240 sshpass -p $3 scp $SSH_OPTS $2@$1:'/c/Program\ Files/GE\ Medical\ Systems/DL/Log/sysError.log' $4

@@ -11,4 +11,4 @@ SSH_OPTS="
   -o ServerAliveCountMax=6
 "
 
-sshpass -p $3 scp $SSH_OPTS $2@$1:/usr/g/service/log/gesys*.log $4
+timeout 240 sshpass -p $3 scp $SSH_OPTS $2@$1:/usr/g/service/log/gesys*.log $4

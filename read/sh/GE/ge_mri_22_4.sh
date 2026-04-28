@@ -12,14 +12,14 @@ SSH_OPTS=(
   -T
   -o StrictHostKeyChecking=accept-new
   -o KexAlgorithms=diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group14-sha256
-  -o ConnectTimeout=30
+  -o ConnectTimeout=10
   -o ServerAliveInterval=10
   -o ServerAliveCountMax=6
 )
 
 # Get file list and FILTER OUT remote banner noise
 file_list="$(
-  sshpass -p "$pass" ssh "${SSH_OPTS[@]}" "$user@$host" \
+  timeout 240 sshpass -p "$pass" ssh "${SSH_OPTS[@]}" "$user@$host" \
     "/bin/sh -c 'for f in /usr/g/service/log/gesys*.log; do [ -f \"\$f\" ] && echo \"\$f\"; done'" \
   | tr -d '\r' \
   | grep -E '^/usr/g/service/log/gesys.*\.log$' \
@@ -44,7 +44,7 @@ while IFS= read -r remote_file; do
 
   echo "Downloading $remote_file -> $out"
 
-  if sshpass -p "$pass" ssh "${SSH_OPTS[@]}" "$user@$host" \
+  if timeout 240 sshpass -p "$pass" ssh "${SSH_OPTS[@]}" "$user@$host" \
     "/bin/sh -c 'cat \"$remote_file\"'" < /dev/null \
     | sed '/^DICTIONARYDIR is not set/d;
            /^ODINA_DICTIONARY is not set/d;
