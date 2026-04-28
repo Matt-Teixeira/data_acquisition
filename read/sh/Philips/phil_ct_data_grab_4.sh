@@ -7,11 +7,16 @@
 # hosts (+ssh-rsa host keys, group14-sha1 re-enabled).
 [ ! -d "$4" ] && mkdir "$4"
 
-lftp -c "set net:timeout 20; \
+timeout 240 lftp -c "set net:timeout 10; \
 set ftp:ssl-allow off; \
 set net:reconnect-interval-base 5; \
-set net:max-retries 2; \
+set net:max-retries 1; \
+set net:persist-retries 0; \
+set cmd:fail-exit yes; \
 set sftp:connect-program 'ssh \
+  -oConnectTimeout=10 \
+  -oServerAliveInterval=10 \
+  -oServerAliveCountMax=6 \
   -oKexAlgorithms=+diffie-hellman-group14-sha1 \
   -oHostKeyAlgorithms=+ssh-rsa \
   -oPubkeyAcceptedAlgorithms=+ssh-rsa \

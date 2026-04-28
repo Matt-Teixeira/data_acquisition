@@ -7,6 +7,6 @@
 ### "--tlsv1.[1-3]"
 ### "--tls-max 1.[1-3]"
 [ ! -d "$2" ] && mkdir $2
-curl -k -m 20 https://$1/service/autoreport/hold/EvtApplication_Today.txt >"$2/Application.log"
+timeout 240 curl -k --connect-timeout 10 -m 20 https://$1/service/autoreport/hold/EvtApplication_Today.txt >"$2/Application.log"
 
 # curl -k -m 10 https://10.130.18.253/service/autoreport/hold/EvtApplication_Today.txt >"/home/matt-teixeira/hep3/hhm_data_acquisition/test_logs/Application.log"
