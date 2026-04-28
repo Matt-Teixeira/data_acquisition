@@ -27,8 +27,8 @@ const PHASE = "transfer";
 // Shell-level timeout fires first (coreutils `timeout`, clean exit 124,
 // preserves stdout/stderr); EXEC_TIMEOUT_MS is the Node backstop for scripts
 // that trap TERM. Keep EXEC_TIMEOUT_MS > SHELL_TIMEOUT_S * 1000 to avoid a race.
-const SHELL_TIMEOUT_S = Number(process.env.SHELL_TIMEOUT_S) || 90;
-const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS) || 120_000;
+const SHELL_TIMEOUT_S = Number(process.env.SHELL_TIMEOUT_S) || 300;
+const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS) || 330_000;
 const EXEC_MAX_BUFFER = 10 * 1024 * 1024;
 // Per-call counter: this function is invoked multiple times per system
 // (per file), so timer labels must be unique per call to avoid Map collisions.
