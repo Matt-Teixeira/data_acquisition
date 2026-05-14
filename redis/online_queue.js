@@ -32,11 +32,17 @@ async function add_to_online_queue(job_id, run_log, system) {
       JSON.stringify(payload)
     ]);
     await redisClient.quit();
+    // Surface the classification fields the caller passed in so audits of
+    // the JSON log can read category/success without dumping Redis. The
+    // payload itself carries the full system shape; we only need the two
+    // fields that drive downstream interpretation.
     let note = {
       job_id,
       system_id: system.id,
       queue: "online:queue",
-      message: "Sent to redis online queue"
+      message: "Sent to redis online queue",
+      error_category: system.error_category ?? null,
+      successful_acquisition: system.successful_acquisition ?? null
     };
     await addLogEvent(I, run_log, "add_to_online_queue", det, note, null);
   } catch (error) {

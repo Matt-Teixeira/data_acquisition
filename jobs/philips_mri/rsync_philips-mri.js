@@ -2,6 +2,7 @@ const exec_remote_rsync = require("../../read/exec-remote_rsync");
 const rsync_local = require("../../relocate_files/rsync_local");
 const { get_phil_mri_systems } = require("../../sql/qf-provider");
 const captureDatetime = require("../../util/tools/captureDatetime");
+const { v4: uuidv4 } = require("uuid");
 const [
   addLogEvent,
   ,
@@ -29,11 +30,18 @@ const rsync_philips_mri = async (run_log, job_id = null) => {
   // share a timestamp (mirrors the schedule-based MMB driver pattern).
   const capture_datetime = captureDatetime();
 
+  // The outer `job_id` param is preserved for backwards compat with retry
+  // callers but is intentionally not threaded into per-system events — each
+  // system needs its own UUID so the JSON log can correlate a single
+  // system's CALL/DETAILS/CATCH chain. (Pre-fix: all systems shared the
+  // outer caller's timestamp/null as job_id, breaking per-system tracing.)
+  void job_id;
+
   const child_processes = [];
   for await (const system of system_data) {
     console.log(system.id);
     child_processes.push(
-      async () => await group_processes(run_log, system, capture_datetime, job_id)
+      async () => await group_processes(run_log, system, capture_datetime)
     );
   }
   try {
@@ -51,9 +59,13 @@ const rsync_philips_mri = async (run_log, job_id = null) => {
   }
 };
 
-async function group_processes(run_log, system, capture_datetime, job_id) {
+async function group_processes(run_log, system, capture_datetime) {
+  // Per-system UUID so each system's exec_remote_rsync CALL/DETAILS/CATCH
+  // chain is independently traceable in the JSON log. Mirrors the pattern
+  // used in jobs/hhm/_shared.js.
+  const job_id = uuidv4();
   const fallback = path.join(process.cwd(), "files");
-  addLogEvent(I, run_log, "rsync_philips_mri", cal, { system: systemLogShape(system) }, null);
+  addLogEvent(I, run_log, "rsync_philips_mri", cal, { job_id, system: systemLogShape(system) }, null);
 
   const remote_label = `remote_rsync.${system.id}`;
   startTimer(run_log, remote_label);

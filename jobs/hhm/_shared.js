@@ -10,7 +10,7 @@ const [
 ] = require("../../utils/logger/log");
 const { systemLogShape } = require("../../util/log_shapes");
 const {
-  type: { I, E },
+  type: { I, W, E },
   tag: { cal, det, cat },
 } = require("../../utils/logger/enums");
 const exec_hhm_data_grab = require("../../read/exec-hhm_data_grab");
@@ -116,7 +116,33 @@ const runHhmJob = async (run_log, capture_datetime, config) => {
     const note = { job_id, system: systemLogShape(system) };
     try {
       await addLogEvent(I, run_log, logLabel, det, note, null);
-      if (!passesPredicate(system)) continue;
+      if (!passesPredicate(system)) {
+        // Why log: the silent `continue` here previously produced NO_END jobs
+        // (e.g. MRI SME20004) - a DETAILS event appeared with null host_ip
+        // and nothing else, making the system look hung when it was simply
+        // skipped for missing config. Name the missing field so ops can fix
+        // the row rather than chase a phantom hang.
+        const missing = !system.host_ip
+          ? "host_ip"
+          : !system.credentials_group
+          ? "credentials_group"
+          : !system.acquisition_script
+          ? "acquisition_script"
+          : "unknown";
+        await addLogEvent(
+          W,
+          run_log,
+          logLabel,
+          det,
+          {
+            job_id,
+            system_id: system.id,
+            skip_reason: `missing ${missing}`,
+          },
+          null
+        );
+        continue;
+      }
 
       const creds = credentials
         ? credentials.find((c) => c.id == system.credentials_group)

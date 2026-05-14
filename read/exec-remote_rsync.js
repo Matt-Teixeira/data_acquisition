@@ -66,6 +66,18 @@ const exec_remote_rsync = async (
       connection_regexes
     );
 
+    // Success-path breadcrumb. Pre-fix this function only logged on CATCH,
+    // so a successful rsync invocation was invisible in the JSON log — only
+    // the downstream add_to_online_queue event hinted that it ran. Pattern
+    // matches read/exec-hhm_data_grab.js. Surface the classifier's verdict
+    // so audits can see partial-pull tagging without dumping Redis.
+    await addLogEvent(I, run_log, "exec_remote_rsync", det, {
+      job_id,
+      system_id: sme,
+      classified_category: extracted ? extracted.error_category : null,
+      classified_success: extracted ? extracted.successful_acquisition : true,
+    }, null);
+
     if (capture_datetime !== null && capture_datetime !== "ip_reset") {
       await add_to_online_queue(job_id, run_log, {
         id: sme,

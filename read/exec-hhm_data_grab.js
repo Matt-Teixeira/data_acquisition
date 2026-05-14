@@ -245,6 +245,27 @@ const exec_hhm_data_grab = async (
     // error.code === 124: coreutils `timeout` wrapper killed the child.
     // error.killed === true: Node's execFile { timeout } option fired SIGKILL.
     if (error.code === 124 || error.killed === true) {
+      // Why log here: previously this branch jumped straight to
+      // add_to_redis_queue with no CATCH event, so timed-out systems looked
+      // hung in the JSON log between exec_hhm_data_grab CALL and the queue
+      // CALL ~Ns later (e.g. MRI SME01096). Emit a breadcrumb so the
+      // termination cause is visible in the audit log, mirroring the
+      // pattern used by the connection/extraction branches above.
+      await addLogEvent(
+        W,
+        run_log,
+        "exec_hhm_data_grab",
+        cat,
+        {
+          job_id,
+          system_id: system.id,
+          error_category: "hanging_exec",
+          reason: error.killed
+            ? "execFile-timeout-SIGKILL"
+            : "coreutils-timeout-124",
+        },
+        error
+      );
       if (ip_reset) {
         await add_to_online_queue(job_id, run_log, {
           id: system.id,
