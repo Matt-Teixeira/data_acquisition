@@ -645,6 +645,62 @@ CREATE TABLE IF NOT EXISTS alert.offline_hhm_conn(
     inserted_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Stats: tunnel + IP health history (per-run × per-system fact + per-run × per-tunnel rollup)
+CREATE TABLE IF NOT EXISTS stats.acquisition_history(
+    id BIGSERIAL PRIMARY KEY,
+    run_id UUID NOT NULL,
+    acq_run_id UUID,
+    app_name VARCHAR(64) NOT NULL,
+    system_id VARCHAR(8) NOT NULL,
+    data_source VARCHAR(8) NOT NULL,
+    manufacturer VARCHAR(32),
+    modality VARCHAR(32),
+    capture_datetime TIMESTAMPTZ,
+    successful_acquisition BOOLEAN NOT NULL,
+    host_intervention BOOLEAN,
+    connection_error TEXT,
+    error_category VARCHAR(64),
+    phase VARCHAR(32),
+    host_ip INET,
+    tunnel_id INTEGER,
+    endpoint_id INTEGER,
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_acq_hist_system_inserted ON stats.acquisition_history(system_id, inserted_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_acq_hist_tunnel_inserted ON stats.acquisition_history(tunnel_id, inserted_at DESC) WHERE tunnel_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_acq_hist_inserted_brin ON stats.acquisition_history USING BRIN(inserted_at);
+
+CREATE INDEX IF NOT EXISTS idx_acq_hist_run_id ON stats.acquisition_history(run_id);
+
+CREATE INDEX IF NOT EXISTS idx_acq_hist_acq_run_id ON stats.acquisition_history(acq_run_id) WHERE acq_run_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_acq_hist_err_cat_inserted ON stats.acquisition_history(error_category, inserted_at DESC) WHERE error_category IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS stats.tunnel_run_summary(
+    id BIGSERIAL PRIMARY KEY,
+    run_id UUID NOT NULL,
+    app_name VARCHAR(64) NOT NULL,
+    tunnel_id INTEGER,
+    endpoint_id INTEGER,
+    subnet_24 CIDR,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    systems_total INT NOT NULL,
+    systems_success INT NOT NULL,
+    systems_failed INT NOT NULL,
+    systems_intervention INT NOT NULL,
+    err_cat_breakdown JSONB
+);
+
+-- Dedupe constraint: one row per (run × tunnel × app), with NULL tunnel_id treated as a single bucket
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tun_run_sum_run_tunnel_app ON stats.tunnel_run_summary(run_id, COALESCE(tunnel_id, -1), app_name);
+
+CREATE INDEX IF NOT EXISTS idx_tun_run_sum_tunnel_processed ON stats.tunnel_run_summary(tunnel_id, processed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_tun_run_sum_subnet_processed ON stats.tunnel_run_summary(subnet_24, processed_at DESC);
+
 -- >> INDEXES
 BEGIN;
 

@@ -92,6 +92,10 @@ const onBoot = async () => {
     const manufacturer = process.argv[4] || null;
     const modality = process.argv[5] || null;
 
+    run_log.run_group = run_group;
+    run_log.manufacturer = manufacturer;
+    run_log.modality = modality;
+
     if (run_group === "ip_sec") {
       await get_ip_sec_table();
     }

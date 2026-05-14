@@ -19,10 +19,17 @@ async function add_to_online_queue(job_id, run_log, system) {
     process.env.REDIS_HOST
   );
   try {
+    const payload = {
+      ...system,
+      acq_run_id: run_log && run_log.run_id,
+      app_name: run_log && run_log.run_group,
+      manufacturer: run_log && run_log.manufacturer,
+      modality: run_log && run_log.modality,
+    };
     await redisClient.sendCommand([
       "RPUSH",
       "online:queue",
-      JSON.stringify(system)
+      JSON.stringify(payload)
     ]);
     await redisClient.quit();
     let note = {

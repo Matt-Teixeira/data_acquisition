@@ -1,4 +1,6 @@
 const db = require("../../utils/db/pg-pool");
+const pgp = require("pg-promise")();
+const { pg_column_sets } = require("../../utils/db/sql/pg-helpers");
 const {
   get_redis_online_queue,
   clear_redis_online_queue
@@ -24,6 +26,7 @@ async function insertHeartbeat(run_log) {
 
   await clear_redis_online_queue();
   await upsert_query_builder(queue);
+  await writeStatsHistory(run_log, queue);
 }
 
 const upsert_query_builder = async (queue) => {
@@ -204,6 +207,125 @@ const upsert_query_builder = async (queue) => {
 
   if (hhm_failed_values.length) await db.any(hhm_failed_query_string);
   if (mmb_failed_values.length) await db.any(mmb_failed_query_string);
+};
+
+// Persist per-run, per-system tunnel/IP health to stats.* tables. Runs after the
+// alert.offline_*_conn UPSERTs and is wrapped so any failure here does not
+// affect the existing alert path.
+const writeStatsHistory = async (run_log, queue) => {
+  try {
+    if (!queue || queue.length === 0) return;
+
+    // Match upsert_query_builder's last-wins dedupe by (data_source, id).
+    const latestByKey = new Map();
+    for (const system of queue) {
+      latestByKey.set(`${system.data_source}:${system.id}`, system);
+    }
+    const deduped = [...latestByKey.values()];
+
+    // Resolve host_ip + tunnel_id + endpoint_id in one batched lookup. host(inet)
+    // strips any /N suffix so we can re-use the value as a plain dotted-quad.
+    const system_ids = deduped.map((s) => s.id);
+    const enrichRows = await db.any(
+      `SELECT ac.system_id,
+              host(ac.host_ip) AS host_ip,
+              ips.tunnel_id,
+              ips.endpoint_id
+         FROM config.acquisition ac
+         LEFT JOIN util.ip_sec ips ON ac.host_ip = ips.remote_subnet_ip
+        WHERE ac.system_id = ANY($1::text[])`,
+      [system_ids]
+    );
+    const ipMap = new Map(enrichRows.map((r) => [r.system_id, r]));
+
+    const history_rows = deduped.map((s) => {
+      const ip = ipMap.get(s.id) || {};
+      return {
+        run_id: run_log.run_id,
+        acq_run_id: s.acq_run_id || null,
+        app_name: s.app_name || s.data_source,
+        system_id: s.id,
+        data_source: s.data_source,
+        manufacturer: s.manufacturer || null,
+        modality: s.modality || null,
+        capture_datetime: s.capture_datetime || null,
+        successful_acquisition: !!s.successful_acquisition,
+        host_intervention:
+          s.host_intervention === undefined || s.host_intervention === null
+            ? null
+            : !!s.host_intervention,
+        connection_error: s.connection_error || null,
+        error_category: s.error_category || null,
+        phase: s.phase || null,
+        host_ip: ip.host_ip || null,
+        tunnel_id: ip.tunnel_id == null ? null : ip.tunnel_id,
+        endpoint_id: ip.endpoint_id == null ? null : ip.endpoint_id,
+      };
+    });
+
+    if (history_rows.length) {
+      const q = pgp.helpers.insert(
+        history_rows,
+        pg_column_sets.stats.acquisition_history
+      );
+      await db.none(q);
+    }
+
+    const groups = new Map();
+    for (const row of history_rows) {
+      const key = `${row.app_name}::${row.tunnel_id == null ? "null" : row.tunnel_id}`;
+      let g = groups.get(key);
+      if (!g) {
+        g = {
+          run_id: run_log.run_id,
+          app_name: row.app_name,
+          tunnel_id: row.tunnel_id,
+          endpoint_id: row.endpoint_id,
+          subnet_24: row.host_ip ? toSubnet24(row.host_ip) : null,
+          systems_total: 0,
+          systems_success: 0,
+          systems_failed: 0,
+          systems_intervention: 0,
+          err_cat_breakdown: {},
+        };
+        groups.set(key, g);
+      }
+      g.systems_total += 1;
+      if (row.successful_acquisition) g.systems_success += 1;
+      else g.systems_failed += 1;
+      if (row.host_intervention) g.systems_intervention += 1;
+      if (row.error_category) {
+        g.err_cat_breakdown[row.error_category] =
+          (g.err_cat_breakdown[row.error_category] || 0) + 1;
+      }
+    }
+    const summary_rows = [...groups.values()];
+
+    if (summary_rows.length) {
+      const q = pgp.helpers.insert(
+        summary_rows,
+        pg_column_sets.stats.tunnel_run_summary
+      );
+      await db.none(q);
+    }
+
+    await addLogEvent(
+      I,
+      run_log,
+      "writeStatsHistory",
+      det,
+      { history_count: history_rows.length, summary_count: summary_rows.length },
+      null
+    );
+  } catch (error) {
+    await addLogEvent(E, run_log, "writeStatsHistory", cat, null, error);
+  }
+};
+
+const toSubnet24 = (ip) => {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return null;
+  return `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
 };
 
 module.exports = { insertHeartbeat };
