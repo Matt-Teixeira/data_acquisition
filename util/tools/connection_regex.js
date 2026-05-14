@@ -269,6 +269,20 @@ const connection_regexes = [
     successful_acquisition: true,
     re: /mget: Access failed: 550/
   },
+  // lftp wildcard non-match: when an mget pattern matches zero files on the
+  // remote, lftp emits "<pattern>: no files found" and (with cmd:fail-exit yes,
+  // as in GE shell scripts) terminates the whole script non-zero. Connection
+  // and earlier transfers were healthy; this is benign partial-pull state.
+  {
+    connection_error: false,
+    extraction_error: true,
+    error_type: "file",
+    error_category: "file_missing_partial",
+    message: "no files matched mget wildcard (partial pull)",
+    manual_intervention: false,
+    successful_acquisition: true,
+    re: /mget: \S+: no files found/i
+  },
   // lftp mirror per-file failure - common on Philips CV where Windows file
   // locks during scanner operation prevent lftp from opening specific .zip
   // files (Logging.zip, PersistentData.zip, Setup.zip). The mirror command
