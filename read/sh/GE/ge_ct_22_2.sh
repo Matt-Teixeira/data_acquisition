@@ -2,7 +2,6 @@
 [ ! -d "$4" ] && mkdir $4
 
 timeout 240 lftp -c "set sftp:connect-program 'ssh -o KexAlgorithms=diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha256 -oConnectTimeout=10 -oServerAliveInterval=10 -oServerAliveCountMax=6';
-set cmd:fail-exit yes;
 set net:timeout 10;
 set ftp:ssl-allow off;
 set net:persist-retries 0;

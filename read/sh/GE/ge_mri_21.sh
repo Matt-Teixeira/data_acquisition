@@ -2,7 +2,6 @@
 [ ! -d "$4" ] && mkdir $4
 
 timeout 240 lftp -c "
-set cmd:fail-exit yes;
 set net:timeout 10;
 set net:persist-retries 0;
 set net:reconnect-interval-base 5;

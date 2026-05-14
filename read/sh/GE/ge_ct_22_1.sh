@@ -8,7 +8,6 @@ timeout 240 lftp -c "set sftp:connect-program 'ssh -a -x \
     -oConnectTimeout=10 \
     -oServerAliveInterval=10 \
     -oServerAliveCountMax=6';
-set cmd:fail-exit yes;
 set net:timeout 10;
 set ftp:ssl-allow off;
 set net:persist-retries 0;
