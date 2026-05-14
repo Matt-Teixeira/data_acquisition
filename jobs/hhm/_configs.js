@@ -125,6 +125,14 @@ const siemensMri = {
 // Lookup map for tunnel_reset retry path. Keyed on (manufacturer, system.modality)
 // where system.modality is the DB value. For siemens_ct, that's "CT" — not the
 // "%CT" LIKE pattern used for main-run fetch.
+//
+// "Siemens:PET/CT" alias: PET/CT scanners are operated as CT scanners — same
+// acquisition_script, same log files, same retry semantics. The main-run
+// siemens_ct path already picks them up because its SQL filter uses
+// `modality LIKE '%CT'` (matches both "CT" and "PET/CT"), but on retry the
+// system row carries modality="PET/CT" and would hit "No HHM config registered"
+// without this alias. Pointing the alias at the same siemensCt object keeps
+// per-(manufacturer, modality) credential caching coherent in tunnel_reset.
 const registry = {
   "GE:CT": geCt,
   "GE:CV/IR": geCv,
@@ -132,6 +140,7 @@ const registry = {
   "Philips:CT": philipsCt,
   "Philips:MRI": philipsMri,
   "Siemens:CT": siemensCt,
+  "Siemens:PET/CT": siemensCt,
   "Siemens:CV/IR": siemensCv,
   "Siemens:MRI": siemensMri,
 };
