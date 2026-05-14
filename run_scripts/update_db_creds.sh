@@ -4,7 +4,7 @@ set -euo pipefail
 IMAGE="${IMAGE:-node:16.20.2}"
 DOCKER="/usr/bin/docker"
 
-APP_DIR="/home/matt-teixeira/apps/data_acquisition"
+APP_DIR="/opt/apps/data_acquisition"
 ENV_FILE="$APP_DIR/.env"
 
 # Ensure image exists

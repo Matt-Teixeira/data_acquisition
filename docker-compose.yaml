@@ -49,12 +49,12 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: "${REDIS_PORT}"
 
-  # Tooling container: built from docker/Dockerfile_2 (gosu entrypoint)
+  # Tooling container: built from docker/Dockerfile (baked-in gosu entrypoint)
   app_tools:
-    image: util-hybride-ep:latest
+    image: data-acqu:staging
     build:
       context: .
-      dockerfile: docker/Dockerfile_2
+      dockerfile: docker/Dockerfile
       args:
         DOCKER_GID: ${DOCKER_GID}
         UID_0: ${UID_0}
@@ -67,8 +67,9 @@ services:
       - ${NODE_MOD_CACHE_DEV}:/workspace/node_modules
       - ${RUN_LOGS_DIR}
       - ${DATA_STORE_DEV}:/workspace/files
-      # Shared resources: entrypoint + SSH (read-only)
-      - /opt/resources:/opt/resources:ro
+      # Shared SSH bundle (read-only). Entrypoint is now baked into the image,
+      # so we no longer mount the full /opt/resources tree.
+      - /opt/resources/ssh:/opt/resources/ssh:ro
     environment:
       RUN_USER: ${RUN_USER}
       NPM_CONFIG_CACHE: /tmp/.npm

@@ -47,7 +47,13 @@ RUN printf 'umask ${UMASK:-0002}\n' > /etc/profile.d/umask.sh \
   && printf '\n# cooperative umask for all users\numask ${UMASK:-0002}\n' >> /etc/bash.bashrc
  
 ENV BASH_ENV=/etc/profile.d/umask.sh
- 
+
+# Baked-in entrypoint (replaces the host-mounted /opt/resources/entrypoint.sh).
+# Keeps the same RUN_USER + gosu-drop semantics, but no longer depends on
+# /opt/resources being bind-mounted into the container.
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod 0755 /usr/local/bin/entrypoint.sh
+
 WORKDIR /workspace
-ENTRYPOINT ["/opt/resources/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["bash"]
