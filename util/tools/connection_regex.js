@@ -82,6 +82,17 @@ const connection_regexes = [
     successful_acquisition: false,
     re: /curl: \(28\) Operation timed out after \d+ milliseconds with \d+(?: out of \d+)? bytes received/
   },
+  // curl exit 28 (CURLE_OPERATION_TIMEDOUT). Four real-log shapes:
+  //   1. "curl: (28) Connection timed out"
+  //   2. "curl: (28) Operation timed out"
+  //   3. "curl: (28) Failed to connect to <host> port <p> after <N> ms:
+  //       Timeout was reached"
+  //   4. "curl: (28) Connection timeout after <N> ms"   (noun form)
+  // Shapes 3 and 4 fell through to error_category="unknown" on the Siemens
+  // curl-based pipeline (siemens_443/80_data_grab.sh hitting dead hospital
+  // hosts; different curl builds emit different message bodies — observed
+  // on ip_reset retries against SME00874, SME01118). All four are
+  // connect-timeout signals → same category, retry-eligible.
   {
     connection_error: true,
     extraction_error: false,
@@ -90,7 +101,7 @@ const connection_regexes = [
     message: "curl timeout",
     manual_intervention: false,
     successful_acquisition: false,
-    re: /curl: \(28\) (?:Connection|Operation) timed out/
+    re: /curl: \(28\) (?:Connection|Operation) timed out|curl: \(28\) Failed to connect to .+? port \d+ after \d+ ms|curl: \(28\) Connection timeout after \d+ ms/
   },
   {
     connection_error: true,
@@ -287,6 +298,13 @@ const connection_regexes = [
   // locks during scanner operation prevent lftp from opening specific .zip
   // files (Logging.zip, PersistentData.zip, Setup.zip). The mirror command
   // continues and transfers other files; just the locked ones get skipped.
+  //
+  // Two stderr shapes occur in practice:
+  //   1. "mirror: <file>: <cause>"           e.g. "mirror: Logging.zip: open failed"
+  //   2. "mirror: Access failed: 550 ..."    Windows FTP 550 with the filename
+  //                                          in trailing parens
+  // The second shape was previously falling through to error_category="unknown"
+  // (e.g. SME00444 / Setup.zip), so the alternation below catches both.
   {
     connection_error: false,
     extraction_error: true,
@@ -295,7 +313,7 @@ const connection_regexes = [
     message: "some files skipped by lftp mirror (likely host-side file locks)",
     manual_intervention: false,
     successful_acquisition: true,
-    re: /mirror: \S+: /
+    re: /mirror: \S+: |mirror: Access failed: 550/
   },
   // rsync [sender] source file missing - typically means upstream remote-rsync
   // step didn't produce the expected file. Local-step symptom of upstream
