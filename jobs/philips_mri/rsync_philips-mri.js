@@ -19,12 +19,17 @@ const {
 } = require("../../utils/logger/enums");
 const path = require("path");
 
-const rsync_philips_mri = async (run_log, job_id = null) => {
-  startTimer(run_log, "philips_mri_mmb.sql_fetch");
-  const system_data = await get_phil_mri_systems();
-  await endTimer(run_log, "philips_mri_mmb.sql_fetch", {
-    system_count: Array.isArray(system_data) ? system_data.length : undefined,
-  });
+const rsync_philips_mri = async (run_log, job_id = null, override_system_data = null) => {
+  let system_data;
+  if (override_system_data) {
+    system_data = override_system_data;
+  } else {
+    startTimer(run_log, "philips_mri_mmb.sql_fetch");
+    system_data = await get_phil_mri_systems();
+    await endTimer(run_log, "philips_mri_mmb.sql_fetch", {
+      system_count: Array.isArray(system_data) ? system_data.length : undefined,
+    });
+  }
 
   // Single capture_datetime for the whole cycle so all per-SME queue entries
   // share a timestamp (mirrors the schedule-based MMB driver pattern).
