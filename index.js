@@ -4,6 +4,7 @@ const pgp = require("pg-promise")();
 const update_db = require("./util/encrypt/old_to_new_process");
 const rsync_philips_mri = require("./jobs/philips_mri/rsync_philips-mri");
 const onBootMMB = require("./jobs/mmb");
+const onBootDemoSystems = require("./jobs/demo_systems");
 const get_hhm_data = require("./jobs/hhm");
 const { get_althea_env_data } = require("./jobs/server_hop");
 const reset_tunnel = require("./jobs/tunnel_reset");
@@ -43,6 +44,9 @@ async function runJob(run_log, run_group, schedule, manufacturer, modality) {
   switch (run_group) {
     case "mmb":
       await onBootMMB(run_log, parseInt(schedule), capture_datetime);
+      break;
+    case "demo_systems":
+      await onBootDemoSystems(run_log, capture_datetime);
       break;
     case "philips":
       await rsync_philips_mri(run_log, capture_datetime);
