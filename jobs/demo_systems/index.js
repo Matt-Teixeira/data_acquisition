@@ -2,10 +2,64 @@ const {
   get_demo_mag_systems,
   get_demo_edu_systems,
   get_demo_phil_mri_systems,
+  get_demo_ge_hhm_systems,
+  get_demo_siemens_hhm_systems,
+  get_demo_philips_hhm_systems,
 } = require("./sql/qf-provider");
 const getMachineConfigs = require("../mmb/boot/get-machine-configs");
 const execRsync = require("../mmb/read/exec-rsync");
 const rsync_philips_mri = require("../philips_mri/rsync_philips-mri");
+const { runHhmJob } = require("../hhm/_shared");
+const {
+  geCt,
+  geCv,
+  geMri,
+  siemensCt,
+  siemensMri,
+  philipsCt,
+} = require("../hhm/_configs");
+const { get_philips_cv_data } = require("../hhm/philips/philips_cv");
+
+// SQL LIKE → JS matcher. Config modality strings can be exact ("CT", "MRI")
+// or LIKE patterns ("%CT"); the DB column is always a literal string. Used
+// to route fetched HHM systems to the right per-modality runHhmJob call.
+const likeMatch = (pattern, value) => {
+  if (!pattern.includes("%") && !pattern.includes("_")) return value === pattern;
+  const re = new RegExp(
+    "^" +
+      pattern
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/%/g, ".*")
+        .replace(/_/g, ".") +
+      "$"
+  );
+  return re.test(value);
+};
+
+// Runs a manufacturer's HHM modalities concurrently against a pre-fetched
+// system pool. The pool is filtered per config.modality (LIKE-aware) so
+// each runHhmJob call only sees its own systems.
+const runHhmGroupConcurrent = async (
+  run_log,
+  capture_datetime,
+  systems,
+  configs
+) => {
+  if (!systems || systems.length === 0) return;
+  await Promise.all(
+    configs.map(async (hhmConfig) => {
+      const filtered = systems.filter((s) =>
+        likeMatch(hhmConfig.modality, s.modality)
+      );
+      if (filtered.length === 0) return;
+      await addLogEvent(I, run_log, "onBootDemoSystems", det, {
+        jobName: hhmConfig.jobName,
+        systems: filtered,
+      }, null);
+      await runHhmJob(run_log, capture_datetime, hhmConfig, filtered);
+    })
+  );
+};
 const { v4: uuidv4 } = require("uuid");
 const [addLogEvent] = require("../../utils/logger/log");
 const {
@@ -94,50 +148,92 @@ const onBootDemoSystems = async (run_log, capture_datetime) => {
   await addLogEvent(I, run_log, "onBootDemoSystems", cal, note, null);
 
   try {
-    const systems_mag_configs = await get_demo_mag_systems();
-    const systems_edu_configs = await get_demo_edu_systems();
-
-    const systems_configs = [...systems_mag_configs, ...systems_edu_configs];
-
-    let note = {
-      systems_configs: systems_configs,
-    };
-    await addLogEvent(I, run_log, "onBootDemoSystems", det, note, null);
-
-    const machineConfigs = await getMachineConfigs(systems_configs);
-
-    const jobs = [];
-    for (const config of machineConfigs) {
-      const {
-        sme,
-        mmbScript,
-        pgTable,
-        regexModels,
-        ip_address,
-        user_id,
-      } = config;
-
-      jobs.push(
-        async () =>
-          await runJob(
+    const mmb_pull = (async () => {
+      const [systems_mag_configs, systems_edu_configs] = await Promise.all([
+        get_demo_mag_systems(),
+        get_demo_edu_systems(),
+      ]);
+      const systems_configs = [...systems_mag_configs, ...systems_edu_configs];
+      await addLogEvent(I, run_log, "onBootDemoSystems", det, {
+        systems_configs,
+      }, null);
+      const machineConfigs = await getMachineConfigs(systems_configs);
+      await Promise.all(
+        machineConfigs.map((c) =>
+          runJob(
             run_log,
-            [sme, mmbScript, pgTable, regexModels, ip_address, user_id],
+            [c.sme, c.mmbScript, c.pgTable, c.regexModels, c.ip_address, c.user_id],
             capture_datetime
           )
+        )
       );
-    }
+    })();
 
-    const job_promises = jobs.map((job) => job());
-
-    await Promise.all(job_promises);
-
-    const phil_mri_systems = await get_demo_phil_mri_systems();
-    if (phil_mri_systems && phil_mri_systems.length > 0) {
+    const phil_mri_pull = (async () => {
+      const phil_mri_systems = await get_demo_phil_mri_systems();
+      if (!phil_mri_systems || phil_mri_systems.length === 0) return;
       await addLogEvent(I, run_log, "onBootDemoSystems", det, {
         phil_mri_systems,
       }, null);
       await rsync_philips_mri(run_log, null, phil_mri_systems);
-    }
+    })();
+
+    const ge_hhm_pull = (async () => {
+      const systems = await get_demo_ge_hhm_systems();
+      await runHhmGroupConcurrent(run_log, capture_datetime, systems, [
+        geCt,
+        geCv,
+        geMri,
+      ]);
+    })();
+
+    const siemens_hhm_pull = (async () => {
+      const systems = await get_demo_siemens_hhm_systems();
+      await runHhmGroupConcurrent(run_log, capture_datetime, systems, [
+        siemensCt,
+        siemensMri,
+      ]);
+    })();
+
+    // Philips HHM: CT goes through runHhmJob (registry config); CV is an
+    // outlier with its own multi-stage pipeline in jobs/hhm/philips/philips_cv.js.
+    // Both branches run in parallel.
+    const philips_hhm_pull = (async () => {
+      const systems = await get_demo_philips_hhm_systems();
+      if (!systems || systems.length === 0) return;
+      const ct_systems = systems.filter((s) =>
+        likeMatch(philipsCt.modality, s.modality)
+      );
+      const cv_systems = systems.filter((s) => s.modality === "CV/IR");
+
+      const ct_branch = (async () => {
+        if (ct_systems.length === 0) return;
+        await addLogEvent(I, run_log, "onBootDemoSystems", det, {
+          jobName: philipsCt.jobName,
+          systems: ct_systems,
+        }, null);
+        await runHhmJob(run_log, capture_datetime, philipsCt, ct_systems);
+      })();
+
+      const cv_branch = (async () => {
+        if (cv_systems.length === 0) return;
+        await addLogEvent(I, run_log, "onBootDemoSystems", det, {
+          jobName: "philips_cv",
+          systems: cv_systems,
+        }, null);
+        await get_philips_cv_data(run_log, capture_datetime, cv_systems);
+      })();
+
+      await Promise.all([ct_branch, cv_branch]);
+    })();
+
+    await Promise.all([
+      mmb_pull,
+      phil_mri_pull,
+      ge_hhm_pull,
+      siemens_hhm_pull,
+      philips_hhm_pull,
+    ]);
   } catch (error) {
     console.log(error);
     await addLogEvent(E, run_log, "onBootDemoSystems", cat, null, error);

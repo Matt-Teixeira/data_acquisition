@@ -10,4 +10,7 @@ module.exports = {
   demo_mag: sql("get-demo-mag.sql"),
   demo_edu: sql("get-demo-edu.sql"),
   demo_phil_mri: sql("get-demo-phil-mri.sql"),
+  demo_ge_hhm: sql("get-demo-ge-hhm.sql"),
+  demo_siemens_hhm: sql("get-demo-siemens-hhm.sql"),
+  demo_philips_hhm: sql("get-demo-philips-hhm.sql"),
 };
