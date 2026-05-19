@@ -82,7 +82,12 @@ const execHhmSystem = async (
 
 // Main-run entry point: fetch all systems for a (manufacturer, modality),
 // fan out with Promise.all, exec each with ipReset=false.
-const runHhmJob = async (run_log, capture_datetime, config) => {
+//
+// override_systems: optional pre-fetched system list. When provided, skips
+// the SQL fetch entirely and uses the override as the loop source. Used by
+// the demo_systems orchestrator to run the HHM pipeline against a curated
+// SME list without duplicating the fan-out / predicate / creds logic.
+const runHhmJob = async (run_log, capture_datetime, config, override_systems = null) => {
   const {
     jobName,
     logLabel,
@@ -96,7 +101,9 @@ const runHhmJob = async (run_log, capture_datetime, config) => {
   await addLogEvent(I, run_log, logLabel, cal, null, null);
 
   startTimer(run_log, `${jobName}.sql_fetch`);
-  const systems = await fetchSystems([manufacturer, modality]);
+  const systems = override_systems
+    ? override_systems
+    : await fetchSystems([manufacturer, modality]);
   const credentials = fetchCredentials
     ? await fetchCredentials([manufacturer, modality])
     : null;

@@ -23,14 +23,16 @@ const {
   tag: { cal, det, cat, seq, qaf },
 } = require("../../../utils/logger/enums");
 
-async function get_philips_cv_data(run_log, capture_datetime) {
+async function get_philips_cv_data(run_log, capture_datetime, override_systems = null) {
   const child_processes = [];
   try {
     await addLogEvent(I, run_log, "get_philips_cv_data", cal, null, null);
     const manufacturer = "Philips";
     const modality = "CV/IR";
     startTimer(run_log, "philips_cv.sql_fetch");
-    const systems = await get_hhm([manufacturer, modality]);
+    const systems = override_systems
+      ? override_systems
+      : await get_hhm([manufacturer, modality]);
     const credentials = await getHhmCreds([manufacturer, modality]);
     await endTimer(run_log, "philips_cv.sql_fetch", {
       system_count: systems.length,
