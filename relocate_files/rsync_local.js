@@ -34,7 +34,7 @@ async function rsync_local(run_log, rsync_path, system, docker_path) {
         "./read/sh/rsync_monitoring_local.sh",
         [
           `${docker_path}/${system.id}/host_logfiles/${system.log_config.file_name}`,
-          `${docker_path}/${system.id}/logs`,
+          `${docker_path}/${system.id}`,
         ]
       );
     }
