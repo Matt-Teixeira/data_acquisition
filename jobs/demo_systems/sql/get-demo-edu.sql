@@ -24,8 +24,6 @@ WHERE
     sys.id IN ('SME21922','SME11221','SME01136','SME18368')
     AND
     sys.process_edu IS TRUE
-    AND
-    NOT (sys.manufacturer = 'Philips' AND sys.modality = 'MRI')
 GROUP BY
     sys.id,
     ac.system_id,
