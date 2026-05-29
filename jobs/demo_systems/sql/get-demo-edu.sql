@@ -21,7 +21,7 @@ FROM
     JOIN config.acquisition ac ON sys.id = ac.system_id
     JOIN config.edu edu ON sys.id = edu.system_id
 WHERE
-    sys.id IN ('SME21922','SME11221','SME01136','SME18368')
+    sys.id IN ('SME21922','SME11221','SME01136','SME18368', 'SME15823')
     AND
     sys.process_edu IS TRUE
 GROUP BY

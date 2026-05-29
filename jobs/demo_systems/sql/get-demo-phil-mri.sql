@@ -31,7 +31,7 @@ FROM
     JOIN config.mag mag ON sys.id = mag.system_id
     JOIN config.log log ON sys.id = log.system_id
 WHERE
-    sys.id IN ('SME18368')
+    sys.id IN ('SME18368', 'SME15823')
     AND sys.manufacturer = 'Philips'
     AND sys.modality LIKE 'MRI'
     AND ac.acqu_point = 'mmb'

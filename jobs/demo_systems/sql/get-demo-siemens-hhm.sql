@@ -15,4 +15,4 @@ FROM
     JOIN config.acquisition ac ON sys.id = ac.system_id
 WHERE
     process_log = true
-    AND sys.id IN ('SME21862','SME21915');
+    AND sys.id IN ('SME21862', 'SME21863', 'SME21915', 'SME01136');
