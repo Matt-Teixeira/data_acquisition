@@ -111,7 +111,7 @@ async function list_new_daily_files(
   // BEGIN: identifying daily directory to pull
   const last_file_index = dirs.indexOf(previous_daily_file);
 
-  let reduced_files = dirs.slice(last_file_index + 1, dirs.length - 1);
+  let reduced_files = dirs.slice(last_file_index + 1);
 
   const last_files = reduced_files.filter((file) => file.match(daily_re));
 
