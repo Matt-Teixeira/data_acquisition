@@ -1,3 +1,5 @@
+> **DEPRECATED (2026-07-27):** describes the pre-vendoring / Dockerfile.runtime / host-mounted-entrypoint era and contradicts the current design. Kept for history only. Current guide: [docker_server_full_setup_2.0.md](../docker_server_full_setup_2.0.md).
+
 ## Runtime Container Overview
 
 This project uses two key files to shape the runtime Docker image: `docker/Dockerfile.runtime` and `docker/entrypoint.sh`. Together they install the tooling your data acquisition jobs need, set up user and permission defaults, and prepare SSH credentials at container start.

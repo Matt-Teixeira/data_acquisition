@@ -1,3 +1,5 @@
+> **DEPRECATED (2026-07-27):** describes the pre-vendoring / Dockerfile.runtime / host-mounted-entrypoint era and contradicts the current design. Kept for history only. Current guide: [docker_server_full_setup_2.0.md](../docker_server_full_setup_2.0.md).
+
 # Runtime Image (`docker/Dockerfile.runtime`)
 
 `app_tools` builds from `docker/Dockerfile.runtime`, which extends `node:lts` and pre-installs the system packages used by data jobs.

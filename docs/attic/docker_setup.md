@@ -1,3 +1,5 @@
+> **DEPRECATED (2026-07-27):** describes the pre-vendoring / Dockerfile.runtime / host-mounted-entrypoint era and contradicts the current design. Kept for history only. Current guide: [docker_server_full_setup_2.0.md](../docker_server_full_setup_2.0.md).
+
 # Docker Workspace
 - Compose defines two services: `app` (vanilla `node:lts`) and `app_tools` (built from `docker/Dockerfile.runtime` with `lftp`/`rsync` plus pre-created `svcDev` and `hostUser` users in the `docker` group).
 - Both services mount the repository at `/workspace`, reuse host-cached `node_modules`, and share an external Redis network configured through `.env` (`REDIS_HOST`, `REDIS_PORT`).

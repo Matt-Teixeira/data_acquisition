@@ -1,153 +1,43 @@
-# Data Acquisition App — Implementation Guide
+# data_acquisition
 
-This document describes how to clone, configure, and run the **`hhm_data_acquisition`** application using Docker.  
-It also explains the role of the runtime image (`Dockerfile.runtime`), compose services, permissions setup, and workflow.
+Dockerized HHM / MMB data-acquisition jobs: half-hourly cron-driven pulls from imaging
+systems (GE / Philips / Siemens CT·CV·MRI), MMB schedules, VPN IP maintenance, and
+offline alerting. Node.js jobs dispatched through `index.js` (`npm run <job>`), writing
+to the shared Postgres (`pg_db`, database `staging`) and Redis.
 
----
+## Run model (current, verified 2026-07-27)
 
-## 🧩 Repository Setup
+- **Image:** `data-acqu:staging`, built from [docker/Dockerfile](docker/Dockerfile)
+  (node:lts + lftp/rsync/mdbtools tooling, baked gosu entrypoint that drops to
+  `RUN_USER`, users created from `UID_*`/`DOCKER_GID` build args). Build with
+  `docker compose build app_tools`.
+- **Invocation:** one-shot `docker compose run --rm app_tools bash -lc "npm run <job>"`
+  against a pre-warmed `node_modules` cache
+  (`/opt/resources/node_mod_cache/data_acquisition`). Warm once with
+  `npm ci --omit=dev`; scheduled runs never reinstall.
+- **`utils/` is vendored** in this repo — do not clone the old `AvanteHS-RTT/utils`.
+- **Logs:** with `RUN_ENV=dev`, per-run JSON lands in `utils/logger/` (pruned nightly);
+  every run also self-logs to `util.app_run_logs` (what ops-dashboard reads).
+- **SSH bundle:** jobs that SFTP/rsync mount `/opt/resources/ssh` read-only
+  (`SSH_KEY` in `.env`).
 
-### 1. Clone Required Repositories
+## Docs
+
+| Doc | What it is |
+|---|---|
+| [docs/docker_server_full_setup_2.0.md](docs/docker_server_full_setup_2.0.md) | **The server build guide** — full dev/staging server setup for this and all sibling apps |
+| [docs/schedules.md](docs/schedules.md) | Canonical cron schedule manifest (live crontab, stagger design) |
+| [docs/docker_server_full_setup_2.0_audit_claude.md](docs/docker_server_full_setup_2.0_audit_claude.md) | Live-verified audit that drove the 2026-07 reconciliation |
+| [docs/entrypoint.md](docs/entrypoint.md) | Per-app baked entrypoint standard |
+| docs/attic/ | Deprecated docs from the pre-vendoring era (kept for history) |
+
+## Quick start (this app only)
+
 ```bash
-# Main data acquisition app
-git clone git@github.com:Matt-Teixeira/data_acquisition.git
-
-# Shared utilities repo
-git clone git@github.com:AvanteHS-RTT/utils.git
-```
-
-# Switch to docker branch (*_docker)
-```bash
-git switch -c DEV_docker --track origin/DEV_docker
-```
-
-### 2. Configure Git (If Completely New Env)
-```bash
-git config --global user.email "matt.teixeira@avantehs.com"
-git config --global user.name "Matt Teixeira"
-```
-
----
-
-## ⚙️ Environment Configuration
-
-### 3. Update `.env`
-Ensure your `.env` file contains all required variables (not displayed here).
-
-### 4. Update `pgPool.js`
-Integrate the updated pool configuration with the `DEV_docker` branch.
-
-### 5. Update Credentials
-Run the credentials update script using the legacy Node 16 image (for encryption/decryption compatibility):
-```bash
-./run_scripts/update_db_creds.sh
-```
-
-This script uses `node:16.20.2` to ensure compatibility with existing encryption methods.
-
----
-
-## 🧱 Permissions & Directory Setup
-
-<!-- ### 6. Adjust File Ownership
-From the app root:
-```bash
-chgrp -R docker .
-``` -->
-
-### 7. Create the `files` Directory
-```bash
-mkdir files
-```
-
-### 8. Make the Directory Writable
-Ensure both your host user and service user (`svc-dev`) can modify files:
-```bash
-chmod -R g+rwX /home/mattteixeira/apps/data_acquisition/files
-chmod -R g+rwX /home/mattteixeira/apps/data_acquisition/utils
-chgrp -R docker .
-```
----
-
-## STOP: Spin Up Redis
-Refer to redis-admin repo to create Redis containers then continue below.
-
-## 🚀 Runtime and Job Execution
-
-### Docker Compose Overview
-
-`app_tools` builds from `docker/Dockerfile.runtime`, which extends `node:lts` and pre-installs system packages (e.g., `rsync`, `lftp`) used for data jobs.
-
----
-
-### 🔧 Build the Runtime Image
-```bash
+cd /opt/apps/data_acquisition          # branch: DEV_docker on acq-vm-0
+# .env from the secret store (key list in the setup guide, STEP 6)
 docker compose build app_tools
+chmod -R g+rwX utils/logger && chgrp -R docker utils/logger
+docker compose run --rm app_tools bash -lc "npm ci --omit=dev --no-audit --no-fund"
+docker compose run --rm app_tools bash -lc "npm run <job_name>"
 ```
-
-### 🏃 Run a Data Job
-
-**Production (without dev dependencies):**
-```bash
-docker compose run --rm app_tools bash -lc "npm run job_name"
-```
-
-**Development (with fresh install - first run):**
-```bash
-docker compose run --rm app_tools bash -lc "npm ci --omit=dev && npm run job_name"
-```
-
-#### Explanation
-
-| Component | Description |
-|------------|-------------|
-| `--rm` | Automatically removes the container after it exits. |
-| `app_tools` | The service name in `docker-compose.yaml` defining image, mounts, env, etc. |
-| `bash -lc` | Runs a login shell (`-l`) and executes the command (`-c`) ensuring PATH and env setup. |
-| `npm ci` | Performs a clean, reproducible install from `package-lock.json`. |
-| `--omit=dev` | Skips development dependencies. |
-| `npm run job_name` | Executes the job script defined in `package.json`. |
-
----
-
-## 🗂️ Volumes and Caching
-
-| Purpose | Host Path → Container Path | Notes |
-|----------|----------------------------|-------|
-| Project Source | `./:/workspace` | Live edit on host reflects in container. |
-| Node Modules Cache (DEV) | `/opt/resources/node_mod_cache/dev/data_acquisition:/workspace/node_modules` | Cache survives container removal. |
-| Node Modules Cache (STAGING/PROD) | `/opt/resources/node_mod_cache/staging/data_acquisition:/workspace/node_modules` | Update path per environment. |
-| Run Logs | `/opt/run-logs/data_acquisition:/opt/run-logs/data_acquisition` | Centralized logging on host. Ensure directory exists and is writable. |
-
----
-
-## 🧾 TODO
-
-### Logging Path Improvements
-Update **utils/logger** path handling to dynamically adjust for Docker vs non-Docker environments.
-
-| Environment | Example Path |
-|--------------|--------------|
-| **Non-Docker (Local)** | `./utils/logger/${process.env.APP_NAME}-log.${process.env.LOGGER}.${run_id}.js` |
-| **Docker - Local** | `./utils/logger/${process.env.APP_NAME}-log.${process.env.LOGGER}.${run_id}.js` |
-| **Docker - Live** | `/opt/run-logs/${process.env.APP_NAME}/${process.env.APP_NAME}-log.${process.env.LOGGER}.${run_id}.js` |
-
----
-
-## 🧠 Notes
-
-- The `Dockerfile.runtime` allows all required tools to be **baked once**, minimizing cold-start times.
-- The `Dockerfile.runtime` also requires two users: self and service user (mattteixeira & svc-dev). Users will need references to UID, for both users, annotated in .env. 
-
-mattteixeira=1003
-svc-dev=999
-docker=995
-
-- All containers use the **docker group (GID 995)** for file and log access, ensuring shared write/delete permissions between users (`svc-dev`, `mattteixeira`).
-
----
-
-**Author:**  
-_Matt Teixeira_  
-Avante Health Solutions – RTT Team  
-matt.teixeira@avantehs.com
