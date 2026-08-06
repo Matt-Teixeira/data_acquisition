@@ -51,7 +51,7 @@ services:
 
   # Tooling container: built from docker/Dockerfile (baked-in gosu entrypoint)
   app_tools:
-    image: data-acqu:staging
+    image: data-acqu:${IMAGE_TAG}
     build:
       context: .
       dockerfile: docker/Dockerfile
