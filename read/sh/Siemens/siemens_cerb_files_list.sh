@@ -1,2 +1,0 @@
-files=$(lftp -c "set net:timeout 5; set ftp:ssl-allow off; set net:reconnect-interval-base 5; set net:max-retries 2; open sftp://matt_teixeira:coremission@10.10.10.3; cd C027932/SHIP013/SME01441; ls -l")
-echo $files
