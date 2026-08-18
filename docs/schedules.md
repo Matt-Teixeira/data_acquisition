@@ -29,9 +29,15 @@ Minute offsets keep job families off each other's DB/Redis load peaks:
 | :22/:52 | data_acquisition `offline_alert` (second pass) |
 | :18/:48 | data_acquisition `system_reset_totalizer` |
 | :25/:55 | incident-engine `run` (after producer bursts finish ~:21/:51) |
-| 03:30 nightly | run-log prune (`/opt/resources/scripts/prune-run-logs.sh`) — proposed |
-| 02:15 nightly | backups (`/opt/resources/scripts/backup.sh`) — proposed |
+| 03:30 nightly | run-log prune (`/opt/apps/data_acquisition/scripts/prune-run-logs.sh`) |
+| 02:15 nightly | backups (`/opt/apps/pg_manage_v2/scripts/backup.sh`) |
+| 09:00 on the 3rd & 25th | partition-horizon watchdog (`/opt/apps/pg_manage_v2/scripts/check-partition-horizon.sh`) |
 | 03:00 monthly (1st) | trim cron-mail spool to last 100 MB |
+
+> Maintenance scripts live in the repo that owns their subject (decided 2026-08-18):
+> database scripts in `pg_manage_v2/scripts/`, redis scripts + host-setup files in
+> `redis-admin/`, cross-app run-log prune here in `data_acquisition/scripts/`.
+> `/opt/resources/scripts/` is no longer a script home.
 
 ## Apps with NO schedule on this box (intentional)
 
