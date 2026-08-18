@@ -388,8 +388,8 @@ or decision noted in the audit documents.
 | — | OPS-03 triage (new, from item 9's data) | ✅ First pass | 2026-08-18 | `TRIAGE_OPS-03_2026-08-18.md`: fix-list vs site-list split. Found 79-system credential-decrypt failure (now tracked to alert.offline_hhm_conn) and the July 7 event (23 systems / 21 sites dark — `JULY7_DARK_SYSTEMS.csv` for contract comparison) |
 | 11 | .dockerignore added | ✅ Done | 2026-08-18 | data_acquisition + hhm_rpp_ge; probe-verified context 2.0 GB → 16 KB (2 files) |
 | 12 | Doc 2.1 written | ✅ Done | 2026-08-18 | `docs/docker_server_full_setup_2.1.md` — every fact live-verified same day; owner review incorporated (four-instance Redis build, restored 5.6 SQL changelog for prod initiation, server-agnostic `<DB_NAME>`/identity table with matching code changes in backup.sh/watchdog/pg_db healthcheck). REL-07 fixed in all 8 repos. Committed & pushed. Remaining proof = item 13 acceptance rebuild on the fresh dev server |
-| 13 | Acceptance test passed | ☐ Not started | | |
-| D1–D5 | Decisions recorded | ◐ 3 of 5 | 2026-08-18 | D1 **executed 8/18** (auth live on 3 of 4 instances; STAGING = Jonathan's call), D2 = 48 h, D5 = flip done. **D3 (git-history scrub) and D4 (off-host backup target) still open** — D4 is needed for doc 2.1's backup section |
+| 13 | Acceptance test passed | ⏸ On hold (owner) | 2026-08-18 | Waiting for the dev server to be wiped and available; Matt will then build it from doc 2.1 top-to-bottom (checklist at the doc's end). Everything else in the plan is complete — this is the only remaining step to "golden image proven" |
+| D1–D5 | Decisions recorded | ✅ Resolved/parked | 2026-08-18 | D1 executed 8/18 (auth live on 3 of 4 instances; STAGING accepted passwordless), D2 = 48 h, D5 = flip done. D3 **moot** (owner accepted the history credential as-is). D4 **parked by owner 8/18** — needs a team conversation; backups stay on-server until then (doc 2.1's backup section says so). No decision blocks anything actionable |
 
 *When item 13 is checked, the goal is met: staging is the golden image, and the document is the
 proof-tested recipe that reproduces it.*
