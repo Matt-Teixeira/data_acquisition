@@ -1,0 +1,47 @@
+sme,site_id,manufacturer,modality,model,serial_number,show_on_website,reset_attempts_since,last_error
+SME01107,C091405,Siemens,MRI,ESPREE 1.5T,30428,true,1829,rsync I/O timeout - data transfer stalled
+SME01113,C091405,Siemens,MRI,SKYRA,145491,true,1827,rsync I/O timeout - data transfer stalled
+SME01140,C000504,GE,MRI,TWINSPEED HDXT,HM0114,true,1825,rsync I/O timeout - data transfer stalled
+SME02524,C000892,GE,MRI,EXCITEHD12XLCC,601485MR2,true,1825,no route to host
+SME11247,C102206-SME11247,Siemens,MRI,4K,,true,1822,rsync I/O timeout - data transfer stalled
+SME14950,C001177,GE,MRI,SIGNAEXCITE1.5T,773884HCMR,true,1824,rsync I/O timeout - data transfer stalled
+SME15166,C0151-C,Siemens,MRI,4K,,false,1825,rsync I/O timeout - data transfer stalled
+SME15803,C111412,GE,MRI,SIGNA HDC 3.0,,true,1824,rsync I/O timeout - data transfer stalled
+SME15812,C111419,GE,MRI,EXPLORER 1.5T,,true,1831,rsync I/O timeout - data transfer stalled
+SME15817,C111426,GE,MRI,EXCITE23X,,true,1825,rsync I/O timeout - data transfer stalled
+SME16411,C010405,Philips,MRI,INTERA 1.5T,10678,true,1825,rsync I/O timeout - data transfer stalled
+SME16421,C007599,Philips,MRI,ACHIEVA 1.5T,21666,true,1824,rsync I/O timeout - data transfer stalled
+SME16422,C048852,Philips,MRI,INGENIA 1.5T,41022,true,1825,rsync I/O timeout - data transfer stalled
+SME16432,C048852,Philips,MRI,INGENIA 3.0T,42240,true,1825,rsync I/O timeout - data transfer stalled
+SME16433,C090641,Philips,MRI,PANORAMA 1T HFO,37056,true,1825,rsync I/O timeout - data transfer stalled
+SME20288,C001409,GE,MRI,1.5T 9X,,true,1825,rsync connection closed by peer
+SME20292,C027010,GE,MRI,SIGNAHDX1.5T28X,95827,true,1825,rsync connection closed by peer
+SME20295,C118442,GE,MRI,1.5T 9X,,true,1825,rsync connection closed by peer
+SME20296,C118455,GE,MRI,16X  23X,,true,1825,rsync connection closed by peer
+SME20556,C116528,Siemens,MRI,SKYRA,45120,true,1787,rsync connection closed by peer
+SME21284,C118774,GE,MRI,SIGNA,334699MR,true,1825,rsync I/O timeout - data transfer stalled
+SME21580,C000507,Siemens,MRI,MAGNETOM SOLA,1034,true,1826,rsync connection closed by peer
+SME22407,C008901,GE,MRI,12X,1273,true,1826,rsync connection closed by peer
+
+id,show_on_website,process_mag,process_log
+SME14950,false,false
+SME01113,true,true
+SME20295,true,true
+SME20556,true,true
+SME21580,true,true
+SME20296,true,true
+SME22407,true,true
+SME20292,true,true
+SME15166,false,true
+SME15803,true,true
+SME16422,false,false,false
+SME15812,true,true
+SME15817,true,true
+SME16433,false,false,false
+SME01107,true,true
+SME16411,false,false,false
+SME16421,false,false,false
+SME21284,true,true,true
+SME20288,true,true
+SME01140,true,true,false
+SME16432,false,false,false
