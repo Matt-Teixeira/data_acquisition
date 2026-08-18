@@ -79,7 +79,11 @@ const execHhmSystem = async (
       id: system.id,
       capture_datetime,
       successful_acquisition: false,
-      data_source: system.data_source,
+      // Literal, not system.data_source: that field is stamped onto the system
+      // object inside exec_hhm_data_grab (line ~58), which this path never
+      // reaches. Passing undefined here made offline_alert's
+      // data_source === "hhm" | "mmb" partition drop the entry silently.
+      data_source: "hhm",
       host_intervention: false,
       connection_error: `credential decrypt failed: ${error.message}`,
       conn_err: true,
