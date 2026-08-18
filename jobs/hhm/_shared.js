@@ -15,6 +15,7 @@ const {
 } = require("../../utils/logger/enums");
 const exec_hhm_data_grab = require("../../read/exec-hhm_data_grab");
 const exec_hhm_postprocess = require("../../read/exec-hhm_postprocess");
+const { add_to_online_queue } = require("../../redis");
 
 // Shared runner for the 8 similar HHM jobs under jobs/hhm/{ge,philips,siemens}/.
 // Not used by philips_cv (multi-stage outlier).
@@ -51,7 +52,42 @@ const execHhmSystem = async (
   config
 ) => {
   const execPath = `./read/sh/${config.shellSubdir}/${system.acquisition_script}`;
-  const execArgs = config.argsBuilder(system, creds);
+  let execArgs;
+  try {
+    execArgs = config.argsBuilder(system, creds);
+  } catch (error) {
+    // A throw here is almost always credential decryption (argsBuilder calls
+    // decrypt_string on creds.*_enc). This used to reject the whole
+    // Promise.all with a context-free TypeError and, because it fires before
+    // exec_hhm_data_grab, the system never reached the online queue — so it
+    // was invisible to alert.offline_hhm_conn. Log with system context and
+    // feed the offline pipeline so the system appears in the connection
+    // profile like any other failed acquisition.
+    await addLogEvent(
+      E,
+      run_log,
+      `${config.logLabel}: credential_decrypt`,
+      cat,
+      {
+        job_id,
+        system_id: system.id,
+        credentials_group: system.credentials_group,
+      },
+      error
+    );
+    await add_to_online_queue(job_id, run_log, {
+      id: system.id,
+      capture_datetime,
+      successful_acquisition: false,
+      data_source: system.data_source,
+      host_intervention: false,
+      connection_error: `credential decrypt failed: ${error.message}`,
+      conn_err: true,
+      error_category: "credential_decrypt",
+      phase: "grab",
+    });
+    return null;
+  }
   const extra = config.extraExecArgs || [];
 
   const result = await exec_hhm_data_grab(
