@@ -29,6 +29,7 @@ Minute offsets keep job families off each other's DB/Redis load peaks:
 | :22/:52 | data_acquisition `offline_alert` (second pass) |
 | :18/:48 | data_acquisition `system_reset_totalizer` |
 | :25/:55 | incident-engine `run` (after producer bursts finish ~:21/:51) |
+| :05/:35 | hhm_rpp_philips `delete_old_db_files` — saved_files 48 h retention (DB-05, restored 2026-08-18; clear of the :00/:30 burst, the :10/:40 VPN reset, and the :15/:45 writers into that table) |
 | 03:30 nightly | run-log prune (`/opt/apps/data_acquisition/scripts/prune-run-logs.sh`) |
 | 02:15 nightly | backups (`/opt/apps/pg_manage_v2/scripts/backup.sh`) |
 | 09:00 on the 3rd & 25th | partition-horizon watchdog (`/opt/apps/pg_manage_v2/scripts/check-partition-horizon.sh`) |
