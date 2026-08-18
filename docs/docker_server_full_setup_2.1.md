@@ -1237,7 +1237,10 @@ plain `VACUUM` does not return the disk space.
 7. **Cron mail cleanup** (4h) — 400 MB spool, some sensitive output.
 8. **External-endpoint inventory** (4i) — which staging jobs touch real prod systems
    (Acumatica, Monday, SFTP), with per-env credentials/mode.
-9. **redis-STAGING auth** — needs odd-jobs client support (Jonathan).
+9. **redis-STAGING auth** — accepted as permanently passwordless (owner decision
+   2026-08-18): odd-jobs' client has no auth support, and the instance is reachable
+   only over the internal docker network. Not open debt; revisit only if odd-jobs
+   itself changes.
 10. **reports image tag** — rename `aux:` → `reports:` once nothing else consumes it.
 11. **incident-engine / ops-dashboard / reports hardcoded ids** — migrate the
     remaining `105:987` literals to the `.env` convention.
