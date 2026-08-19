@@ -413,8 +413,9 @@ production cutover runbook (none exists yet — write and rehearse one before an
 build).
 
 ```bash
-# On the source server:
-./redis_dumps/redis_migrate.sh          # ships latest RDB to ~/redis_dumps/ on the target
+# On the SOURCE server (the script lives there, in the operator home's
+# redis_dumps/ — it is not in any repo):
+cd ~ && ./redis_dumps/redis_migrate.sh  # ships latest RDB to ~/redis_dumps/ on the target
 
 # On the target server:
 DUMP=$(ls -t ~/redis_dumps/redis-PROD-dump-*.rdb | head -1)
@@ -1307,10 +1308,11 @@ Build a blank dev/staging VM from this document alone, then demonstrate **all** 
 
 **Provenance & config**
 - [ ] Every referenced repo/branch/file/image exists; every `docker compose config`
-      validates with **zero warnings — except acumatica_sync's 12 documented
+      validates with **zero warnings — except acumatica_sync's documented
       `$expand`/`$format` interpolation warnings** (inherent to its no-`env_file`
-      dotenv design, A21-07); a **worktree** secret scan finds nothing (the psp
-      *history* credential is an accepted exception — see SECURITY BASELINE).
+      dotenv design, A21-07; count varies with its `$`-bearing URIs); a
+      **worktree** secret scan finds nothing (the psp *history* credential is an
+      accepted exception — see SECURITY BASELINE).
 - [ ] Config values arrive byte-for-byte inside containers (spot-check an Acumatica
       URI with `$` characters from inside its container).
 - [ ] Committed `.env.example` files contain placeholders only — no real uid/gid/tag
