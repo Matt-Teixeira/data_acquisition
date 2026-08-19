@@ -214,6 +214,38 @@ done
 
 ------------------------------------------------------------------------
 
+# STEP 1.4: GIT, GITHUB ACCESS & THE INFRA CLONES
+
+Nothing below works without git, a database client, and the ability to clone the
+private repos — a blank VM has none of these (audit A21-01/03/13).
+
+```bash
+sudo apt install -y git postgresql-client
+
+git config --global user.email "you.guy@avantehs.com"
+git config --global user.name  "You Guy"
+
+# GitHub access: enroll a key for this server (or restore the previous server's
+# deploy key from the secret store into ~/.ssh/).
+ssh-keygen -t ed25519 -C "$(whoami)@$(hostname)"
+# Add the public key to GitHub (account key or per-repo deploy keys), then:
+ssh -T git@github.com    # accept github.com's host key AFTER checking its
+                         # fingerprint against https://docs.github.com/en/authentication
+                         # /keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
+```
+
+Clone the two infra repos now — STEP 2 (database) and STEP 3 (Redis) run compose
+from inside them, before the app-repo steps:
+
+```bash
+git clone git@github.com:Matt-Teixeira/redis-admin.git /opt/apps/redis-admin
+git -C /opt/apps/redis-admin switch <branch per the identity table>     # STAGING on acq-vm-0
+git clone git@github.com:Matt-Teixeira/pg_manage_v2.git /opt/apps/pg_manage_v2
+git -C /opt/apps/pg_manage_v2 switch <branch per the identity table>    # STAGING on acq-vm-0
+```
+
+------------------------------------------------------------------------
+
 # STEP 2: DATABASE (pg_db — tracked compose, pg_manage_v2/infra/pg_db)
 
 The database container is **defined in git**: `pg_manage_v2/infra/pg_db/
@@ -256,8 +288,10 @@ docker exec -it pg_db psql -U postgres -c "CREATE DATABASE <DB_NAME>;   -- dev /
 # as the break-glass copy.
 ```
 
-**This stack uses a single `staging` database for every app** — do not create a `dev`
-database; nothing points at it.
+**This stack uses a single `<DB_NAME>` database for every app** — do not also create
+the *other* server type's name (a `dev` database on staging, a `staging` database on
+dev): a second database that nothing should point at is exactly how an app ends up
+silently pointed at empty tables (the pre-August monday failure).
 
 ### Existing server (container swap / config change)
 
@@ -278,21 +312,19 @@ docker exec -it pg_db psql -U postgres -c "SELECT pg_reload_conf();"
 docker exec -it pg_db psql -U postgres -c "SELECT line_number, type, database, user_name, address, auth_method, error FROM pg_hba_file_rules;"
 ```
 
+The stock `trust` rules for the local socket and loopback (127.0.0.1/::1) above the
+catch-all are **retained deliberately**: every `docker exec pg_db psql -U postgres`
+maintenance command in this document relies on them, and loopback inside the
+container is only reachable with docker-group access, which is root-equivalent on
+the host anyway. Do not "harden" them away — the `hostssl` catch-all is the rule
+governing network clients (audit A21-14).
+
 ### Query statistics (DB-06)
 
 `pg_stat_statements` is preloaded by the tracked compose. Enable it once per database:
 
 ```bash
 docker exec pg_db psql -U postgres -d <DB_NAME> -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
-```
-
-------------------------------------------------------------------------
-
-# GIT CONFIG
-
-```bash
-git config --global user.email "you.guy@avantehs.com"
-git config --global user.name  "You Guy"
 ```
 
 ------------------------------------------------------------------------
@@ -321,9 +353,9 @@ tested 2026-08-18); the reverse fails fast with a clean NOAUTH error. So on any
 rollout or rollback: **server first, app `.env`s immediately after.**
 
 ```bash
-# 1. Kernel settings Redis needs (once per host; files are tracked in the repo)
-git clone git@github.com:Matt-Teixeira/redis-admin.git /opt/apps/redis-admin
-cd /opt/apps/redis-admin && git switch STAGING
+# 1. Kernel settings Redis needs (once per host; files are tracked in the repo,
+#    cloned in STEP 1.4)
+cd /opt/apps/redis-admin
 sudo cp host-setup/90-redis.conf /etc/sysctl.d/ && sudo sysctl --system
 sudo cp host-setup/disable-thp.service /etc/systemd/system/ && sudo systemctl enable --now disable-thp.service
 
@@ -411,9 +443,7 @@ docker start redis-PROD redis-STAGING redis_dev-0-4
 # STEP 5: DATABASE SCHEMA & DATA SEEDING (pg_manage_v2)
 
 ```bash
-git clone git@github.com:Matt-Teixeira/pg_manage_v2.git /opt/apps/pg_manage_v2
-cd /opt/apps/pg_manage_v2
-git switch STAGING
+cd /opt/apps/pg_manage_v2        # cloned + branch-switched in STEP 1.4
 # Create .env with SRC_* (Azure source) and DST_* (local pg_db) connection vars.
 docker build -t pg_manage .
 ```
@@ -452,9 +482,11 @@ docker run --rm --network pg_net --env-file .env -v "$PWD":/app -w /app \
 psql -h localhost -U postgres -d <DB_NAME> -c "SELECT count(*) FROM alert.models;"
 ```
 
-> Known gaps on acq-vm-0's staging DB (queries against these fail for every role,
-> superuser included): `mag.ge_mm` does not exist (only `ge_mm3`/`ge_mm4`), and schema
-> `edu` has no tables. Reports jobs touching those paths fail until seeded.
+> Known gap on acq-vm-0's staging DB (fails for every role, superuser included):
+> `mag.ge_mm` does not exist (only `ge_mm3`/`ge_mm4`) — reports jobs touching that
+> path fail until it is seeded or the code's schema expectation is fixed (DB-08).
+> (An earlier claim that schema `edu` was empty is wrong and was corrected by audit
+> A21-05 — `edu` holds ~20 tables with live data.)
 
 ### 5.5 The systems inventory drifts — decide the sync policy (B0a)
 
@@ -719,6 +751,15 @@ Standing rhythm: in the first week of each month, confirm the new bins appeared
 partition SQL inside data_acquisition misled the August audits — treat odd-jobs as
 the single owner; anything else is reference-only.
 
+**Before go-live on a NEW server (audit A21-12):** odd-jobs has no provisioning
+path in this document — it is not a git checkout here (Jonathan deploys it: app
+tree + vendored node_modules + its images + the `svc` crontab entry). A new
+database server **runs without partition maintenance until he does**, and the gap
+is silent until the watchdog's first firing (as late as the 3rd of the following
+month). Coordinate the odd-jobs deployment with Jonathan before relying on the
+server, then verify: `sudo crontab -l -u svc` shows the `pg-part-arch` line, and
+the watchdog query returns zero rows.
+
 ------------------------------------------------------------------------
 
 # STEP 8: UPDATE ENCRYPTED CREDENTIALS (data_acquisition)
@@ -767,14 +808,20 @@ sudo chown 999:root /opt/resources/ssl/private/pg_ssl.key
 sudo chmod 600 /opt/resources/ssl/private/pg_ssl.key
 ```
 
-Why this exact layout: host uid 999 is `dd-agent` (Datadog), which collides with the
-container `postgres` uid. The container reads the key through its **direct file
-bind-mount** (mounts bypass host directory traversal), while any host process running
-as uid 999 is stopped by the 700 parent directory. Verify both sides after setup:
+Why this exact layout: on acq-vm-0, host uid 999 is `dd-agent` (Datadog), which
+collides with the container `postgres` uid. The container reads the key through its
+**direct file bind-mount** (mounts bypass host directory traversal), while any host
+process running as uid 999 is stopped by the 700 parent directory. The layout is
+correct on any server — whatever host account happens to hold uid 999 (Datadog here;
+possibly another package's account, or nobody, on a fresh VM) can never traverse to
+the key. **Monitoring agents themselves (Datadog) are out of this document's scope**
+(audit A21-11): installing one is an org decision made separately — a doc-built
+server has no host monitoring until that happens. Verify after setup:
 
 ```bash
 docker exec pg_db psql -U postgres -tAc "SHOW ssl;"                 # on
-sudo -u dd-agent cat /opt/resources/ssl/private/pg_ssl.key          # Permission denied
+# If a uid-999 host account exists (dd-agent on acq-vm-0):
+sudo -u "$(getent passwd 999 | cut -d: -f1)" cat /opt/resources/ssl/private/pg_ssl.key   # Permission denied
 ```
 
 Cert regeneration: after re-issuing `pg_ssl.crt`, a **`pg_reload_conf()` is
@@ -1081,7 +1128,7 @@ unless-stopped`, stock `node:lts` as `user: "105:987"`, log cap in compose.
 git clone git@github.com:Matt-Teixeira/ops-dashboard.git /opt/apps/ops-dashboard
 cd /opt/apps/ops-dashboard           # tracks main
 mkdir -p /opt/resources/node_mod_cache/ops-dashboard /opt/run-logs/ops-dashboard
-cp .env.example .env                 # PG_HOST=pg_db, SSL cert path, self-monitoring toggle
+cp .env.example .env                 # PGHOST=pg_db, SSL cert path, self-monitoring toggle
 
 # Roles (superuser, once; incident-engine must already be deployed or the fail-closed
 # script errors on the missing incidents.* grant targets; password-file pattern):
@@ -1206,9 +1253,12 @@ plain `VACUUM` does not return the disk space.
 
 # SECURITY BASELINE (what a built server must satisfy)
 
-- **No secrets in any repo** — rotated and scrubbed 2026-08-17 (SEC-01/02); a repo
-  scan for credentials must come back empty. Secret scanner in CI is tracked debt
-  (Phase 4e).
+- **No secrets in any repo's current tree** — rotated and scrubbed 2026-08-17
+  (SEC-01/02); a worktree scan for credentials must come back empty. **One accepted
+  exception in history** (owner decision 2026-08-18): part-source-pipeline's git
+  history retains an SFTP credential the vendor cannot rotate — a history-aware
+  scan WILL find it; repo access control is the boundary for it. Secret scanner in
+  CI is tracked debt (Phase 4e).
 - **Secrets on disk** follow the root-only-file pattern (CONVENTIONS): the pg
   superuser password file, the pg TLS key, the Redis auth file.
 - **Build hygiene**: allowlist `.dockerignore` in every repo that builds an image
@@ -1257,7 +1307,10 @@ Build a blank dev/staging VM from this document alone, then demonstrate **all** 
 
 **Provenance & config**
 - [ ] Every referenced repo/branch/file/image exists; every `docker compose config`
-      validates with **zero warnings**; a secret scan over every repo finds nothing.
+      validates with **zero warnings — except acumatica_sync's 12 documented
+      `$expand`/`$format` interpolation warnings** (inherent to its no-`env_file`
+      dotenv design, A21-07); a **worktree** secret scan finds nothing (the psp
+      *history* credential is an accepted exception — see SECURITY BASELINE).
 - [ ] Config values arrive byte-for-byte inside containers (spot-check an Acumatica
       URI with `$` characters from inside its container).
 - [ ] Committed `.env.example` files contain placeholders only — no real uid/gid/tag
@@ -1272,9 +1325,16 @@ Build a blank dev/staging VM from this document alone, then demonstrate **all** 
 **Database**
 - [ ] Non-SSL connection rejected; `verify-full` passes; `docker inspect pg_db` shows
       zero `POSTGRES_PASSWORD*`; healthcheck healthy; `pg_stat_statements` returns rows.
-- [ ] `sudo -u dd-agent cat /opt/resources/ssl/private/pg_ssl.key` → Permission denied.
+- [ ] If any host account holds uid 999 (dd-agent on acq-vm-0; check
+      `getent passwd 999`): `sudo -u <that account> cat
+      /opt/resources/ssl/private/pg_ssl.key` → Permission denied. (No uid-999
+      account = nothing to test; note that the server has no monitoring agent —
+      out of doc scope, A21-11.)
 - [ ] Every binned table has ≥1 month of future partitions (watchdog query returns
       zero rows) and the watchdog cron is installed.
+- [ ] **odd-jobs is deployed and scheduled** (Jonathan): `sudo crontab -l -u svc`
+      shows the `pg-part-arch` line — a new DB server without it has no partition
+      maintenance (A21-12).
 - [ ] The systems inventory has been reconciled against prod (B0a) and the delta
       recorded.
 

@@ -1,7 +1,7 @@
 # Job Schedules — acq-vm-0
 
 **This file is the canonical schedule manifest.** It documents the live crontab as of
-2026-07-27. The old `cron-jobs.txt` (mixed legacy `/home/prod` paths) is retired to
+2026-08-18 (maintenance lines added 08-17/18). The old `cron-jobs.txt` (mixed legacy `/home/prod` paths) is retired to
 `docs/attic/`. A snapshot of the installed crontab is kept at
 `/opt/resources/backups/crontab-<date>.txt` (re-snapshot before every edit).
 
@@ -80,17 +80,41 @@ crontab -e                                                            # edit
 crontab /opt/resources/backups/crontab-<date>.txt                     # rollback = restore snapshot
 ```
 
-## Live crontab (verbatim, 2026-07-27)
+## Live crontab (verbatim, 2026-08-18)
 
 ```cron
+# Edit this file to introduce tasks to be run by cron.
+# 
+# Each task to run has to be defined through a single line
+# indicating with different fields when the task will be run
+# and what command to run for the task
+# 
+# To define the time you can provide concrete values for
+# minute (m), hour (h), day of month (dom), month (mon),
+# and day of week (dow) or use '*' in these fields (for 'any').
+# 
+# Notice that tasks will be started based on the cron's system
+# daemon's notion of time and timezones.
+# 
+# Output of the crontab jobs (including errors) is sent through
+# email to the user the crontab file belongs to (unless redirected).
+# 
+# For example, you can run a backup of all your user accounts
+# at 5 a.m every week with:
+# 0 5 * * 1 tar -zcf /var/backups/home.tgz /home/
+# 
+# For more information see the manual pages of crontab(5) and cron(8)
+# 
+# m h  dom mon dow   command
+
 ## HHM DATA ACQUISITION
 00,30 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run ge_ct"
 00,30 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run ge_cv"
 00,30 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run ge_mri"
 00,30 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run philips_ct"
 00,30 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run philips_cv"
-00,30 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run philips_mri"
-00,30 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run siemens_ct"
+00,30 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run philips_mri" 
+00,30 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run siemens_ct"  
 00,30 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run siemens_mri"
 58,28 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run philips_mri_mmb"
 10,40 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run ip"
@@ -122,16 +146,19 @@ crontab /opt/resources/backups/crontab-<date>.txt                     # rollback
 # PHILIPS RPP
 15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_ct"
 15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_cv"
+
 15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_monitor_1"
 15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_monitor_2"
 15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_monitor_3"
 15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_monitor_4"
 15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_monitor_5"
+
 15,45 * * * * sleep 5; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_rmmu_1"
 15,45 * * * * sleep 10; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_rmmu_2"
 15,45 * * * * sleep 15; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_rmmu_3"
 15,45 * * * * sleep 20; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_rmmu_4"
 15,45 * * * * sleep 25; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_rmmu_5"
+
 15,45 * * * * sleep 30; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_log_1"
 15,45 * * * * sleep 35; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_log_2"
 15,45 * * * * sleep 40; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_log_3"
@@ -142,6 +169,9 @@ crontab /opt/resources/backups/crontab-<date>.txt                     # rollback
 18,48 * * * * cd /opt/apps/data_acquisition && docker compose run --rm app_tools bash -lc "npm run system_reset_totalizer"
 # ROLLED BACK 2026-07-13 — acquisition-v2 paused; totalizer runs from data_acquisition (line above). v2 line kept commented for re-cutover.
 # 18,48 * * * * cd /opt/apps/acquisition-v2 && docker compose run --rm app_tools bash -lc "npm run system_reset_totalizer"
+# SAVED_FILES RETENTION (48 h) — restored 2026-08-18, plan item 8b / audit DB-05.
+05,35 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm -T app_tools bash -lc "npm run delete_old_db_files"
+
 
 # Monthly: trim cron-mail spool to last 100MB (added 2026-07-10, see acquisition-v2 session)
 0 3 1 * * tail -c 100000000 /var/mail/matt-teixeira > /tmp/mailtrim && cat /tmp/mailtrim > /var/mail/matt-teixeira && rm -f /tmp/mailtrim
@@ -153,4 +183,16 @@ crontab /opt/resources/backups/crontab-<date>.txt                     # rollback
 # sequential `run` is deliberate: two staggered lines would only block each other.
 # Added 2026-07-16 (Phase 3; see /opt/apps/incident-engine/markdown/DEPLOYMENT.md).
 25,55 * * * * cd /opt/apps/incident-engine-deploy && docker compose run --rm app node index.js run
+
+# --- maintenance jobs (installed 2026-08-17, plan-of-attack steps 1+3) ---
+15 2 * * * /opt/apps/pg_manage_v2/scripts/backup.sh >/dev/null 2>&1
+30 3 * * * /opt/apps/data_acquisition/scripts/prune-run-logs.sh >/dev/null 2>&1
+0 9 3,25 * * /opt/apps/pg_manage_v2/scripts/check-partition-horizon.sh
 ```
+
+## The svc crontab (root-only; odd-jobs partition maintenance)
+
+A second schedule exists outside the block above: the `svc` service account's
+crontab carries odd-jobs' `pg-part-arch` (partition create/archive) at 14:00 UTC
+on the 1st — owned by Jonathan, readable only via `sudo crontab -l -u svc`.
+See the setup doc's PARTITION MAINTENANCE section (audit A21-08).
