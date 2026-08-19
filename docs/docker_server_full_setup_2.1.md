@@ -340,12 +340,15 @@ Never bring up a subset; apps and odd-jobs resolve these by container name:
 | `redis_dev-0-4` | the four job apps (live acquisition state) | **required** |
 | `redis-PROD` | none currently | **required** |
 | `redis_dev-0-5` | none (spare) | **required** |
-| `redis-STAGING` | **odd-jobs** | **none, deliberately** — odd-jobs' client has no auth support; still built and required like the rest; revisit only with Jonathan |
+| `redis-STAGING` | **odd-jobs** | **required** (standardized 2026-08-19 — see odd-jobs caveat below) |
 
 **No host ports are published** (REDIS-01): everything reaches Redis over the docker
-network. Auth (2026-08-18): the three auth'd instances load `requirepass` at boot
-from a root-only host file via an `include` in their tracked configs;
-`staging.config` documents its deliberate exception in-file.
+network. Auth: **all four instances** load `requirepass` at boot from a root-only
+host file via an `include` in their tracked configs (REDIS-01 rollout 2026-08-18;
+extended to `redis-STAGING` 2026-08-19). ⚠️ odd-jobs caveat: redis-STAGING's
+consumer is odd-jobs, whose Redis client historically had **no auth support** —
+the pre-2026-08-19 exception existed for it. An unauthenticated client fails fast
+with NOAUTH; coordinate odd-jobs' connectivity with Jonathan.
 
 Order matters and is proven, not theoretical: **a client configured with a password
 against a passwordless server hangs in an infinite reconnect loop** (node-redis v4,
@@ -370,8 +373,14 @@ sudo chmod 400 /opt/resources/secrets/redis_auth.conf
 docker compose config --quiet && docker compose up -d
 docker compose ps        # all four (healthy) — healthchecks authenticate and demand a literal PONG
 
-# 4. Give the consuming apps the password (after their .envs exist — see app steps):
-sudo scripts/activate_redis_auth.sh   # propagates REDIS_PW into the four app .envs and verifies everything
+# The generated password is now the ONLY credential the instances accept, and every
+# consuming app MUST carry it as REDIS_PW in its untracked .env. Read it when needed:
+sudo cat /opt/resources/secrets/redis_auth.conf   # value after "requirepass"
+
+# 4. Give the consuming apps the password (after their .envs exist — see app steps).
+# Prefer the script over hand-copying — it propagates REDIS_PW into the four job-app
+# .envs and verifies auth end-to-end without echoing the value:
+sudo scripts/activate_redis_auth.sh
 ```
 
 **Verify the configs actually loaded** — not optional. Compose bind-mounts
@@ -381,10 +390,9 @@ Docker auto-created empty dirs and Redis silently ran on defaults with AOF off f
 months. Fixed 2026-07-27; the fail-loud mount style exists because of it.)
 
 ```bash
-for r in redis-PROD redis_dev-0-4 redis_dev-0-5; do
+for r in redis-PROD redis-STAGING redis_dev-0-4 redis_dev-0-5; do
   echo "$r: $(docker exec $r sh -c 'redis-cli -a "$(awk "/^requirepass/{print \$2}" /usr/local/etc/redis/auth.conf)" --no-auth-warning CONFIG GET appendonly' | tail -1)"   # expect yes
 done
-docker exec redis-STAGING redis-cli CONFIG GET appendonly | tail -1   # expect yes
 docker exec redis_dev-0-4 redis-cli PING    # expect NOAUTH error — auth is live
 ss -ltn | grep -E ':(6379|6380|6381|6382)' || echo "no redis host listeners (correct)"
 ```
@@ -399,10 +407,11 @@ sudo cat /opt/resources/secrets/redis_auth.conf     # the value itself, for GUI 
 
 > ⚠️ **Restore/seed procedures can silently produce an EMPTY Redis** (REDIS-05): if
 > Redis boots with `appendonly yes` and no AOF manifest in `/data`, it does **not**
-> load `dump.rdb`. The safe migration order (`CONFIG SET appendonly yes` on the
-> running instance first, wait for the rewrite, then recreate) is documented in
-> redis-admin README → Config files. Follow it exactly; verify with `DBSIZE` against
-> the source count.
+> load `dump.rdb`. When enabling AOF on a live instance, follow the order in
+> redis-admin README → Config files (`CONFIG SET appendonly yes` first, wait for the
+> rewrite, then recreate). When seeding from an RDB dump, use the temp-server
+> procedure embedded in STEP 4. In both cases verify with `DBSIZE` against the
+> source count.
 
 ------------------------------------------------------------------------
 
@@ -421,23 +430,48 @@ cd ~ && ./redis_dumps/redis_migrate.sh  # ships latest RDB to ~/redis_dumps/ on 
 DUMP=$(ls -t ~/redis_dumps/redis-PROD-dump-*.rdb | head -1)
 echo "Loading: $DUMP"
 
-# Record source key count for verification, then stop targets BEFORE the copy
-# (a running Redis rewrites its RDB on shutdown and would clobber it):
+# Record the source key count for verification, then stop targets BEFORE touching
+# their volumes (a running Redis rewrites its RDB on shutdown and would clobber
+# the seed):
 docker stop redis-PROD redis-STAGING redis_dev-0-4
 
-for r in redis-PROD redis-STAGING redis_dev-0-4; do docker cp "$DUMP" $r:/data/dump.rdb; done
+for pair in redis-PROD:prod_data redis-STAGING:staging_data redis_dev-0-4:dev04_data; do
+  name=${pair%%:*}; vol=redis-admin_${pair##*:}
+
+  # 1. Clear the AOF the fresh build created, place the dump:
+  docker run --rm -v $vol:/data -v ~/redis_dumps:/seed:ro redis:7-alpine \
+    sh -c "rm -rf /data/appendonlydir /data/dump.rdb \
+           && cp /seed/$(basename "$DUMP") /data/dump.rdb \
+           && chown redis:redis /data/dump.rdb"
+
+  # 2. Load it in a throwaway server with AOF OFF (the only state in which
+  #    dump.rdb is actually read), then convert the loaded dataset to AOF:
+  docker run -d --rm --name seed -v $vol:/data redis:7-alpine \
+    redis-server --appendonly no --save ''
+  sleep 2
+  docker exec seed redis-cli DBSIZE      # must equal the source count
+  docker exec seed redis-cli CONFIG SET appendonly yes
+  docker exec seed redis-cli INFO persistence | grep aof_rewrite_in_progress  # expect :0
+  docker stop seed                       # --rm removes it
+
+  # 3. The real container now boots from the generated AOF manifest:
+  docker start $name
+done
+
+# DBSIZE per instance (all four are auth'd — use the -a pattern from STEP 3)
+# must equal the source count. dev-0-5 (spare) is deliberately left empty.
 ```
 
-> ⚠️ If the target containers already ran with AOF enabled, the copied `dump.rdb` will
-> be IGNORED on restart (AOF wins). In that case: also delete the `appendonlydir/`
-> from each target volume while stopped, start, verify DBSIZE, then re-seed the AOF
-> with `CONFIG SET appendonly no` → `yes` (or follow redis-admin/README.md). On the
-> auth'd instances every `redis-cli` in this procedure needs the `-a` pattern above.
-
-```bash
-docker start redis-PROD redis-STAGING redis_dev-0-4
-# DBSIZE per instance (auth'd form for PROD/dev-0-4), compare against the source
-```
+> ⚠️ **Why the temp-server dance instead of `docker cp` + start** (rehearsed
+> 2026-08-19): after STEP 3 the targets have ALWAYS already run with AOF enabled —
+> the tracked configs say `appendonly yes`, so first boot creates `appendonlydir/`
+> immediately. From there, a copied `dump.rdb` is ignored on start (AOF wins), and
+> the once-documented "fix" of deleting `appendonlydir/` before starting is worse:
+> per REDIS-05, `appendonly yes` with no AOF manifest boots EMPTY without reading
+> `dump.rdb` at all. The dump is only loaded by a server started with
+> `--appendonly no`; `CONFIG SET appendonly yes` then writes the manifest the real
+> container needs. The throwaway seeder runs unauthenticated but publishes no
+> ports and dies before the real instance starts.
 
 ------------------------------------------------------------------------
 
@@ -471,9 +505,11 @@ docker run --rm --network pg_net --env-file .env -v "$PWD":/app -w /app \
 
 ```bash
 # Manual timeframe:
-... -lc './scripts/azure_to_local_migration/3_pgdump_data_to_local_time_cond.sh'
+docker run --rm --network pg_net --env-file .env -v "$PWD":/app -w /app \
+  --entrypoint bash pg_manage -lc './scripts/azure_to_local_migration/3_pgdump_data_to_local_time_cond.sh'
 # Month-to-date (first minute of current month → now):
-... -lc './scripts/azure_to_local_migration/4_pgdump_data_to_local_month_to_date.sh'
+docker run --rm --network pg_net --env-file .env -v "$PWD":/app -w /app \
+  --entrypoint bash pg_manage -lc './scripts/azure_to_local_migration/4_pgdump_data_to_local_month_to_date.sh'
 ```
 
 ### 5.4 Verify before pointing jobs at it
@@ -483,9 +519,10 @@ docker run --rm --network pg_net --env-file .env -v "$PWD":/app -w /app \
 psql -h localhost -U postgres -d <DB_NAME> -c "SELECT count(*) FROM alert.models;"
 ```
 
-> Known gap on acq-vm-0's staging DB (fails for every role, superuser included):
-> `mag.ge_mm` does not exist (only `ge_mm3`/`ge_mm4`) — reports jobs touching that
-> path fail until it is seeded or the code's schema expectation is fixed (DB-08).
+> DB-08 resolved as a non-issue (2026-08-19): the once-flagged "missing" `mag.ge_mm`
+> table never existed and no code references it — every real query uses
+> `mag.ge_mm3`/`ge_mm4` (+ `_units`), which exist and are populated. The only
+> occurrence anywhere is a commented sanity example in reports/db/setup-role.sql.
 > (An earlier claim that schema `edu` was empty is wrong and was corrected by audit
 > A21-05 — `edu` holds ~20 tables with live data.)
 
@@ -1208,8 +1245,8 @@ All scripts are **tracked in their owning repos** and already scheduled (STEP 9)
 - **`pg_manage_v2/scripts/backup.sh`** — nightly 02:15: `pg_dump -Fc <DB_NAME>` (via its `PG_DB` variable, default `staging`)
   (structurally verified with `pg_restore --list` before reporting success) + a
   reply-checked `SAVE` and RDB copy of all four Redis instances (`redis-cli` exits 0
-  even when refused — the script checks for a literal `OK`; the three auth'd
-  instances authenticate via their mounted auth.conf). Local retention: 7 days pg /
+  even when refused — the script checks for a literal `OK`; all four instances
+  authenticate via their mounted auth.conf). Local retention: 7 days pg /
   14 days Redis under `/opt/resources/backups/`. Logs one line per night to
   `backup.log` — "newest backup < 25 h old" is a standing health check.
   **Local-only until decision D4 picks an off-host target** (Azure storage is the
@@ -1267,8 +1304,8 @@ plain `VACUUM` does not return the disk space.
 - **Network**: the server has no public IP; the Azure NSG is the boundary — verify
   its rules for 5432 and 8080 (Redis has no host ports at all). Binding pg/dashboard
   to specific interfaces (SEC-11) is deliberately deferred.
-- **Redis**: auth on all instances except `redis-STAGING` (odd-jobs constraint —
-  revisit with Jonathan).
+- **Redis**: auth on **all four instances** (redis-STAGING standardized 2026-08-19;
+  odd-jobs' client-side auth must be coordinated with Jonathan).
 - **Postgres**: hostssl-only; container metadata carries no password; per-app roles
   are the target state (3 of 10 done).
 
@@ -1288,10 +1325,11 @@ plain `VACUUM` does not return the disk space.
 7. **Cron mail cleanup** (4h) — 400 MB spool, some sensitive output.
 8. **External-endpoint inventory** (4i) — which staging jobs touch real prod systems
    (Acumatica, Monday, SFTP), with per-env credentials/mode.
-9. **redis-STAGING auth** — accepted as permanently passwordless (owner decision
-   2026-08-18): odd-jobs' client has no auth support, and the instance is reachable
-   only over the internal docker network. Not open debt; revisit only if odd-jobs
-   itself changes.
+9. **odd-jobs Redis auth support** — redis-STAGING is auth'd like the rest since
+   2026-08-19 (reverses the 2026-08-18 passwordless decision). odd-jobs' client
+   must authenticate to reach it; until Jonathan confirms/ships that, odd-jobs'
+   Redis access fails fast with NOAUTH — coordinate before the next `pg-part-arch`
+   run (1st of the month) if that job touches Redis.
 10. **reports image tag** — rename `aux:` → `reports:` once nothing else consumes it.
 11. **incident-engine / ops-dashboard / reports hardcoded ids** — migrate the
     remaining `105:987` literals to the `.env` convention.
@@ -1341,9 +1379,9 @@ Build a blank dev/staging VM from this document alone, then demonstrate **all** 
       recorded.
 
 **Redis**
-- [ ] No Redis ports on the host; anonymous `PING` → NOAUTH on PROD/dev-0-4/dev-0-5;
-      authenticated `PING` → PONG; `appendonly=yes` from the mounted configs;
-      key counts match the seed source.
+- [ ] No Redis ports on the host; anonymous `PING` → NOAUTH on **all four**
+      instances; authenticated `PING` → PONG; `appendonly=yes` from the mounted
+      configs; key counts match the seed source.
 
 **Jobs & honesty**
 - [ ] One scheduled job from each family completes; outcomes land in
