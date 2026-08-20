@@ -631,6 +631,28 @@ COMMIT;
 When a future schema change lands, **append it here** (dated) — this section is the
 single changelog that a new server's seeded database gets replayed against.
 
+### 5.7 Re-encrypt migrated credentials (every seed — learned the hard way 2026-08-20)
+
+Seeded `hhm_credentials` rows are ciphertext under the **source server's legacy
+scheme**; this server's jobs decrypt with the AES/`APP_SECRET` scheme. Until
+converted, every credentialed HHM acquisition fails with
+`Invalid authentication tag length: 0` (the 2026-08-19 migration ran ~20 h in that
+state — 9 systems succeeding instead of ~65). After seeding, snapshot then convert:
+
+```bash
+docker exec pg_db pg_dump -U postgres -d <DB_NAME> -t hhm_credentials -Fc \
+  > /opt/resources/backups/pg/hhm_credentials-pre-reencrypt-$(date +%Y%m%d-%H%M).dump
+cd /opt/apps/data_acquisition && ./run_scripts/update_db_creds.sh   # see STEP 8
+```
+
+Run it **exactly once per seed** — it has no already-converted guard, and a second
+run would feed new-format ciphertext to the legacy decryptor and destroy the
+credentials (old format = uniform 32-char values; converted = 68–80 chars —
+`SELECT length(password_enc), count(*) FROM hhm_credentials GROUP BY 1` tells you
+which state you're in). Its stdout prints decrypted credentials — private terminal,
+no redirection. Verify on the next cron burst: zero `credential_decrypt` errors in
+`util.app_run_logs`.
+
 ------------------------------------------------------------------------
 
 # STEP 6: DATA ACQUISITION APP SETUP

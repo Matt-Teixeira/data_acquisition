@@ -48,16 +48,17 @@ Affected systems (fail every cycle until keyed):
 not run after the migration** — the migrated credentials are still encrypted under
 the old key.
 
-- [ ] **2a. Run `./run_scripts/update_db_creds.sh`** from the repo root in a quiet
-      window (it deletes any stray repo-local `node_modules/`, then runs
-      `npm ci && npm run update_db_creds` in a tmpfs container — nothing lands on
-      the host). Owner: Matt.
-- [ ] **2b. Verify after:** decrypt errors go to zero in `util.app_run_logs`
-      (`func LIKE '%credential_decrypt'`), and hhm distinct successful systems in
-      `stats.acquisition_history` climbs from 9 toward fleet size within a few
-      cycles. Post-migration this step belongs in the migration runbook — add
-      "re-encrypt credentials" to doc 2.1 STEP 5's post-seed checklist so the next
-      migration doesn't repeat this. Owner: Matt (verify), doc edit with 1b.
+- [x] **2a. Run `./run_scripts/update_db_creds.sh`** — done 2026-08-20 ~14:59 UTC
+      after two script fixes (commit `44c303f`: run-logs mount for the
+      RUN_ENV=staging logger; read via the PG_SSLMODE-aware pool instead of
+      pgPool_old). Table snapshot taken first
+      (`hhm_credentials-pre-reencrypt-20260820-1458.dump`); all 24 rows converted
+      (uniform 32-char → 68–80-char ciphertext).
+- [x] **2b. Verified on the 15:00 cycle (2026-08-20):** `credential_decrypt`
+      errors 0 (was ~128/h); hhm succeeded for **65 distinct systems in one burst**
+      vs 9 across the prior 17 h; remaining hhm errors are ordinary connectivity
+      noise. Runbook addendum added as doc 2.1 **§5.7** (snapshot → convert →
+      run-once warning → length check → verify), so the next seed can't repeat this.
 
 ## 3. Redis auth is now universal — retire the redis-STAGING exception
 
