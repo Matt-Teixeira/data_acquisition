@@ -1,10 +1,11 @@
 const db_dock = require("../../db/pgPool");
-const db_old = require("../../db/pgPool_old");
+// pgPool_old (the Azure-era source) is gone from this flow: since the migration,
+// the old-format ciphertext lives in the LOCAL database — read and write the same pool.
 const { encryptString, decryptString } = require("./enc_denc");
 const { encrypt_string, decrypt_string } = require("./decrypt");
 
 const update_creds = async () => {
-  let old_creds = await db_old.any(
+  let old_creds = await db_dock.any(
     "SELECT * FROM hhm_credentials ORDER BY id ASC"
   );
 

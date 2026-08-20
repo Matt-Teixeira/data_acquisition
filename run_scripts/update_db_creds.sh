@@ -21,6 +21,7 @@ rm -rf "$APP_DIR/node_modules" || true
   --network pg_net \
   -w /usr/src/app \
   -v "$APP_DIR":/usr/src/app \
+  -v /opt/run-logs/data_acquisition:/opt/run-logs/data_acquisition \
   --env-file "$ENV_FILE" \
   --mount type=tmpfs,destination=/usr/src/app/node_modules \
   -e NPM_CONFIG_CACHE=/tmp/.npm \
