@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# LEGACY — still invoked by jobs/philips_mri/rsync_philips-mri.js:82 via the
+# cwd-relative path ./read/sh/rsync_mmb.sh. Uses StrictHostKeyChecking=accept-new
+# and skips -F /opt/resources/ssh/config, BYPASSING the fleet host-key policy;
+# and because the bundle is mounted :ro, accepted keys are never persisted — the
+# host is blind-accepted again every cycle. Do NOT copy this pattern (BACKLOG
+# item 1d). Delete only after the Philips job is repointed to
+# jobs/mmb/read/sh/rsync_mmb.sh — note the arg orders differ:
+#   this script: $1=user  $2=ip          $3=dest
+#   hardened:    $1=sme   $2=remote_path $3=dest  $4=ip  $5=user
+
 # BOMB SCRIPT FOR UNDEFINED VAR OR ERR DURING EXECUTION
 set -ue
 

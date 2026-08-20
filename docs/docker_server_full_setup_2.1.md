@@ -422,9 +422,9 @@ production cutover runbook (none exists yet — write and rehearse one before an
 build).
 
 ```bash
-# On the SOURCE server (the script lives there, in the operator home's
-# redis_dumps/ — it is not in any repo):
-cd ~ && ./redis_dumps/redis_migrate.sh  # ships latest RDB to ~/redis_dumps/ on the target
+# On the SOURCE server — the script is tracked as data_acquisition/scripts/
+# redis_migrate.sh (since 2026-08-20); copy it over or run it from a checkout:
+./redis_migrate.sh                      # ships latest RDB to ~/redis_dumps/ on the target
 
 # On the target server:
 DUMP=$(ls -t ~/redis_dumps/redis-PROD-dump-*.rdb | head -1)
@@ -652,6 +652,15 @@ credentials (old format = uniform 32-char values; converted = 68–80 chars —
 which state you're in). Its stdout prints decrypted credentials — private terminal,
 no redirection. Verify on the next cron burst: zero `credential_decrypt` errors in
 `util.app_run_logs`.
+
+### 5.8 Import production host keys (every seed that carries systems inventory)
+
+A migrated inventory references hosts this server may never have keyed; strict host-key
+checking then fails those systems every cycle (2026-08-19: 905
+`No ED25519 host key is known` errors in 17 h). **Before the first cron burst after
+seeding**, push the source server's verified `known_hosts` — run
+`scripts/known_hosts_migrate.sh` **on the source server** (dry-run first). Full
+procedure and verification: SHARED SSH BUNDLE → "Incremental import after a migration".
 
 ------------------------------------------------------------------------
 
@@ -1002,7 +1011,10 @@ an error.
 
 # SHARED SSH BUNDLE (/opt/resources/ssh)
 
-Used by data_acquisition's SFTP/rsync jobs; mounted `- /opt/resources/ssh:/opt/resources/ssh:ro`.
+Used by data_acquisition's SFTP/rsync jobs (mounted
+`- /opt/resources/ssh:/opt/resources/ssh:ro`) **and by odd-jobs**, which mounts all of
+`/opt/resources:ro` and runs `ssh -F /opt/resources/ssh/config` the same way — a change
+to this bundle reaches both apps.
 
 ```
 /opt/resources/ssh/
@@ -1031,6 +1043,34 @@ Provisioning a NEW server (the bundle never comes from git):
 2. `sudo chgrp -R docker /opt/resources/ssh && chmod 664 config && chmod 640 id_dev && chmod 644 known_hosts`
 3. Never seed `known_hosts` with blind `ssh-keyscan` against production endpoints —
    carry over the existing verified file.
+
+### Incremental import after a migration (EXISTING server, new inventory)
+
+A systems-inventory seed brings host IPs this server may never have keyed; strict
+checking then fails every cycle (the 2026-08-19 migration produced 905
+`No ED25519 host key is known` errors in 17 h across 11 systems). Do **not** keyscan
+(guardrail 3). Instead push the source server's verified file with
+**`scripts/known_hosts_migrate.sh`** (tracked here, **runs on the source server** —
+same lifecycle as `redis_migrate.sh`):
+
+```bash
+# On the SOURCE (prod) server:
+./known_hosts_migrate.sh --dry-run   # validates, ships, reports what would append
+./known_hosts_migrate.sh             # backup on target -> append-only merge -> install
+```
+
+Semantics: append-only with exact-line dedupe — nothing already on the target is
+removed or replaced; the install is atomic (temp + `mv` in the same dir), safe under
+live cron. A changed host key ends up with old+new entries (OpenSSH accepts when any
+matches); pruning stale keys stays manual. Backup lands at
+`/opt/resources/backups/known_hosts.pre-import-<ts>`; the script prints the temp+`mv`
+rollback line (a plain `cp` onto the file is blocked by the ACL mask for non-owners).
+
+Verify on the target: `ssh-keygen -F <new-ip> -f /opt/resources/ssh/known_hosts` per
+new system, then zero `%host key%` `err_msg` rows in `util.app_run_logs` on the next
+`:00/:30` burst. **Single new host:** same procedure works (the merge only appends
+what's new), or obtain that host's key from any server that already trusts it — never
+keyscan.
 
 ------------------------------------------------------------------------
 
