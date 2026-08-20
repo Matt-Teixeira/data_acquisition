@@ -66,29 +66,23 @@ including `redis-STAGING`, now require AUTH (live since the 2026-08-19 rebuild).
 This reverses the 2026-08-18 "permanently passwordless" decision recorded in
 doc 2.1 and the audit briefs.
 
-- [ ] **3a. Commit the redis-admin changes** — the auth enablement currently lives
-      in four *uncommitted* working-tree modifications (`config/staging.config`,
-      `docker-compose.yaml`, `README.md`, `scripts/activate_redis_auth.sh`).
-      Live-but-uncommitted is exactly the drift class doc 2.1 exists to prevent.
-      Owner: Matt.
-- [ ] **3b. Update doc 2.1** — the passwordless exception appears in: the STEP 3
-      instance table ("none, deliberately"), the auth paragraph
-      ("staging.config documents its deliberate exception in-file"), STEP 3's
-      verification block (unauthenticated `CONFIG GET` against redis-STAGING),
-      SECURITY BASELINE ("auth on all instances except redis-STAGING"), and
-      FOLLOW-UPS item 9. All five places need the new reality; `backup.sh`'s
-      unauthenticated-SAVE branch for STAGING also needs checking. Owner: Matt/Claude.
-- [ ] **3c. odd-jobs must authenticate before Sep 1, 14:00 UTC** — its `.env` has no
-      `REDIS_PW` and its client historically had no auth support (the reason for
-      the old exception). It fails fast with NOAUTH now (safe failure mode), but
-      the monthly `pg-part-arch` run on Sep 1 is the first scheduled collision *if*
-      any part of its boot path touches Redis. Either Jonathan adds auth to
-      odd-jobs (his app — hands off for us), or he confirms `pg-part-arch` never
-      touches Redis. The partition watchdog (Sep 3) is the safety net either way.
-      Owner: **Jonathan** (Matt to coordinate). ⏰ Deadline: 2026-09-01.
-- [ ] **3d. Update standing references** — the reusable audit prompt
-      (`docs/AUDIT_PROMPT_doc_2.1.md` "known accepted decisions") and any memory/
-      notes that state redis-STAGING is passwordless.
+- [x] **3a. Commit the redis-admin changes** — done 2026-08-20: redis-admin
+      `0e7d280` (staging.config include, compose auth mount + healthcheck, README,
+      activate_redis_auth.sh with all-four AUTHED + odd-jobs/mmb-rpp on the
+      propagation list + a skip-guard so a not-cloned app path can't abort a
+      rotation mid-run). backup.sh's authenticated four-instance SAVE committed as
+      pg_manage_v2 `0dee893` (Matt had already fixed it live — Aug 19/20 backups OK).
+- [x] **3b. Update doc 2.1** — already done in `738dc1c` (pre-dated this item):
+      STEP 3 table, auth paragraph + odd-jobs caveat, all-four verification loop,
+      SECURITY BASELINE, FOLLOW-UPS #9 rewritten. Verified 2026-08-20.
+- [x] **3c. odd-jobs auth coordination** — closed 2026-08-20: Matt talked with
+      Jonathan; he is aware his apps must authenticate, and odd-jobs + mmb-rpp
+      `.env`s are now on `activate_redis_auth.sh`'s propagation list (his `.env`
+      updates on his side pending, per agreement). Residual watch: if his updates
+      slip past the Sep 1 14:00 UTC `pg-part-arch` run, the partition watchdog
+      (Sep 3) is the net.
+- [x] **3d. Update standing references** — done 2026-08-20: audit prompt
+      known-decisions bullet rewritten; session memory updated.
 
 ## 4. Interpreting the residual rsync noise + the history reset
 

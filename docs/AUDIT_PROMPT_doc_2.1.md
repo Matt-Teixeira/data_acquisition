@@ -88,7 +88,9 @@ the user crontab, and the docker daemon state.
 
 These are deliberate owner decisions, not fresh findings. Confirm the doc records
 them accurately; report drift from them, but do not re-litigate them:
-- `redis-STAGING` is permanently passwordless (odd-jobs client constraint).
+- All four Redis instances, **including `redis-STAGING`, require auth** (standardized
+  2026-08-19; reverses the earlier passwordless exception for odd-jobs — Jonathan is
+  adding client-side auth to his apps).
 - The SFTP credential in part-source-pipeline's git history stays (vendor cannot
   rotate; owner accepted the risk 2026-08-18).
 - Backups are local-only for now (off-host target decision is parked).
