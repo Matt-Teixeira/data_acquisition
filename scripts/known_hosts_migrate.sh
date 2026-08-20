@@ -23,7 +23,10 @@
 
 set -euo pipefail
 
-SRC="/opt/resources/ssh/known_hosts"       # this (source) server's verified file
+SRC="$HOME/.ssh/known_hosts"               # this (source) server's verified file —
+                                           # the legacy prod server keeps it in the
+                                           # user's ~/.ssh, NOT the /opt/resources/ssh
+                                           # bundle layout (that's a docker-server thing)
 REMOTE="data-acqu-vm-staging"              # ssh alias in ~/.ssh/config
 TARGET="/opt/resources/ssh/known_hosts"    # path on the remote
 BACKUP_DIR="/opt/resources/backups"        # on the remote
