@@ -1,0 +1,2244 @@
+<!--
+================================================================================
+  pg_docker_guide — Dockerized Postgres on Azure VM
+  Build Runbook, Connection Guide, and Reverse Prompts
+
+  FOR AN LLM READING THIS FILE:
+
+  If the user's message is "Follow Rev Prompts" (or similar), do NOT summarise or
+  analyse this file. Instead:
+
+    1. Go to the "Reverse Prompts" section at the end of this document and follow
+       its numbered steps in order.
+
+    2. THIS APPLIES TO EVERY QUESTION BELOW, INCLUDING THE FIRST ONE:
+       Render every choice as clickable options. If you have a tool for presenting
+       selectable choices — an option picker, elicitation widget, multiple-choice
+       or tappable-button component — use it. The user must be able to answer by
+       clicking, not by typing a number back or retyping an option's wording. Fall
+       back to a numbered text list only if you have no such capability, and say so
+       when you do. Use free text only for values that cannot be enumerated (an IP,
+       a name, a role) — never where a fixed set of options exists.
+
+    3. FIRST QUESTION — ask which environment (DEV / STAGING / PROD), as clickable
+       options. Always before anything else: every value differs per environment,
+       and VM and NSG names are identical across them, so nothing can be inferred
+       later. Values are in the "Environments" section.
+
+    4. SECOND QUESTION — ask whether they are connecting to a database (developer)
+       or administering one (infra), as clickable options. The two task lists are
+       different; most people only need the developer one.
+
+    5. THIRD QUESTION — ask which task, as clickable options, from that group's
+       table in Reverse Prompts. If a developer's task turns out to need admin
+       rights, say so and give them the value to pass on rather than a command they
+       cannot run.
+
+    6. Work from the referenced section rather than from memory.
+
+    7. Honour the standing constraints in Reverse Prompts: never widen an NSG rule
+       to '*', never drop the user's own IP from an allowlist, read the current
+       rule before any 'update' that replaces a list, and ask rather than invent
+       any value marked TBD.
+
+  Otherwise, treat this as an ordinary document and answer what was asked.
+================================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dockerized Postgres on Azure VM — Build Runbook &amp; Connection Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* page recedes, terminals are the deepest well on the page */
+  --paper:#131A22; --card:#1A232D; --card-2:#1E2833;
+  --ink:#CBD6E1; --ink-hi:#E8EEF4; --muted:#8593A3;
+  --rule:#26313C; --rule-soft:#1F2831;
+  --pg:#62A0D0; --pg-deep:#8FBEE4; --pg-wash:rgba(98,160,208,.13);
+  --vivid-a:#8B5CF6; --vivid-b:#F0559C; --vivid-halo:rgba(139,92,246,.13);
+  --flare:#3ED9C0; --flare-dim:rgba(62,217,192,.38);
+  --flare-wash:rgba(62,217,192,.09); --flare-rule:rgba(62,217,192,.3);
+  --flare-glow:rgba(62,217,192,.3);
+  --term-bg:#0A1016; --term-bar:#141D26; --term-fg:#CFDAE5;
+  --term-ps:#79B4E0; --term-cmt:#6A7A8B; --term-out:#9CAAB8;
+  --danger:#E39288; --danger-wash:#26191A; --danger-rule:#4A2E2C;
+  --ok:#7FC9A3; --ok-wash:#16241F; --ok-rule:#2C4A3B;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --cond:'IBM Plex Sans Condensed',var(--sans);
+  --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  --maxw:88ch;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:1.5rem}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  color-scheme:dark;
+  font:400 16.5px/1.65 var(--sans);
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{display:grid;grid-template-columns:17rem minmax(0,1fr);gap:0;
+  max-width:112rem;width:100%;margin:0 auto}
+
+/* ---------- sidebar ---------- */
+.side{
+  position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  padding:2rem 1.25rem 3rem;border-right:1px solid var(--rule);
+  background:var(--paper);
+}
+.side__brand{
+  font:600 11px/1.3 var(--cond);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--pg);padding-bottom:.5rem;margin-bottom:1rem;
+  border-bottom:1px solid var(--rule);
+}
+.side nav ul{list-style:none;margin:0;padding:0}
+.side nav a{text-decoration:none;border-bottom:0}
+
+/* group = one Part, or the appendix bundle */
+.nav__group{
+  margin-bottom:.45rem;padding-bottom:.45rem;
+  border-bottom:1px solid var(--rule-soft);
+}
+.nav__group:last-child{border-bottom:0}
+.nav__group--flat{padding-bottom:.55rem}
+.nav__group--apx{margin-top:.2rem}
+
+/* part header row: link + collapse toggle */
+.nav__row{display:flex;align-items:stretch;gap:.25rem;margin-bottom:.3rem}
+.nav__row .nav__part{flex:1;min-width:0;margin-bottom:0}
+.nav__row .nav__part > span:last-child{overflow:hidden;text-overflow:ellipsis}
+.nav__tog{
+  flex:none;width:1.7rem;display:grid;place-items:center;cursor:pointer;
+  background:var(--card);border:1px solid var(--rule);border-radius:5px;
+  color:var(--muted);padding:0;
+  transition:color .13s,border-color .13s;
+}
+.nav__tog:hover{color:var(--flare);border-color:var(--flare-rule)}
+.nav__tog svg{width:10px;height:6px;transition:transform .18s ease}
+.nav__group.is-collapsed .nav__tog svg{transform:rotate(-90deg)}
+
+/* collapsible body */
+.nav__wrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows .2s ease}
+.nav__wrap > .nav__list{overflow:hidden;min-height:0}
+.nav__group.is-collapsed .nav__wrap{grid-template-rows:0fr}
+
+/* part header */
+.nav__part{
+  display:flex;align-items:center;gap:.5rem;
+  padding:.5rem .55rem;margin-bottom:.3rem;border-radius:5px;
+  font:600 11.5px/1.2 var(--cond);letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-hi);background:var(--card);
+  border:1px solid var(--rule);
+  transition:border-color .13s,color .13s;
+}
+a.nav__part:hover{border-color:var(--vivid-b);color:#fff}
+.nav__part--plain{cursor:default}
+.nav__n{
+  font:700 12.5px/1 var(--mono);letter-spacing:-.03em;flex:none;
+  background:linear-gradient(103deg,var(--vivid-a),var(--vivid-b));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  -webkit-text-fill-color:transparent;
+}
+@supports not (background-clip:text){
+  .nav__n{color:var(--vivid-a);-webkit-text-fill-color:currentColor}
+}
+
+/* rows */
+.nav__list{padding-left:.15rem}
+.nav__l2,.nav__l3{
+  display:flex;gap:.4rem;padding:.19rem .2rem;border-radius:3px;
+  color:var(--muted);line-height:1.35;
+}
+.nav__l2{font-size:13.2px}
+.nav__l3{font-size:12.4px;opacity:.78}
+.nav__l2:hover,.nav__l3:hover{color:var(--flare)}
+.nav__s{
+  flex:none;width:1.35rem;text-align:right;
+  font:600 11px/1.45 var(--mono);color:var(--flare);letter-spacing:-.02em;
+}
+.nav__s--none{color:var(--muted);opacity:.4}
+.nav__sub{
+  margin:.1rem 0 .25rem 1.75rem;padding-left:.55rem;
+  border-left:1px solid var(--rule-soft);
+}
+.side nav a.here{
+  color:var(--flare);font-weight:600;background:var(--pg-wash);
+}
+.side nav a.nav__part.here{color:#fff;border-color:var(--vivid-a);background:var(--card-2)}
+
+/* ---------- document ---------- */
+main{padding:3rem 3.5rem 8rem;min-width:0}
+main > *{max-width:var(--maxw)}
+main > .term,main > table,main > .tablewrap,main > h1.part,main > .dir{max-width:100%}
+
+h1,h2,h3,h4{font-family:var(--cond);line-height:1.18;letter-spacing:-.005em;color:var(--ink-hi)}
+h1:first-of-type{
+  font-size:clamp(1.9rem,3.4vw,2.7rem);font-weight:600;margin:0 0 .6rem;
+  letter-spacing:-.018em;
+}
+h1.part{
+  display:flex;flex-direction:column;align-items:center;gap:.5rem;
+  text-align:center;position:relative;isolation:isolate;
+  margin:6rem 0 2.6rem;padding:2.4rem 1rem 2.6rem;
+  border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+}
+h1.part::before{
+  content:"";position:absolute;inset:0;z-index:-1;
+  background:radial-gradient(58% 78% at 50% 42%,var(--vivid-halo),transparent 72%);
+}
+.part__n{
+  font:700 clamp(2.6rem,6vw,4.1rem)/.9 var(--mono);letter-spacing:-.045em;
+  background:linear-gradient(103deg,var(--vivid-a),var(--vivid-b));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  -webkit-text-fill-color:transparent;
+}
+@supports not (background-clip:text){
+  .part__n{color:var(--vivid-a);-webkit-text-fill-color:currentColor}
+}
+.part__t{
+  font-size:clamp(1.35rem,2.9vw,2.05rem);font-weight:600;
+  text-transform:uppercase;letter-spacing:.14em;color:var(--ink-hi);
+}
+.part__t::after{
+  content:"";display:block;width:3.2rem;height:2px;margin:.85rem auto 0;
+  border-radius:2px;
+  background:linear-gradient(90deg,var(--vivid-a),var(--vivid-b));
+}
+h1:not(.part):not(:first-of-type){
+  font-size:1.55rem;font-weight:600;margin:4.5rem 0 1.4rem;
+  padding-bottom:.5rem;border-bottom:1px solid var(--rule);
+}
+h2{font-size:1.32rem;font-weight:600;margin:3.2rem 0 1rem}
+h2.step{
+  display:flex;align-items:center;gap:.85rem;
+  margin:3.9rem 0 1.3rem;font-size:1.42rem;letter-spacing:-.01em;
+}
+h2.step::after{
+  content:"";flex:1;height:1px;min-width:1.5rem;
+  background:linear-gradient(90deg,var(--flare-dim),transparent);
+}
+.step__n{
+  flex:none;font:700 .82em/1 var(--mono);letter-spacing:-.02em;
+  color:var(--flare);background:var(--flare-wash);
+  border:1px solid var(--flare-rule);border-radius:5px;
+  padding:.34em .46em .3em;
+  text-shadow:0 0 14px var(--flare-glow);
+}
+.step__t{flex:none}
+@media (max-width:560px){
+  h2.step{flex-wrap:wrap;gap:.6rem}
+  h2.step::after{display:none}
+}
+h3{
+  font-size:.95rem;font-weight:600;text-transform:uppercase;letter-spacing:.075em;
+  color:var(--pg-deep);margin:2.4rem 0 .8rem;
+}
+h4{font-size:1rem;font-weight:600;margin:1.8rem 0 .6rem}
+
+p{margin:0 0 1.05rem}
+a{color:var(--pg);text-decoration:none;border-bottom:1px solid rgba(98,160,208,.32)}
+a:hover{border-bottom-color:var(--pg)}
+strong{font-weight:600;color:var(--ink-hi)}
+hr{border:0;border-top:1px solid var(--rule);margin:2.5rem 0}
+main > hr:first-of-type,h1.part + hr,hr:has(+ h1.part){display:none}
+
+ul,ol{margin:0 0 1.15rem;padding-left:1.35rem}
+li{margin:.3rem 0}
+li > p{margin:.3rem 0}
+
+/* inline code */
+:not(pre) > code{
+  font:500 .855em/1.4 var(--mono);background:var(--pg-wash);color:var(--pg-deep);
+  padding:.1em .36em;border-radius:3px;white-space:nowrap;
+  max-width:100%;overflow-x:auto;vertical-align:bottom;
+}
+.cal code{white-space:pre-wrap;overflow-wrap:anywhere}
+h1 code,h2 code,h3 code{font-size:.9em}
+td code,li code{white-space:normal}
+
+/* ---------- terminal blocks ---------- */
+.term{
+  margin:1.4rem 0 1.6rem;border-radius:7px;overflow:hidden;
+  background:var(--term-bg);border:1px solid #202B36;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.02),0 10px 24px -16px rgba(0,0,0,.7);
+}
+.term__bar{
+  display:flex;align-items:center;gap:.65rem;
+  padding:.42rem .7rem;background:var(--term-bar);
+  border-bottom:1px solid #202B36;
+}
+.term__dots{display:flex;gap:.3rem}
+.term__dots i{width:8px;height:8px;border-radius:50%;background:#2E3B48;display:block}
+.term__label{
+  font:500 10.5px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;
+  color:#7C8C9D;
+}
+.copy{
+  margin-left:auto;font:500 10.5px/1 var(--mono);letter-spacing:.07em;
+  text-transform:uppercase;color:#7C8C9D;background:transparent;
+  border:1px solid #2B3845;border-radius:3px;padding:.28rem .5rem;cursor:pointer;
+  transition:color .13s,border-color .13s;
+}
+.copy:hover{color:var(--term-ps);border-color:#3F4F5F}
+.copy.done{color:#6FBF95;border-color:#375444}
+.term__body{
+  margin:0;padding:.85rem 1rem 1rem;overflow-x:auto;
+  font:400 13.4px/1.72 var(--mono);color:var(--term-fg);
+}
+.term__body code{font:inherit;background:none;padding:0;color:inherit;white-space:pre}
+.tl{display:block;white-space:pre}
+.tl.blank{line-height:.7}
+.ps{color:var(--term-ps);user-select:none;display:inline-block;width:1.15ch;font-weight:600}
+.tl.cont{padding-left:1.15ch}
+.tl.cmt{color:var(--term-cmt);font-style:italic}
+.tl.out{color:var(--term-out)}
+.term--output .term__bar{background:#111A22}
+.term--output .term__label{color:#6B7885}
+.term--src .tl{padding-left:0}
+.term--src .term__body{max-height:34rem;overflow-y:auto}
+.tl.key{color:var(--flare)}
+
+/* ---------- directory (00) ---------- */
+.dir{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:.85rem;margin:0 0 3.5rem;align-items:start;
+}
+.dir__card{
+  background:var(--card);border:1px solid var(--rule);border-radius:7px;
+  padding:.85rem .9rem .95rem;min-width:0;
+}
+.dir__head{
+  display:flex;align-items:baseline;gap:.55rem;
+  margin:0 0 .7rem;padding-bottom:.6rem;
+  border-bottom:1px solid var(--rule-soft);border-radius:0;
+  text-decoration:none;
+}
+a.dir__head:hover .dir__title{color:var(--vivid-b)}
+.dir__n{
+  font:700 .95rem/1 var(--mono);letter-spacing:-.03em;
+  background:linear-gradient(103deg,var(--vivid-a),var(--vivid-b));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  -webkit-text-fill-color:transparent;flex:none;
+}
+@supports not (background-clip:text){
+  .dir__n{color:var(--vivid-a);-webkit-text-fill-color:currentColor}
+}
+.dir__title{
+  font:600 .8rem/1.2 var(--cond);letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-hi);transition:color .13s;
+}
+.dir__sub{
+  margin:0 0 .6rem;font-size:12.8px;line-height:1.4;color:var(--muted);
+}
+.dir__list{list-style:none;margin:0;padding:0;
+  columns:1;font-size:13.6px;line-height:1.45}
+.dir__list li{margin:.18rem 0;break-inside:avoid}
+.dir__list a{
+  color:var(--muted);border-bottom:0;display:flex;gap:.4rem;padding:.1rem 0;
+}
+.dir__step{
+  flex:none;width:1.3rem;text-align:right;
+  font:600 11.5px/1.5 var(--mono);color:var(--flare);letter-spacing:-.02em;
+}
+.dir__step--none{width:1.5rem;color:var(--muted);opacity:.55;font-weight:400}
+.dir__list a:hover{color:var(--flare)}
+@media (max-width:1400px){
+  .dir{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:760px){
+  .dir{grid-template-columns:1fr}
+}
+
+/* ---------- callouts ---------- */
+.cal{
+  margin:1.5rem 0;padding:.95rem 1.15rem;background:var(--card);
+  border:1px solid var(--rule);border-left:3px solid var(--pg);border-radius:0 5px 5px 0;
+  font-size:15.5px;
+}
+.cal > *:first-child{margin-top:0}
+.cal > *:last-child{margin-bottom:0}
+.cal--warn{border-left-color:var(--danger);background:var(--danger-wash);border-color:var(--danger-rule)}
+.cal--bot{
+  border-left-color:var(--vivid-a);border-left-width:4px;
+  background:linear-gradient(97deg,var(--vivid-halo),transparent 65%);
+  border-color:var(--vivid-a);
+  padding-top:0;overflow:hidden;
+}
+.cal--bot > p:first-child{
+  margin:0 -1.15rem .9rem;padding:.5rem 1.15rem;
+  background:linear-gradient(103deg,var(--vivid-a),var(--vivid-b));
+}
+.cal--bot > p:first-child strong{
+  font:700 .78rem/1.3 var(--cond);letter-spacing:.19em;text-transform:uppercase;
+  color:#fff;
+}
+.cal--bot code{
+  background:var(--vivid-halo);color:var(--vivid-b);
+  border:1px solid var(--flare-rule);white-space:nowrap;
+}
+.cal--meta{
+  border-left-color:var(--muted);background:transparent;border-style:dashed;
+  font-size:14.5px;color:var(--muted);
+}
+.cal--meta strong{color:var(--ink-hi)}
+.cal .term{margin:.9rem 0 .6rem}
+
+/* ---------- cues ---------- */
+.cue{
+  display:inline-block;font:600 10px/1 var(--mono);letter-spacing:.09em;
+  padding:.28em .45em;border-radius:3px;vertical-align:.09em;margin-right:.15em;
+}
+.cue--ok{background:var(--ok-wash);color:var(--ok);border:1px solid var(--ok-rule)}
+.cue--no{background:var(--danger-wash);color:var(--danger);border:1px solid var(--danger-rule)}
+.cue--warn{background:#251E12;color:#D7AC63;border:1px solid #453718}
+.g{font-weight:700}
+.g--ok{color:#6FBF95}
+.g--no{color:#E08B80}
+.g--warn{color:#E0B76F}
+
+/* ---------- tables ---------- */
+table{
+  width:100%;border-collapse:collapse;margin:1.4rem 0 1.7rem;
+  font-size:14.8px;background:var(--card);
+  border:1px solid var(--rule);border-radius:5px;
+}
+th,td{padding:.6rem .75rem;text-align:left;vertical-align:top;
+  border-bottom:1px solid var(--rule-soft)}
+th{
+  font:600 10.5px/1.3 var(--cond);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);background:var(--card-2);border-bottom:1px solid var(--rule);
+}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--card-2)}
+
+/* ---------- responsive ---------- */
+/* Narrow viewport — a half-screen reader pane, not just phones. The sidebar goes
+   away entirely; Part 00 at the top is the navigation. */
+@media (max-width:1080px){
+  .side{display:none}
+  .wrap{grid-template-columns:minmax(0,1fr)}
+  main{padding:2rem 1.75rem 5rem}
+}
+@media (max-width:560px){
+  body{font-size:16px}
+  main{padding:1.5rem 1.1rem 4rem}
+  .term__body{font-size:12.4px}
+  table{font-size:13.6px}
+  .tablewrap{overflow-x:auto}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *{transition:none!important}
+  .nav__wrap{transition:none}
+}
+/* Light surfaces for anyone whose OS asks for them; dark is the default. */
+@media (prefers-color-scheme:light){
+  :root{
+    --paper:#F6F8FA; --card:#FFFFFF; --card-2:#F1F4F8;
+    --ink:#141A21; --ink-hi:#0B1016; --muted:#5C6875;
+    --rule:#DCE2E9; --rule-soft:#E9EDF2;
+    --pg:#336791; --pg-deep:#22486B; --pg-wash:#EAF1F7;
+    --vivid-a:#6D3BD4; --vivid-b:#C8317A; --vivid-halo:rgba(109,59,212,.07);
+    --flare:#0C7A6B; --flare-dim:rgba(12,122,107,.35);
+    --flare-wash:#E4F5F2; --flare-rule:#B3DED7; --flare-glow:transparent;
+    --danger:#A4342B; --danger-wash:#FBF0EE; --danger-rule:#F0DDDA;
+    --ok:#2C7355; --ok-wash:#ECF5F0; --ok-rule:#C9E2D6;
+  }
+  body{color-scheme:light}
+  .term{border-color:#0A1017;
+    box-shadow:0 1px 2px rgba(20,26,33,.09),0 8px 22px -14px rgba(20,26,33,.4)}
+  .term__bar{border-bottom-color:#0A1017}
+  .cue--warn{background:#FDF5E6;color:#8A5B12;border-color:#EFDFC3}
+}
+
+/* Keyboard focus stays visible on both themes */
+a:focus-visible,.copy:focus-visible{
+  outline:2px solid var(--pg);outline-offset:2px;border-radius:2px;
+}
+
+@media print{
+  :root{
+    --paper:#fff; --card:#fff; --card-2:#f4f4f4;
+    --ink:#111; --ink-hi:#000; --muted:#555; --rule:#bbb; --rule-soft:#ddd;
+    --pg:#22486B; --pg-wash:#eef2f6;
+    --vivid-a:#3A2A6B; --vivid-b:#3A2A6B; --vivid-halo:transparent;
+    --flare:#0A5F53; --flare-dim:#999; --flare-wash:#fff;
+    --flare-rule:#0A5F53; --flare-glow:transparent;
+  }
+  .side,.copy{display:none}
+  .wrap{display:block}
+  main{padding:0;max-width:none}
+  .term{box-shadow:none;break-inside:avoid;border-color:#334}
+  h1.part{break-before:page;padding:1.2rem 0}
+  h1.part::before{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="side">
+    <div class="side__brand">Postgres&nbsp;SSL&nbsp;/&nbsp;Rev&nbsp;3</div>
+    <nav><div class="nav__group nav__group--flat"><div class="nav__row"><a class="nav__part" href="#directory"><span class="nav__n">00</span><span>Directory</span></a></div></div><div class="nav__group"><div class="nav__row"><a class="nav__part" href="#part-1--build-runbook"><span class="nav__n">01</span><span>Build Runbook</span></a><button class="nav__tog" type="button" aria-expanded="true" aria-controls="navgrp-part-1--build-runbook" aria-label="Collapse Build Runbook"><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div><div class="nav__wrap" id="navgrp-part-1--build-runbook"><ul class="nav__list"><li><a class="nav__l2" href="#context"><span class="nav__s nav__s--none"></span><span>Context</span></a></li><li><a class="nav__l2" href="#environments"><span class="nav__s nav__s--none"></span><span>Environments</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#confirm-which-tenant-your-shell-is-pointed-at"><span class="nav__s nav__s--none"></span><span>Confirm which tenant your shell is pointed at</span></a></li><li><a class="nav__l3" href="#filling-in-a-tbd"><span class="nav__s nav__s--none"></span><span>Filling in a TBD</span></a></li></ul><li><a class="nav__l2" href="#step-0--confirm-which-host-you-are-on"><span class="nav__s">00</span><span>Confirm Which Host You Are On</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#verify-the-disk-layout--do-not-assume-it"><span class="nav__s nav__s--none"></span><span>Verify the disk layout — do not assume it</span></a></li></ul><li><a class="nav__l2" href="#step-1--install-docker"><span class="nav__s">01</span><span>Install Docker</span></a></li><li><a class="nav__l2" href="#step-2--create-users"><span class="nav__s">02</span><span>Create Users</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#developer-accounts"><span class="nav__s nav__s--none"></span><span>Developer accounts</span></a></li><li><a class="nav__l3" href="#service-account"><span class="nav__s nav__s--none"></span><span>Service account</span></a></li></ul><li><a class="nav__l2" href="#step-3--shared-resource-permissions"><span class="nav__s">03</span><span>Shared Resource Permissions</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#check-the-umask"><span class="nav__s nav__s--none"></span><span>Check the umask</span></a></li></ul><li><a class="nav__l2" href="#step-4--generate-the-certificate"><span class="nav__s">04</span><span>Generate the Certificate</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#why-every-san-entry-is-there"><span class="nav__s nav__s--none"></span><span>Why every SAN entry is there</span></a></li><li><a class="nav__l3" href="#comparing-certificates-across-hosts"><span class="nav__s nav__s--none"></span><span>Comparing certificates across hosts</span></a></li></ul><li><a class="nav__l2" href="#step-5--set-certificate-permissions"><span class="nav__s">05</span><span>Set Certificate Permissions</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#final-state"><span class="nav__s nav__s--none"></span><span>Final state</span></a></li><li><a class="nav__l3" href="#why-the-certificate-is-644-and-not-acl-protected"><span class="nav__s nav__s--none"></span><span>Why the certificate is 644 and not ACL-protected</span></a></li><li><a class="nav__l3" href="#postgres-key-permission-rules"><span class="nav__s nav__s--none"></span><span>Postgres key permission rules</span></a></li><li><a class="nav__l3" href="#understanding-uid-999"><span class="nav__s nav__s--none"></span><span>Understanding UID 999</span></a></li></ul><li><a class="nav__l2" href="#step-6--run-the-container"><span class="nav__s">06</span><span>Run the Container</span></a></li><li><a class="nav__l2" href="#step-7--enforce-ssl-only-via-pg_hbaconf"><span class="nav__s">07</span><span>Enforce SSL-Only via pg_hba.conf</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#back-up-first"><span class="nav__s nav__s--none"></span><span>Back up first</span></a></li><li><a class="nav__l3" href="#apply-the-change"><span class="nav__s nav__s--none"></span><span>Apply the change</span></a></li><li><a class="nav__l3" href="#confirm-it-landed--do-not-skip-this"><span class="nav__s nav__s--none"></span><span>Confirm it landed — do not skip this</span></a></li><li><a class="nav__l3" href="#reload"><span class="nav__s nav__s--none"></span><span>Reload</span></a></li><li><a class="nav__l3" href="#more-robust-alternative"><span class="nav__s nav__s--none"></span><span>More robust alternative</span></a></li></ul><li><a class="nav__l2" href="#step-8--firewall-nsg"><span class="nav__s">08</span><span>Firewall (NSG)</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#back-up-before-changing"><span class="nav__s nav__s--none"></span><span>Back up before changing</span></a></li><li><a class="nav__l3" href="#rollback"><span class="nav__s nav__s--none"></span><span>Rollback</span></a></li><li><a class="nav__l3" href="#gathering-source-ips"><span class="nav__s nav__s--none"></span><span>Gathering source IPs</span></a></li><li><a class="nav__l3" href="#maintaining-the-allowlist"><span class="nav__s nav__s--none"></span><span>Maintaining the allowlist</span></a></li></ul><li><a class="nav__l2" href="#step-9--verification-tests"><span class="nav__s">09</span><span>Verification Tests</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#prerequisites"><span class="nav__s nav__s--none"></span><span>Prerequisites</span></a></li><li><a class="nav__l3" href="#test-1--reachability"><span class="nav__s nav__s--none"></span><span>Test 1 — Reachability</span></a></li><li><a class="nav__l3" href="#test-2--unencrypted-connection-must-be-rejected"><span class="nav__s nav__s--none"></span><span>Test 2 — Unencrypted connection must be REJECTED</span></a></li><li><a class="nav__l3" href="#test-3--tls-with-full-certificate-verification-must-succeed"><span class="nav__s nav__s--none"></span><span>Test 3 — TLS with full certificate verification must SUCCEED</span></a></li><li><a class="nav__l3" href="#test-4--confirm-the-negotiated-session"><span class="nav__s nav__s--none"></span><span>Test 4 — Confirm the negotiated session</span></a></li><li><a class="nav__l3" href="#test-5--wrong-certificate-must-be-rejected"><span class="nav__s nav__s--none"></span><span>Test 5 — Wrong certificate must be REJECTED</span></a></li><li><a class="nav__l3" href="#test-6--application-layer-verification"><span class="nav__s nav__s--none"></span><span>Test 6 — Application-layer verification</span></a></li><li><a class="nav__l3" href="#summary"><span class="nav__s nav__s--none"></span><span>Summary</span></a></li></ul><li><a class="nav__l2" href="#regenerating-the-certificate"><span class="nav__s nav__s--none"></span><span>Regenerating the Certificate</span></a></li><li><a class="nav__l2" href="#auditing-an-existing-build"><span class="nav__s nav__s--none"></span><span>Auditing an Existing Build</span></a></li><li><a class="nav__l2" href="#known-divergences-on-existing-hosts"><span class="nav__s nav__s--none"></span><span>Known Divergences on Existing Hosts</span></a></li></ul></div></div><div class="nav__group"><div class="nav__row"><a class="nav__part" href="#part-2--connection-guide"><span class="nav__n">02</span><span>Connection Guide</span></a><button class="nav__tog" type="button" aria-expanded="true" aria-controls="navgrp-part-2--connection-guide" aria-label="Collapse Connection Guide"><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div><div class="nav__wrap" id="navgrp-part-2--connection-guide"><ul class="nav__list"><li><a class="nav__l2" href="#before-you-start"><span class="nav__s nav__s--none"></span><span>Before You Start</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#getting-your-ip"><span class="nav__s nav__s--none"></span><span>Getting your IP</span></a></li></ul><li><a class="nav__l2" href="#certificate-placement"><span class="nav__s nav__s--none"></span><span>Certificate placement</span></a></li><li><a class="nav__l2" href="#psql"><span class="nav__s nav__s--none"></span><span>psql</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#why-both-host-and-hostaddr"><span class="nav__s nav__s--none"></span><span>Why both host and hostaddr</span></a></li></ul><li><a class="nav__l2" href="#express--nodejs"><span class="nav__s nav__s--none"></span><span>Express / Node.js</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#things-that-will-bite-you"><span class="nav__s nav__s--none"></span><span>Things that will bite you</span></a></li><li><a class="nav__l3" href="#verify-from-inside-the-app"><span class="nav__s nav__s--none"></span><span>Verify from inside the app</span></a></li></ul><li><a class="nav__l2" href="#database-ides"><span class="nav__s nav__s--none"></span><span>Database IDEs</span></a></li><li><a class="nav__l2" href="#troubleshooting"><span class="nav__s nav__s--none"></span><span>Troubleshooting</span></a></li><li><a class="nav__l2" href="#rules"><span class="nav__s nav__s--none"></span><span>Rules</span></a></li></ul></div></div><div class="nav__group"><div class="nav__row"><a class="nav__part" href="#appendices"><span class="nav__n">A–D</span><span>Appendices</span></a><button class="nav__tog" type="button" aria-expanded="true" aria-controls="navgrp-appendices" aria-label="Collapse Appendices"><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div><div class="nav__wrap" id="navgrp-appendices"><ul class="nav__list"><li><a class="nav__l2" href="#appendix-a--multi-tenant-azure-cli"><span class="nav__s">A</span><span>Multi-Tenant Azure CLI</span></a></li><li><a class="nav__l2" href="#appendix-b--quick-reference"><span class="nav__s">B</span><span>Quick Reference</span></a></li><li><a class="nav__l2" href="#appendix-c--cleanup-backlog"><span class="nav__s">C</span><span>Cleanup Backlog</span></a></li><li><a class="nav__l2" href="#appendix-d--certificates"><span class="nav__s">D</span><span>Certificates</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#dev--pg_ssl_devcrt"><span class="nav__s nav__s--none"></span><span>DEV — pg_ssl_dev.crt</span></a></li><li><a class="nav__l3" href="#staging--pg_ssl_stagingcrt"><span class="nav__s nav__s--none"></span><span>STAGING — pg_ssl_staging.crt</span></a></li><li><a class="nav__l3" href="#verify-what-you-pasted"><span class="nav__s nav__s--none"></span><span>Verify what you pasted</span></a></li></ul></ul></div></div><div class="nav__group"><div class="nav__row"><a class="nav__part" href="#reverse-prompts"><span class="nav__n">RP</span><span>Reverse Prompts</span></a><button class="nav__tog" type="button" aria-expanded="true" aria-controls="navgrp-reverse-prompts" aria-label="Collapse Reverse Prompts"><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div><div class="nav__wrap" id="navgrp-reverse-prompts"><ul class="nav__list"><li><a class="nav__l2" href="#how-to-invoke-this"><span class="nav__s nav__s--none"></span><span>How to invoke this</span></a></li><li><a class="nav__l2" href="#on-receiving-follow-rev-prompts"><span class="nav__s nav__s--none"></span><span>On receiving &quot;Follow Rev Prompts&quot;</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#step-1--ask-the-environment-always-first-always-before-anything-else"><span class="nav__s">01</span><span>Ask the environment. Always first, always before anything else.</span></a></li><li><a class="nav__l3" href="#step-2--ask-the-task"><span class="nav__s">02</span><span>Ask the task</span></a></li><li><a class="nav__l3" href="#step-3--collect-the-tasks-inputs"><span class="nav__s">03</span><span>Collect the task&#x27;s inputs</span></a></li></ul><li><a class="nav__l2" href="#connect-to-a-postgres-container"><span class="nav__s nav__s--none"></span><span>Connect to a Postgres container</span></a></li><ul class="nav__sub"><li><a class="nav__l3" href="#1-confirm-their-ip-is-on-the-allowlist"><span class="nav__s nav__s--none"></span><span>1. Confirm their IP is on the allowlist</span></a></li><li><a class="nav__l3" href="#2-give-them-the-certificate"><span class="nav__s nav__s--none"></span><span>2. Give them the certificate</span></a></li><li><a class="nav__l3" href="#3-ask-how-they-are-connecting"><span class="nav__s nav__s--none"></span><span>3. Ask how they are connecting</span></a></li><li><a class="nav__l3" href="#4-confirm-it-worked"><span class="nav__s nav__s--none"></span><span>4. Confirm it worked</span></a></li></ul><li><a class="nav__l2" href="#before-running-anything-destructive"><span class="nav__s nav__s--none"></span><span>Before running anything destructive</span></a></li><li><a class="nav__l2" href="#standing-constraints"><span class="nav__s nav__s--none"></span><span>Standing constraints</span></a></li><li><a class="nav__l2" href="#known-gaps-in-this-document"><span class="nav__s nav__s--none"></span><span>Known gaps in this document</span></a></li></ul></div></div></nav>
+  </aside>
+  <main><h1 id="dockerized-postgres-on-azure-vm--build-runbook--connection-guide">Dockerized Postgres on Azure VM — Build Runbook &amp; Connection Guide</h1>
+<blockquote class="cal cal--meta">
+<p><strong>Revision 3.</strong> Merges the VM setup doc, the SSL config doc, and the developer
+connection guide into a single source of truth. Supersedes all three.</p>
+<p><strong>This document describes the target state, not necessarily what is currently
+deployed.</strong> Existing hosts predate some of these corrections — see
+<a href="#known-divergences-on-existing-hosts">Known Divergences</a> before auditing a
+running server and concluding something is broken.</p>
+</blockquote>
+<!-- -->
+
+<blockquote class="cal cal--bot">
+<p><strong>IMPORTANT — READ ME</strong></p>
+<p>🤖 <strong>This document is semi-interactive.</strong> Attach it to an LLM session and open with
+<strong><code>Follow Rev Prompts</code></strong> — it will ask which environment and task you are working
+on, then walk you through it using only the procedures in here. Everything a
+developer needs, including the DEV and STAGING certificates, is embedded; nothing
+has to be requested separately. See
+<a href="#how-to-invoke-this">How to invoke this</a>.</p>
+</blockquote>
+<h1 class="part" id="directory"><span class="part__n">00</span><span class="part__t">Directory</span></h1><div class="dir"><section class="dir__card"><a class="dir__head" href="#part-1--build-runbook"><span class="dir__n">01</span><span class="dir__title">BUILD RUNBOOK</span></a><p class="dir__sub">for whoever provisions a VM. Commands with the reasoning attached to each step.</p><ul class="dir__list"><li><a href="#context"><span class="dir__step dir__step--none">·</span><span>Context</span></a></li><li><a href="#environments"><span class="dir__step dir__step--none">·</span><span>Environments</span></a></li><li><a href="#step-0--confirm-which-host-you-are-on"><span class="dir__step">00</span><span>Confirm Which Host You Are On</span></a></li><li><a href="#step-1--install-docker"><span class="dir__step">01</span><span>Install Docker</span></a></li><li><a href="#step-2--create-users"><span class="dir__step">02</span><span>Create Users</span></a></li><li><a href="#step-3--shared-resource-permissions"><span class="dir__step">03</span><span>Shared Resource Permissions</span></a></li><li><a href="#step-4--generate-the-certificate"><span class="dir__step">04</span><span>Generate the Certificate</span></a></li><li><a href="#step-5--set-certificate-permissions"><span class="dir__step">05</span><span>Set Certificate Permissions</span></a></li><li><a href="#step-6--run-the-container"><span class="dir__step">06</span><span>Run the Container</span></a></li><li><a href="#step-7--enforce-ssl-only-via-pg_hbaconf"><span class="dir__step">07</span><span>Enforce SSL-Only via pg_hba.conf</span></a></li><li><a href="#step-8--firewall-nsg"><span class="dir__step">08</span><span>Firewall (NSG)</span></a></li><li><a href="#step-9--verification-tests"><span class="dir__step">09</span><span>Verification Tests</span></a></li><li><a href="#regenerating-the-certificate"><span class="dir__step dir__step--none">·</span><span>Regenerating the Certificate</span></a></li><li><a href="#auditing-an-existing-build"><span class="dir__step dir__step--none">·</span><span>Auditing an Existing Build</span></a></li><li><a href="#known-divergences-on-existing-hosts"><span class="dir__step dir__step--none">·</span><span>Known Divergences on Existing Hosts</span></a></li></ul></section><section class="dir__card"><a class="dir__head" href="#part-2--connection-guide"><span class="dir__n">02</span><span class="dir__title">CONNECTION GUIDE</span></a><p class="dir__sub">for developers who only need to connect. Hand this section to them; they never touch the server.</p><ul class="dir__list"><li><a href="#before-you-start"><span class="dir__step">01</span><span>Before You Start</span></a></li><li><a href="#certificate-placement"><span class="dir__step">02</span><span>Certificate placement</span></a></li><li><a href="#psql"><span class="dir__step">03</span><span>psql</span></a></li><li><a href="#express--nodejs"><span class="dir__step">04</span><span>Express / Node.js</span></a></li><li><a href="#database-ides"><span class="dir__step">05</span><span>Database IDEs</span></a></li><li><a href="#troubleshooting"><span class="dir__step">06</span><span>Troubleshooting</span></a></li><li><a href="#rules"><span class="dir__step">07</span><span>Rules</span></a></li></ul></section><section class="dir__card"><a class="dir__head" href="#appendices"><span class="dir__n">A–D</span><span class="dir__title">Appendices</span></a><ul class="dir__list"><li><a href="#appendix-a--multi-tenant-azure-cli"><span class="dir__step">A</span><span>Multi-Tenant Azure CLI</span></a></li><li><a href="#appendix-b--quick-reference"><span class="dir__step">B</span><span>Quick Reference</span></a></li><li><a href="#appendix-c--cleanup-backlog"><span class="dir__step">C</span><span>Cleanup Backlog</span></a></li><li><a href="#appendix-d--certificates"><span class="dir__step">D</span><span>Certificates</span></a></li></ul></section><section class="dir__card"><a class="dir__head" href="#reverse-prompts"><span class="dir__n">RP</span><span class="dir__title">Reverse Prompts</span></a><ul class="dir__list"><li><a href="#how-to-invoke-this"><span class="dir__step">01</span><span>How to invoke this</span></a></li><li><a href="#on-receiving-follow-rev-prompts"><span class="dir__step">02</span><span>On receiving &quot;Follow Rev Prompts&quot;</span></a></li><li><a href="#connect-to-a-postgres-container"><span class="dir__step">03</span><span>Connect to a Postgres container</span></a></li><li><a href="#before-running-anything-destructive"><span class="dir__step">04</span><span>Before running anything destructive</span></a></li><li><a href="#standing-constraints"><span class="dir__step">05</span><span>Standing constraints</span></a></li><li><a href="#known-gaps-in-this-document"><span class="dir__step">06</span><span>Known gaps in this document</span></a></li></ul></section></div>
+<h1 class="part" id="part-1--build-runbook"><span class="part__n">01</span><span class="part__t">BUILD RUNBOOK</span></h1>
+<h2 id="context">Context</h2>
+<p>Self-managed Dockerized Postgres 16 on an Azure VM. Developers share <code>/opt</code>
+resources via <code>docker</code> group membership. Postgres runs as UID 999 inside the
+container. TLS is mandatory; unencrypted connections are rejected by the server.</p>
+<blockquote class="cal cal--note">
+<p><strong>Security property, stated rather than assumed:</strong> the container's <code>pg_hba.conf</code>
+retains <code>local</code> and loopback <code>trust</code> rules. Combined with shared <code>docker</code> group
+membership, <strong>any developer in the <code>docker</code> group has passwordless superuser
+access</strong> to the database via <code>docker exec</code>. That is inherent — the <code>docker</code> group
+is root-equivalent regardless — but it should be a known property of the design,
+not a surprise discovered later.</p>
+</blockquote>
+<hr />
+<h2 id="environments">Environments</h2>
+<p>Every placeholder used in this document (<code>&lt;RG&gt;</code>, <code>&lt;NSG&gt;</code>, <code>&lt;VM_PUBLIC_IP&gt;</code>,
+<code>&lt;ssh-alias&gt;</code>, <code>&lt;env&gt;</code>) resolves from this table. Keep it current — it is the only
+place these values are recorded.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>DEV</th>
+<th>STAGING</th>
+<th>PROD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Public IP</td>
+<td><code>20.55.72.8</code></td>
+<td><code>20.121.125.115</code></td>
+<td><em>TBD</em></td>
+</tr>
+<tr>
+<td>Database</td>
+<td><code>dev</code></td>
+<td><code>staging</code></td>
+<td><code>prod</code></td>
+</tr>
+<tr>
+<td>Role</td>
+<td><code>postgres</code></td>
+<td><code>postgres</code></td>
+<td><code>postgres</code></td>
+</tr>
+<tr>
+<td>VM name</td>
+<td><code>acq-vm-0</code></td>
+<td><code>acq-vm-0</code></td>
+<td><em>TBD</em></td>
+</tr>
+<tr>
+<td>NSG</td>
+<td><code>acq-vm-0-nsg</code></td>
+<td><code>acq-vm-0-nsg</code></td>
+<td><em>TBD</em></td>
+</tr>
+<tr>
+<td>Resource group</td>
+<td><code>rg_vm_1</code></td>
+<td><code>rg_vm_1</code></td>
+<td><em>TBD</em></td>
+</tr>
+<tr>
+<td>Subscription</td>
+<td><code>Dev-AvanteConnected</code><br><code>12e695ee-8621-4afa-a553-f20e3cb1cc34</code></td>
+<td><code>Staging-AvanteConnected</code><br><code>424a803f-f564-41bb-9fc2-29f0ecae7927</code></td>
+<td><em>TBD</em></td>
+</tr>
+<tr>
+<td>Entra tenant</td>
+<td><code>3ee9d584-6d98-481d-b76e-803782e15f2e</code></td>
+<td><code>1253f9aa-a368-422a-ab86-a77cf1cc1dbf</code></td>
+<td><em>TBD</em></td>
+</tr>
+<tr>
+<td>SSH alias</td>
+<td><code>dev-acq-jp</code></td>
+<td><code>stag-acq-jp</code></td>
+<td><em>TBD</em></td>
+</tr>
+<tr>
+<td><code>azenv</code> alias <em>(optional wrapper)</em></td>
+<td><code>dev</code></td>
+<td><code>staging</code></td>
+<td><code>prod</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote class="cal cal--warn">
+<p><span class="cue cue--warn">CAUTION</span> <strong>VM names and NSG names are identical across environments</strong> — both VMs report
+<code>acq-vm-0</code> and both NSGs are <code>acq-vm-0-nsg</code>. They are distinguished only by tenant
+and resource group. Nothing about the target environment can be inferred from a
+hostname or an NSG name; resolve it explicitly with Step 0 before running anything.</p>
+<p><strong>Passwords are not recorded here and must never be added.</strong> This document is
+distributed to every developer and embeds public certificates; a credential in it
+would be a credential in everyone's downloads folder. Connection commands throughout
+use <code>user=postgres</code> and let <code>psql</code> prompt, or read the password from an environment
+variable.</p>
+</blockquote>
+<p><strong><code>TBD</code> means not confirmed, not unknown-but-guessable.</strong> A resource group or tenant
+ID that looks plausible is worse than a blank. Fill gaps using the discovery commands
+below and update this table.</p>
+<h3 id="confirm-which-tenant-your-shell-is-pointed-at">Confirm which tenant your shell is pointed at</h3>
+<p>Each environment is a separate Entra tenant, so the same <code>az</code> command will hit a
+different environment depending on which tenant your session is authenticated to.
+Commands in this document are written as plain <code>az</code> — what matters is that the shell
+is pointed at the right place before you run them:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>az account show --query &quot;{sub:name, tenant:tenantId, user:user.name}&quot; -o table</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Compare that against the table above. Either way of getting there is fine:</p>
+<ul>
+<li><code>az login --tenant &lt;TENANT_ID&gt;</code> — straightforward, but replaces your token cache,
+  so you re-authenticate when switching back.</li>
+<li><code>azenv &lt;env&gt;</code> — an internal wrapper that opens a subshell with an isolated token
+  cache per environment, so plain <code>az</code> inside it targets that environment and your
+  other sessions survive. Optional; see
+  <a href="#appendix-a--multi-tenant-azure-cli">Appendix A</a>.</li>
+</ul>
+<h3 id="filling-in-a-tbd">Filling in a TBD</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmt"># Which subscription and tenant am I in?</span>
+<span class="tl cmd"><span class="ps">$</span>az account show --query &quot;{sub:name, subId:id, tenant:tenantId, user:user.name}&quot; -o json</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># Which NSGs exist, and in which resource groups?</span>
+<span class="tl cmd"><span class="ps">$</span>az network nsg list --query &quot;[].{name:name, rg:resourceGroup, location:location}&quot; -o table</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># The VM&#x27;s own public IP, run ON the VM</span>
+<span class="tl cmd"><span class="ps">$</span>curl -s -H Metadata:true &quot;http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&amp;format=text&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>To get a tenant ID from its <code>onmicrosoft.com</code> domain without authenticating:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">curl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>curl -s https://login.microsoftonline.com/&lt;subdomain&gt;.onmicrosoft.com/v2.0/.well-known/openid-configuration \</span>
+<span class="tl cont">  | grep -o &#x27;&quot;issuer&quot;:&quot;[^&quot;]*&quot;&#x27;</span>
+<span class="tl blank"> </span></code></pre></div>
+<hr />
+<h2 class="step" id="step-0--confirm-which-host-you-are-on"><span class="step__n">00</span><span class="step__t">Confirm Which Host You Are On</span></h2>
+<p>Every environment has its own certificate, its own public IP, and its own NSG.
+<strong>Hostnames are frequently identical across environments</strong> when VMs come from the
+same template, so <code>hostname</code> proves nothing.</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">curl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>curl -s -H Metadata:true \</span>
+<span class="tl cont">  &quot;http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01&amp;format=json&quot; \</span>
+<span class="tl cont">  | python3 -c &#x27;import sys,json;d=json.load(sys.stdin);print(d[&quot;name&quot;],d[&quot;resourceGroupName&quot;],d[&quot;location&quot;])&#x27;</span>
+<span class="tl blank"> </span>
+<span class="tl cmd"><span class="ps">$</span>curl -s -H Metadata:true \</span>
+<span class="tl cont">  &quot;http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&amp;format=text&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Record that public IP. It goes into the certificate SAN in Step 4, and <strong>a
+certificate carrying another host's IP will fail verification for every external
+client.</strong></p>
+<h3 id="verify-the-disk-layout--do-not-assume-it">Verify the disk layout — do not assume it</h3>
+<p>Device letters shuffle between builds, and <code>/mnt</code> is the <strong>Azure ephemeral resource
+disk</strong>, which is wiped on deallocate.</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">docker</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>docker info --format &#x27;{{.DockerRootDir}}&#x27;   # after Docker is installed</span>
+<span class="tl cmd"><span class="ps">$</span>findmnt -o TARGET,SOURCE,FSTYPE,OPTIONS /</span>
+<span class="tl cmd"><span class="ps">$</span>lsblk -o NAME,SIZE,MOUNTPOINT,UUID</span>
+<span class="tl cmd"><span class="ps">$</span>grep -v &#x27;^#&#x27; /etc/fstab                     # data disks mounted by UUID/PARTUUID</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Decide deliberately where <code>postgres_data</code> will live. Docker's default <code>data-root</code> is
+<code>/var/lib/docker</code> on the OS disk; moving it after go-live means downtime plus a full
+copy. If it belongs on a managed data disk, set <code>data-root</code> in
+<code>/etc/docker/daemon.json</code> <strong>before</strong> Step 3.</p>
+<hr />
+<h2 class="step" id="step-1--install-docker"><span class="step__n">01</span><span class="step__t">Install Docker</span></h2>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>sudo apt update</span>
+<span class="tl cmd"><span class="ps">$</span>sudo apt install -y apt-transport-https ca-certificates curl gnupg lsb-release acl</span>
+<span class="tl blank"> </span>
+<span class="tl cmd"><span class="ps">$</span>sudo mkdir -p /usr/share/keyrings</span>
+<span class="tl cmd"><span class="ps">$</span>curl -fsSL https://download.docker.com/linux/debian/gpg \</span>
+<span class="tl cont">  | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg</span>
+<span class="tl blank"> </span>
+<span class="tl cmd"><span class="ps">$</span>echo &quot;deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \</span>
+<span class="tl cont">https://download.docker.com/linux/debian $(lsb_release -cs) stable&quot; \</span>
+<span class="tl cont">  | sudo tee /etc/apt/sources.list.d/docker.list &gt; /dev/null</span>
+<span class="tl blank"> </span>
+<span class="tl cmd"><span class="ps">$</span>sudo apt update</span>
+<span class="tl cmd"><span class="ps">$</span>sudo apt install -y docker-ce docker-ce-cli containerd.io \</span>
+<span class="tl cont">  docker-buildx-plugin docker-compose-plugin</span>
+<span class="tl blank"> </span>
+<span class="tl cmd"><span class="ps">$</span>sudo systemctl start docker</span>
+<span class="tl cmd"><span class="ps">$</span>sudo systemctl enable docker</span>
+<span class="tl cmd"><span class="ps">$</span>sudo docker run hello-world</span>
+<span class="tl blank"> </span></code></pre></div>
+<blockquote class="cal cal--note">
+<p><code>acl</code> is installed here rather than later — the shared-resource permissions in
+Step 3 depend on it.</p>
+</blockquote>
+<hr />
+<h2 class="step" id="step-2--create-users"><span class="step__n">02</span><span class="step__t">Create Users</span></h2>
+<h3 id="developer-accounts">Developer accounts</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>sudo adduser &lt;username&gt;</span>
+<span class="tl cmd"><span class="ps">$</span>sudo usermod -aG docker &lt;username&gt;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Group membership takes effect on next login. If you added yourself to <code>docker</code> in
+your current session, start a new one (<code>newgrp docker</code>, or log out and back in)
+before <code>docker run hello-world</code> will work without sudo.</p>
+<blockquote class="cal cal--note">
+<p><strong><code>source ~/.bashrc</code> does not help here</strong>, despite being the usual fix for shell
+config changes. Supplementary group membership is a property of the <em>process</em>,
+assigned by the login process at session start and inherited by every child.
+Sourcing a file only re-reads shell configuration — it cannot change the groups the
+current shell already has. Confirm with <code>id</code>: <code>docker</code> will still be absent.
+<code>newgrp docker</code> works because it starts a new shell with the group applied.</p>
+</blockquote>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">docker</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>docker run hello-world</span>
+<span class="tl blank"> </span></code></pre></div>
+<h3 id="service-account">Service account</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>sudo adduser \</span>
+<span class="tl cont">  --system \</span>
+<span class="tl cont">  --no-create-home \</span>
+<span class="tl cont">  --group \</span>
+<span class="tl cont">  --shell /usr/sbin/nologin \</span>
+<span class="tl cont">  svc</span>
+<span class="tl blank"> </span></code></pre></div>
+<blockquote class="cal cal--note">
+<p><strong>System users are allocated UIDs counting down from 999 on Debian/Ubuntu.</strong> This
+matters: the container's Postgres user is UID 999, and whichever host package
+creates a system user first may claim it. See
+<a href="#understanding-uid-999">Understanding UID 999</a> below.</p>
+</blockquote>
+<hr />
+<h2 class="step" id="step-3--shared-resource-permissions"><span class="step__n">03</span><span class="step__t">Shared Resource Permissions</span></h2>
+<p>Run once per VM, by an admin.</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmt"># Shared directories, setgid so new files inherit the docker group</span>
+<span class="tl cmd"><span class="ps">$</span>for d in /opt/run-logs /opt/apps /opt/resources; do</span>
+<span class="tl cmd"><span class="ps">$</span>  sudo mkdir -p &quot;$d&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>  sudo chgrp docker &quot;$d&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>  sudo chmod 2775 &quot;$d&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>done</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># Default ACLs so files created by any dev remain group-accessible</span>
+<span class="tl cmd"><span class="ps">$</span>for d in /opt/run-logs /opt/apps /opt/resources; do</span>
+<span class="tl cmd"><span class="ps">$</span>  sudo setfacl -d -m g:docker:rwX &quot;$d&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>  sudo setfacl -m  g:docker:rwX &quot;$d&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>done</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>The <code>2</code> in <code>2775</code> is setgid: files created inside inherit the <code>docker</code> group rather
+than the creator's primary group. The default ACL (<code>-d</code>) does the same for ACL
+entries, so a file created by one developer stays writable by the others.</p>
+<blockquote class="cal cal--note">
+<p><strong>Consequence to be aware of:</strong> every file created under <code>/opt/resources</code> inherits
+<code>group:docker:rwx</code>. Any <code>docker</code> group member can overwrite any file there,
+including certificates. That is intended for shared development, but it means
+<code>/opt/resources</code> is not a place to store anything only one person should modify.</p>
+</blockquote>
+<h3 id="check-the-umask">Check the umask</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>umask</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Step 4 relies on <code>022</code> (files created <code>644</code>). If these hosts use <code>027</code>, certificates
+will land at <code>640</code> and you must <code>chmod 644</code> the certificate explicitly after every
+regeneration.</p>
+<hr />
+<h2 class="step" id="step-4--generate-the-certificate"><span class="step__n">04</span><span class="step__t">Generate the Certificate</span></h2>
+<p>Run as your developer user — no sudo needed.</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>mkdir -p /opt/resources/ssl</span>
+<span class="tl blank"> </span>
+<span class="tl cmd"><span class="ps">$</span>openssl genrsa -out /opt/resources/ssl/pg_ssl.key 2048</span>
+<span class="tl blank"> </span>
+<span class="tl cmd"><span class="ps">$</span>openssl req -new -x509 -days 1095 \</span>
+<span class="tl cont">  -key /opt/resources/ssl/pg_ssl.key \</span>
+<span class="tl cont">  -out /opt/resources/ssl/pg_ssl.crt \</span>
+<span class="tl cont">  -subj &quot;/CN=pg_db&quot; \</span>
+<span class="tl cont">  -addext &quot;subjectAltName=DNS:pg_db,DNS:postgres-server,DNS:localhost,IP:&lt;THIS_VM_PUBLIC_IP&gt;,IP:127.0.0.1&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Verify immediately, before wiring anything up:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">openssl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>openssl x509 -in /opt/resources/ssl/pg_ssl.crt \</span>
+<span class="tl cont">  -noout -dates -ext subjectAltName -fingerprint -sha256</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>The IP in the SAN must equal the IP recorded in Step 0. <strong>Record the fingerprint</strong> —
+it is what developers use to confirm they hold the right certificate.</p>
+<h3 id="why-every-san-entry-is-there">Why every SAN entry is there</h3>
+<p>The <code>subjectAltName</code> must cover every hostname and IP that clients will use. Node
+and modern TLS clients reject mismatches with <code>ERR_TLS_CERT_ALTNAME_INVALID</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Entry</th>
+<th>Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DNS:pg_db</code></td>
+<td>Docker container name — dockerized apps on <code>pg_net</code></td>
+</tr>
+<tr>
+<td><code>DNS:postgres-server</code></td>
+<td>Legacy CN, retained for compatibility; also the name verified when connecting via the <code>host</code> + <code>hostaddr</code> form</td>
+</tr>
+<tr>
+<td><code>DNS:localhost</code></td>
+<td>DB IDEs that internally proxy connections through localhost</td>
+</tr>
+<tr>
+<td><code>IP:&lt;VM_PUBLIC_IP&gt;</code></td>
+<td>External clients, App Service, direct psql</td>
+</tr>
+<tr>
+<td><code>IP:127.0.0.1</code></td>
+<td>Loopback equivalent of localhost</td>
+</tr>
+</tbody>
+</table>
+<blockquote class="cal cal--note">
+<p><strong>Pin a static public IP</strong>, and if a DNS name exists — even the Azure
+<code>*.cloudapp.azure.com</code> FQDN — put it in the SAN so the certificate outlives the
+address. Every IP change otherwise forces a regeneration and a redistribution to
+every developer and deployment.</p>
+</blockquote>
+<h3 id="comparing-certificates-across-hosts">Comparing certificates across hosts</h3>
+<p>To prove two hosts have genuinely separate keypairs, rather than one certificate
+copied across — which produces a stale SAN and silent client failures:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>cd /opt/resources/ssl &amp;&amp; { hostname; \</span>
+<span class="tl cont">  openssl x509 -in pg_ssl.crt -noout -dates -ext subjectAltName -fingerprint -sha256; \</span>
+<span class="tl cont">  echo -n &quot;modulus: &quot;; openssl x509 -in pg_ssl.crt -noout -modulus | openssl sha256; }</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Different fingerprints prove different certificates. Different moduli prove
+different private keys.</p>
+<hr />
+<h2 class="step" id="step-5--set-certificate-permissions"><span class="step__n">05</span><span class="step__t">Set Certificate Permissions</span></h2>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmt"># Certificate is PUBLIC — world-readable, no ACL needed</span>
+<span class="tl cmd"><span class="ps">$</span>chmod 644 /opt/resources/ssl/pg_ssl.crt</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># Key: transfer ownership to UID 999 (postgres inside the container)</span>
+<span class="tl cmd"><span class="ps">$</span>sudo chown 999:docker /opt/resources/ssl/pg_ssl.key</span>
+<span class="tl cmd"><span class="ps">$</span>sudo setfacl -b /opt/resources/ssl/pg_ssl.key</span>
+<span class="tl cmd"><span class="ps">$</span>sudo chmod 600 /opt/resources/ssl/pg_ssl.key</span>
+<span class="tl blank"> </span></code></pre></div>
+<h3 id="final-state">Final state</h3>
+<div class="term term--src"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">output</span></div><pre class="term__body"><code><span class="tl src">pg_ssl.crt  →  644, owned by $USER:docker            <span class="g g--ok">✓</span></span>
+<span class="tl src">pg_ssl.key  →  600, owned by 999:docker, no ACL      <span class="g g--ok">✓</span></span>
+<span class="tl src"> </span></code></pre></div>
+<h3 id="why-the-certificate-is-644-and-not-acl-protected">Why the certificate is 644 and not ACL-protected</h3>
+<p><code>pg_ssl.crt</code> is a <strong>public certificate</strong>. It is handed to every developer, bundled
+into App Service deployments, and served to anyone who opens a TCP connection to
+5432 — <code>openssl s_client</code> retrieves it without authenticating. Guarding it achieves
+nothing while costing a great deal:</p>
+<ul>
+<li>An ACL entry is <strong>silently lost whenever the file is overwritten</strong>, so every
+  regeneration must remember to re-apply it or the container fails to read the
+  certificate on next restart.
+<code>other::r--</code> is not subject to the ACL mask and survives the default ACL inheritance
+from <code>/opt/resources</code>, which is what makes <code>644</code> durable where an ACL is not. It also
+guarantees readability for <strong>application containers</strong>, which mount
+<code>/opt/resources:/opt/resources:ro</code> and run as their own UIDs (<code>svc</code>,
+<code>jonathan-pope</code>) rather than 999 — those users are covered by <code>group:docker</code> today,
+but <code>644</code> makes it unconditional.</li>
+</ul>
+<blockquote class="cal cal--note">
+<p>Application container structure — the <code>Dockerfile</code> / <code>docker-compose.yml</code> /
+<code>build.sh</code> / <code>entrypoint.sh</code> pattern, the standard volume mounts, and the
+test/release split — is documented separately in each repo's <code>CLAUDE.md</code>. This
+runbook covers only the Postgres container, which runs the stock <code>postgres:16</code>
+image and requires no build step. The <code>pg_net</code> network created in Step 6 is
+persistent once created; app containers attach to it as an external network.
+- It removes the constraint that <strong>only the file's owner can run <code>setfacl</code></strong> — which
+  previously meant that if one developer generated the files, only that developer
+  could complete the permissions steps.</p>
+</blockquote>
+<h3 id="postgres-key-permission-rules">Postgres key permission rules</h3>
+<p>Postgres enforces strict ownership and permission rules on the private key, and
+refuses to start if they are violated:</p>
+<table>
+<thead>
+<tr>
+<th>Key owned by</th>
+<th>Maximum permitted permissions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>UID 999 (the database user)</td>
+<td><code>600</code></td>
+</tr>
+<tr>
+<td>root</td>
+<td><code>640</code></td>
+</tr>
+</tbody>
+</table>
+<p>Any group or world access on a key owned by the database user is rejected.</p>
+<h3 id="understanding-uid-999">Understanding UID 999</h3>
+<p><strong>999 is the numeric user ID of the <code>postgres</code> user inside the official
+<code>postgres:16</code> image.</strong> It is baked into the image; nothing on the host chose it.</p>
+<p>The container and the host share one kernel, and the kernel identifies file owners
+by <strong>number only</strong> — usernames are a separate lookup performed independently on each
+side. When Postgres inside the container opens the key file, the kernel asks "is
+this owned by UID 999?" That is the entire reason the key is chowned to 999.</p>
+<p><strong>The displayed name differs between hosts and does not matter:</strong></p>
+<ul>
+<li>A host running Datadog → <code>ls -l</code> shows <code>dd-agent</code>, because the agent's installer
+  created a system user and got 999 by counting down</li>
+<li>A host with nothing claiming 999 → <code>ls -l</code> shows the bare number <code>999</code></li>
+</ul>
+<p>Both are the same owner. The difference is cosmetic and is <strong>not</strong> evidence that two
+hosts were built differently.</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>getent passwd 999                    # who, if anyone, holds 999 on this host</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db getent passwd 999  # always &#x27;postgres&#x27; — the container&#x27;s own lookup</span>
+<span class="tl blank"> </span></code></pre></div>
+<blockquote class="cal cal--note">
+<p><strong>The genuine concern:</strong> whatever host user holds UID 999 can read the Postgres
+private key, because to the kernel they are the same user. On a Datadog host that
+is the monitoring agent; on a host where 999 is unclaimed it is whatever package
+grabs it next. This works, but it depends on a numeric coincidence rather than an
+intentional grant. See <a href="#appendix-c--cleanup-backlog">Cleanup Backlog</a>.</p>
+</blockquote>
+<hr />
+<h2 class="step" id="step-6--run-the-container"><span class="step__n">06</span><span class="step__t">Run the Container</span></h2>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">docker</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>docker network create pg_net 2&gt;/dev/null || true</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># Password via env file — never inline</span>
+<span class="tl cmd"><span class="ps">$</span>umask 077</span>
+<span class="tl cmd"><span class="ps">$</span>cat &gt; /opt/resources/pg.env &lt;&lt;&#x27;EOF&#x27;</span>
+<span class="tl cmd"><span class="ps">$</span>POSTGRES_PASSWORD=&lt;password&gt;</span>
+<span class="tl cmd"><span class="ps">$</span>EOF</span>
+<span class="tl blank"> </span>
+<span class="tl cmd"><span class="ps">$</span>docker run -d \</span>
+<span class="tl cont">  --name pg_db \</span>
+<span class="tl cont">  --network pg_net \</span>
+<span class="tl cont">  --env-file /opt/resources/pg.env \</span>
+<span class="tl cont">  -p 5432:5432 \</span>
+<span class="tl cont">  -v postgres_data:/var/lib/postgresql/data \</span>
+<span class="tl cont">  -v /opt/resources/ssl:/etc/ssl/pg:ro \</span>
+<span class="tl cont">  --restart unless-stopped \</span>
+<span class="tl cont">  postgres:16 \</span>
+<span class="tl cont">  -c ssl=on \</span>
+<span class="tl cont">  -c ssl_cert_file=/etc/ssl/pg/pg_ssl.crt \</span>
+<span class="tl cont">  -c ssl_key_file=/etc/ssl/pg/pg_ssl.key</span>
+<span class="tl blank"> </span></code></pre></div>
+<p><strong>Mount the directory, not the individual files.</strong> When <code>openssl</code> rewrites a
+certificate it can produce a new inode; with per-file bind mounts the container keeps
+seeing the old file until it is recreated. Mounting the directory makes certificate
+rotation a config reload with zero downtime.</p>
+<p><strong>Use an env file for the password.</strong> <code>-e POSTGRES_PASSWORD=...</code> inline lands in
+shell history, <code>ps</code> output, and <code>docker inspect</code> — all readable by anyone in the
+<code>docker</code> group.</p>
+<p><strong>Do not set <code>POSTGRES_HOST_AUTH_METHOD</code>.</strong> If it appears anywhere, it is almost
+certainly someone working around an authentication error, and <code>trust</code> on a public
+interface is an unauthenticated database.</p>
+<blockquote class="cal cal--note">
+<p><strong>SSL flags cannot be added to a running container.</strong> Applying SSL to an existing
+container means <code>docker rm -f pg_db</code> and re-running with the <strong>same named volume</strong>.
+Confirm the volume is named, not anonymous, before removing anything:
+</p>
+</blockquote>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">docker</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>docker inspect pg_db --format &#x27;{{range .Mounts}}{{.Type}} {{.Name}} -&gt; {{.Destination}}{{&quot;\n&quot;}}{{end}}&#x27;</span>
+<span class="tl blank"> </span></code></pre></div>
+<blockquote class="cal cal--note">
+<p>A 64-character hash where <code>postgres_data</code> should be means an anonymous volume. It
+survives the <code>rm</code> but must be reattached by hash — sort that out first.</p>
+</blockquote>
+<hr />
+<h2 class="step" id="step-7--enforce-ssl-only-via-pg_hbaconf"><span class="step__n">07</span><span class="step__t">Enforce SSL-Only via pg_hba.conf</span></h2>
+<h3 id="back-up-first">Back up first</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">pg_db container</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>docker exec pg_db cp /var/lib/postgresql/data/pg_hba.conf \</span>
+<span class="tl cont">  /var/lib/postgresql/data/pg_hba.conf.bak</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Restore, if needed:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">pg_db container</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>docker exec pg_db cp /var/lib/postgresql/data/pg_hba.conf.bak \</span>
+<span class="tl cont">  /var/lib/postgresql/data/pg_hba.conf</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db psql -U postgres -c &quot;SELECT pg_reload_conf();&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<h3 id="apply-the-change">Apply the change</h3>
+<p>Replace the catch-all <code>host</code> rule with <code>hostssl</code>. The whitespace-tolerant pattern
+matters — the official image appends a single-spaced line, but initdb generates
+column-aligned ones:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">pg_db container</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>docker exec pg_db sed -i -E \</span>
+<span class="tl cont">  &#x27;s/^host([[:space:]]+all[[:space:]]+all[[:space:]]+all[[:space:]]+)/hostssl\1/&#x27; \</span>
+<span class="tl cont">  /var/lib/postgresql/data/pg_hba.conf</span>
+<span class="tl blank"> </span></code></pre></div>
+<h3 id="confirm-it-landed--do-not-skip-this">Confirm it landed — do not skip this</h3>
+<p>A no-op <code>sed</code> produces no error and leaves a publicly reachable Postgres accepting
+cleartext connections.</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">pg_db container</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>docker exec pg_db grep -vE &#x27;^\s*#|^\s*$&#x27; /var/lib/postgresql/data/pg_hba.conf</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Expected: exactly one non-local catch-all, reading <code>hostssl</code>. Any remaining <code>host</code>
+line with a non-loopback address means the substitution failed.</p>
+<div class="term term--src"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">output</span></div><pre class="term__body"><code><span class="tl cmt"># Before</span>
+<span class="tl src">host    all   all   all   scram-sha-256</span>
+<span class="tl src"> </span>
+<span class="tl cmt"># After</span>
+<span class="tl src">hostssl all   all   all   scram-sha-256</span>
+<span class="tl src"> </span></code></pre></div>
+<h3 id="reload">Reload</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">pg_db container</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>docker exec pg_db psql -U postgres -c &quot;SELECT pg_reload_conf();&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db psql -U postgres -Atc \</span>
+<span class="tl cont">  &quot;SELECT pg_postmaster_start_time(), pg_conf_load_time();&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p><code>pg_conf_load_time()</code> must be later than the file's mtime.</p>
+<blockquote class="cal cal--note">
+<p><strong><code>pg_hba_file_rules</code> does not tell you what is running.</strong> It re-parses the file
+from disk on every query, so it reflects the file, not the postmaster's live rules.
+Only Test 2 in the verification suite proves enforcement.</p>
+</blockquote>
+<p>The loopback <code>trust</code> rules are left intact — they apply only to Unix socket or
+loopback connections from within the container. See the note in
+<a href="#context">Context</a> about what that means for <code>docker</code> group members.</p>
+<h3 id="more-robust-alternative">More robust alternative</h3>
+<p>Keep a version-controlled <code>pg_hba.conf</code>, mount it read-only, and pass
+<code>-c hba_file=/etc/postgresql/pg_hba.conf</code>. Deterministic and idempotent, rather than
+a regex against a file you did not write.</p>
+<hr />
+<h2 class="step" id="step-8--firewall-nsg"><span class="step__n">08</span><span class="step__t">Firewall (NSG)</span></h2>
+<p><strong>This is the actual perimeter.</strong> <code>-p 5432:5432</code> binds all interfaces, and Docker's
+DNAT rules bypass <code>ufw</code> entirely. The Azure NSG is the only effective control.</p>
+<p>Resolve the resource group, NSG name, and tenant from the
+<a href="#environments">Environments</a> table first — NSG names are identical across
+environments, so the resource group and tenant are the only things distinguishing
+them. If a value there is <em>TBD</em>:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>az network nsg list --query &quot;[].{name:name, rg:resourceGroup}&quot; -o table</span>
+<span class="tl blank"> </span></code></pre></div>
+<h3 id="back-up-before-changing">Back up before changing</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>BK=~/nsg-backup-&lt;env&gt;-$(date +%F-%H%M).json</span>
+<span class="tl cmd"><span class="ps">$</span>az network nsg show -g &lt;RG&gt; -n &lt;NSG&gt; &gt; &quot;$BK&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>python3 -c &quot;import json,os;d=json.load(open(os.path.expanduser(&#x27;$BK&#x27;)));print(d[&#x27;name&#x27;],len(d[&#x27;securityRules&#x27;]),&#x27;custom rules&#x27;)&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>The timestamp matters — backups taken on the same day would otherwise overwrite each
+other, and NSG edits tend to come in clusters.</p>
+<blockquote class="cal cal--note">
+<p><strong>There is no <code>az network nsg import</code>.</strong> The JSON is a reference for reconstructing
+rules by hand, not a restore mechanism. For a single-rule change the practical
+rollback is the inverse command (below); the file exists for the case where
+something unexpected also changed.</p>
+</blockquote>
+<p>Also capture the current rule in a form you can read at a glance, since that is what
+a rollback actually needs:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>az network nsg rule show -g &lt;RG&gt; --nsg-name &lt;NSG&gt; -n PG_INBOUND \</span>
+<span class="tl cont">  --query &quot;{single:sourceAddressPrefix, list:sourceAddressPrefixes, desc:description, pri:priority}&quot; -o json</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Create a <strong>scoped</strong> rule. Do not use <code>'*'</code>:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>az network nsg rule create \</span>
+<span class="tl cont">  -g &lt;RG&gt; --nsg-name &lt;NSG&gt; -n PG_INBOUND \</span>
+<span class="tl cont">  --priority 310 --access Allow --protocol Tcp --direction Inbound \</span>
+<span class="tl cont">  --source-address-prefixes &lt;IP1&gt; &lt;IP2&gt; &lt;APP_SERVICE_IPS...&gt; \</span>
+<span class="tl cont">  --destination-port-ranges 5432 \</span>
+<span class="tl cont">  --description &quot;Postgres SSL - dev workstations + App Service outbound&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<h3 id="rollback">Rollback</h3>
+<p><strong>If the rule did not exist before</strong> — delete it:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>az network nsg rule delete -g &lt;RG&gt; --nsg-name &lt;NSG&gt; -n PG_INBOUND</span>
+<span class="tl blank"> </span></code></pre></div>
+<p><strong>If you changed an existing rule</strong> — restore the previous source list and
+description verbatim from the values captured above:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>az network nsg rule update -g &lt;RG&gt; --nsg-name &lt;NSG&gt; -n PG_INBOUND \</span>
+<span class="tl cont">  --source-address-prefixes &lt;PREVIOUS_IPS&gt; \</span>
+<span class="tl cont">  --description &quot;&lt;PREVIOUS_DESCRIPTION&gt;&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p><strong>If the whole NSG needs rebuilding</strong> — read the saved JSON and re-create each entry
+under <code>securityRules</code>. Default rules (priority 65000+) are managed by Azure and are
+not restored:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>python3 -c &quot;</span>
+<span class="tl cmd"><span class="ps">$</span>import json,os,sys</span>
+<span class="tl cmd"><span class="ps">$</span>d=json.load(open(os.path.expanduser(&#x27;$BK&#x27;)))</span>
+<span class="tl cmd"><span class="ps">$</span>for r in d[&#x27;securityRules&#x27;]:</span>
+<span class="tl cmd"><span class="ps">$</span>    src=&#x27; &#x27;.join(r[&#x27;sourceAddressPrefixes&#x27;]) or r[&#x27;sourceAddressPrefix&#x27;]</span>
+<span class="tl cmd"><span class="ps">$</span>    print(f\&quot;az network nsg rule create -g {d[&#x27;resourceGroup&#x27;]} --nsg-name {d[&#x27;name&#x27;]} \&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>          f\&quot;-n {r[&#x27;name&#x27;]} --priority {r[&#x27;priority&#x27;]} --access {r[&#x27;access&#x27;]} \&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>          f\&quot;--protocol {r[&#x27;protocol&#x27;]} --direction {r[&#x27;direction&#x27;]} \&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>          f\&quot;--source-address-prefixes {src} \&quot;</span>
+<span class="tl cmd"><span class="ps">$</span>          f\&quot;--destination-port-ranges {r[&#x27;destinationPortRange&#x27;]}\&quot;)</span>
+<span class="tl cmd"><span class="ps">$</span>&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>That prints the commands rather than running them, so you can review before applying.</p>
+<blockquote class="cal cal--warn">
+<p><span class="cue cue--warn">CAUTION</span> Rolling back a <strong>tightening</strong> change re-opens access. Rolling back a
+<strong>widening</strong> change can drop live clients — including App Service. Confirm which
+direction you are undoing before running anything.</p>
+</blockquote>
+<h3 id="gathering-source-ips">Gathering source IPs</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">curl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmt"># Each developer&#x27;s egress IP</span>
+<span class="tl cmd"><span class="ps">$</span>curl -s https://ifconfig.me; echo</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># App Service — possibleOutboundIpAddresses, NOT outboundIpAddresses.</span>
+<span class="tl cmt"># The latter is only the currently-active subset and changes on scale or restart.</span>
+<span class="tl cmd"><span class="ps">$</span>az webapp show -g &lt;APP_RG&gt; -n &lt;APP_NAME&gt; --query possibleOutboundIpAddresses -o tsv</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Space-separated in the CLI, even though Azure returns them comma-separated.</p>
+<blockquote class="cal cal--note">
+<p><strong>Tightening an existing wide-open rule is the change with real blast radius.</strong>
+NSG changes drop established flows. Before narrowing a <code>Source: *</code> rule, confirm
+every current client appears in the new list:
+</p>
+</blockquote>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">pg_db container</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>docker exec pg_db psql -U postgres -Atc \</span>
+<span class="tl cont"> &quot;SELECT DISTINCT client_addr, usename, application_name</span>
+<span class="tl cmd"><span class="ps">$</span>  FROM pg_stat_activity WHERE client_addr IS NOT NULL;&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<h3 id="maintaining-the-allowlist">Maintaining the allowlist</h3>
+<p>Adding or removing an IP later uses <code>update</code>, not <code>create</code>. Take a backup first —
+see <a href="#back-up-before-changing">Back up before changing</a>:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>az network nsg rule update -g &lt;RG&gt; --nsg-name &lt;NSG&gt; -n PG_INBOUND \</span>
+<span class="tl cont">  --source-address-prefixes &lt;IP1&gt; &lt;IP2&gt; &lt;IP3&gt; ... \</span>
+<span class="tl cont">  --description &quot;Postgres SSL - &lt;who is covered&gt;&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<blockquote class="cal cal--warn">
+<p><span class="cue cue--warn">CAUTION</span> <strong><code>update</code> replaces the entire list — it does not append.</strong> Every IP that should
+keep access must appear in the command, including your own. Omitting yours locks you
+out of the database mid-session.</p>
+</blockquote>
+<p>Read the current list before editing it, so you are adding to a known set:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>az network nsg rule show -g &lt;RG&gt; --nsg-name &lt;NSG&gt; -n PG_INBOUND \</span>
+<span class="tl cont">  --query &quot;{prefixes:sourceAddressPrefixes, single:sourceAddressPrefix, port:destinationPortRange, access:access}&quot; -o json</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>A single-IP rule reports under <code>sourceAddressPrefix</code> (singular); multiple IPs report
+under <code>sourceAddressPrefixes</code> (plural). Check both — the field moves as the list
+grows.</p>
+<p>Confirm afterwards from a client machine:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">netcat</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>nc -zv -w5 &lt;VM_PUBLIC_IP&gt; 5432</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Keep the <code>--description</code> current with who is covered. It is the only record of why a
+given address is on the list, and stale entries otherwise accumulate indefinitely.</p>
+<p>Residential and VPN developer IPs rotate, making the allowlist an ongoing support
+burden. Where a jump box exists in the VNet, SSH tunnelling
+(<code>ssh -L 5432:localhost:5432 &lt;jumpbox&gt;</code>) is the more durable answer for developer
+access and allows 5432 to eventually be restricted to App Service alone.</p>
+<hr />
+<h2 class="step" id="step-9--verification-tests"><span class="step__n">09</span><span class="step__t">Verification Tests</span></h2>
+<p>Run these <strong>from a client machine</strong>, not from the VM — the point is to exercise the
+network path and the certificate exactly as an external client sees them.</p>
+<h3 id="prerequisites">Prerequisites</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>mkdir -p ~/ssl</span>
+<span class="tl cmd"><span class="ps">$</span>scp &lt;ssh-alias&gt;:/opt/resources/ssl/pg_ssl.crt ~/ssl/pg_ssl_&lt;env&gt;.crt</span>
+<span class="tl cmd"><span class="ps">$</span>openssl x509 -in ~/ssl/pg_ssl_&lt;env&gt;.crt -noout -fingerprint -sha256 -ext subjectAltName</span>
+<span class="tl cmd"><span class="ps">$</span>psql --version    # any version works; see the note under Test 3</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Confirm the fingerprint matches the one recorded in Step 4.</p>
+<h3 id="test-1--reachability">Test 1 — Reachability</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">netcat</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>nc -zv -w5 &lt;VM_PUBLIC_IP&gt; 5432</span>
+<span class="tl blank"> </span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>succeeded</code></td>
+<td><span class="cue cue--ok">PASS</span> NSG allows your IP; proceed</td>
+</tr>
+<tr>
+<td><code>timed out</code></td>
+<td><span class="cue cue--no">FAIL</span> Filtered — NSG rule missing or your IP changed. No client setting fixes this.</td>
+</tr>
+<tr>
+<td><code>refused</code></td>
+<td><span class="cue cue--no">FAIL</span> Reachable but nothing listening — container is down</td>
+</tr>
+</tbody>
+</table>
+<p>Always run this first. A hanging <code>psql</code> is otherwise misread as an SSL failure.</p>
+<h3 id="test-2--unencrypted-connection-must-be-rejected">Test 2 — Unencrypted connection must be REJECTED</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">psql</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>psql &quot;host=&lt;VM_PUBLIC_IP&gt; port=5432 dbname=&lt;db&gt; user=postgres sslmode=disable connect_timeout=5&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Expected:</p>
+<div class="term term--src"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">output</span></div><pre class="term__body"><code><span class="tl src">psql: error: FATAL:  no pg_hba.conf entry for host &quot;&lt;your ip&gt;&quot;, user &quot;postgres&quot;, database &quot;&lt;db&gt;&quot;, no encryption</span>
+<span class="tl src"> </span></code></pre></div>
+<p><span class="cue cue--ok">PASS</span> This is the definitive proof that <code>hostssl</code> is enforced. The phrase <strong>"no
+encryption"</strong> is the part that matters. It also confirms your source IP as the server
+sees it.</p>
+<p><span class="cue cue--no">FAIL</span> If this <strong>connects</strong>, stop — the <code>sed</code> in Step 7 did not take effect and the
+database is accepting cleartext connections.</p>
+<h3 id="test-3--tls-with-full-certificate-verification-must-succeed">Test 3 — TLS with full certificate verification must SUCCEED</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">psql</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>psql &quot;host=postgres-server hostaddr=&lt;VM_PUBLIC_IP&gt; port=5432 dbname=&lt;db&gt; user=postgres \</span>
+<span class="tl cont">sslmode=verify-full sslrootcert=$HOME/ssl/pg_ssl_&lt;env&gt;.crt connect_timeout=5&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p><span class="cue cue--ok">PASS</span> <strong>A password prompt is a pass.</strong> TLS completed and the certificate verified before
+authentication was attempted. <code>FATAL: password authentication failed</code> is also a pass
+— that is a credentials issue, not a TLS one.</p>
+<blockquote class="cal cal--note">
+<p><strong>Use <code>$HOME</code>, not <code>~</code>.</strong> Inside double quotes the shell will not expand a tilde,
+and libpq does not expand it either.</p>
+<p><strong>Why <code>host</code> and <code>hostaddr</code> are split.</strong> <code>hostaddr</code> is where the connection goes;
+<code>host</code> is the name verified against the certificate. This form works on every psql
+version. Connecting by IP alone fails on psql 15 and older with
+<code>server certificate for "pg_db" (and 2 other names) does not match host name</code> —
+libpq only gained <code>iPAddress</code> SAN matching in PostgreSQL 16, so older clients
+compare against <code>dNSName</code>/CN only. That error is a client limitation, not a bad
+certificate.</p>
+</blockquote>
+<h3 id="test-4--confirm-the-negotiated-session">Test 4 — Confirm the negotiated session</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">psql</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>PGPASSWORD=&#x27;&lt;pw&gt;&#x27; psql &quot;host=postgres-server hostaddr=&lt;VM_PUBLIC_IP&gt; port=5432 \</span>
+<span class="tl cont">dbname=&lt;db&gt; user=postgres sslmode=verify-full sslrootcert=$HOME/ssl/pg_ssl_&lt;env&gt;.crt&quot; \</span>
+<span class="tl cont">-c &quot;SELECT ssl, version, cipher FROM pg_stat_ssl WHERE pid = pg_backend_pid();&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p><span class="cue cue--ok">PASS</span> Expected: <code>ssl = t</code> with a TLS version and cipher. Worth pasting into the build
+record as evidence.</p>
+<h3 id="test-5--wrong-certificate-must-be-rejected">Test 5 — Wrong certificate must be REJECTED</h3>
+<p>Proves verification is actually happening rather than being silently skipped. Point a
+<em>different</em> environment's certificate at this host:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">psql</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>psql &quot;host=postgres-server hostaddr=&lt;VM_PUBLIC_IP&gt; port=5432 dbname=&lt;db&gt; user=postgres \</span>
+<span class="tl cont">sslmode=verify-full sslrootcert=$HOME/ssl/pg_ssl_&lt;other-env&gt;.crt connect_timeout=5&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p><span class="cue cue--ok">PASS</span> Expected: <code>SSL error: certificate verify failed</code> / <code>self-signed certificate</code>.
+<span class="cue cue--no">FAIL</span> If this <strong>connects</strong>, verification is not being enforced.</p>
+<h3 id="test-6--application-layer-verification">Test 6 — Application-layer verification</h3>
+<p>From the app, not the shell:</p>
+<div class="term term--src"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">javascript</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl src">const { rows } = await pool.query(</span>
+<span class="tl src">  &#x27;SELECT ssl, version, cipher FROM pg_stat_ssl WHERE pid = pg_backend_pid()&#x27;</span>
+<span class="tl src">);</span>
+<span class="tl src">console.log(rows[0]);   // { ssl: true, version: &#x27;TLSv1.3&#x27;, cipher: &#x27;...&#x27; }</span>
+<span class="tl src"> </span></code></pre></div>
+<h3 id="summary">Summary</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Test</th>
+<th>Expected</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>TCP reachability</td>
+<td><span class="cue cue--ok">PASS</span> succeeded</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>sslmode=disable</code></td>
+<td><span class="cue cue--no">FAIL</span> <strong>rejected — "no encryption"</strong></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>verify-full</code>, correct cert</td>
+<td><span class="cue cue--ok">PASS</span> password prompt / auth error</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>pg_stat_ssl</code></td>
+<td><span class="cue cue--ok">PASS</span> <code>ssl = t</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>verify-full</code>, wrong cert</td>
+<td><span class="cue cue--no">FAIL</span> <strong>verify failed</strong></td>
+</tr>
+<tr>
+<td>6</td>
+<td>App reports <code>ssl: true</code></td>
+<td><span class="cue cue--ok">PASS</span></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Tests 2 and 5 prove that only safe, certified connections are allowed.</strong> Tests 1,
+3, 4 and 6 prove that legitimate clients still work. A build is not complete until
+all six behave as listed.</p>
+<hr />
+<h2 id="regenerating-the-certificate">Regenerating the Certificate</h2>
+<p>Required when the certificate expires, the VM IP changes, or a new hostname is added.</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">openssl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmt"># sudo required because pg_ssl.key is owned by UID 999</span>
+<span class="tl cmd"><span class="ps">$</span>sudo openssl req -new -x509 -days 1095 \</span>
+<span class="tl cont">  -key /opt/resources/ssl/pg_ssl.key \</span>
+<span class="tl cont">  -out /opt/resources/ssl/pg_ssl.crt \</span>
+<span class="tl cont">  -subj &quot;/CN=pg_db&quot; \</span>
+<span class="tl cont">  -addext &quot;subjectAltName=DNS:pg_db,DNS:postgres-server,DNS:localhost,IP:&lt;THIS_VM_PUBLIC_IP&gt;,IP:127.0.0.1&quot;</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># sudo overwrites ownership to root — restore it</span>
+<span class="tl cmd"><span class="ps">$</span>sudo chown $USER:docker /opt/resources/ssl/pg_ssl.crt</span>
+<span class="tl cmd"><span class="ps">$</span>sudo chmod 644 /opt/resources/ssl/pg_ssl.crt</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># With the directory mount from Step 6, a reload suffices — no downtime</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db psql -U postgres -c &quot;SELECT pg_reload_conf();&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<blockquote class="cal cal--note">
+<p><code>ssl_cert_file</code> and <code>ssl_key_file</code> are SIGHUP-context settings — Postgres re-reads
+them on config reload and has since version 10. Hosts still using per-file bind
+mounts need <code>docker restart pg_db</code> instead, because the mount pins an inode.</p>
+</blockquote>
+<p>Confirm the new certificate is live:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">openssl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>openssl s_client -starttls postgres -connect &lt;VM_PUBLIC_IP&gt;:5432 &lt;/dev/null 2&gt;/dev/null \</span>
+<span class="tl cont">  | openssl x509 -noout -subject -dates -ext subjectAltName -fingerprint -sha256</span>
+<span class="tl blank"> </span></code></pre></div>
+<blockquote class="cal cal--note">
+<p><strong>Rotation has three obligations, not one:</strong></p>
+<ol>
+<li>Update <a href="#appendix-d--certificates">Appendix D — Certificates</a> with the new PEM,
+   fingerprint, and expiry, then regenerate and redistribute this document. A stale
+   embedded certificate hands people a copy that fails verification with a
+   confusing error.</li>
+<li>Announce it — all developers must re-pull, and all App Service deployments must
+   be updated, or they will fail verification.</li>
+<li>Update the SHA-256 in the <a href="#environments">Environments</a> notes if recorded there.</li>
+</ol>
+<p>To pull the new copy from the host:
+</p>
+</blockquote>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">scp</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>scp &lt;ssh-alias&gt;:/opt/resources/ssl/pg_ssl.crt ~/ssl/pg_ssl_&lt;env&gt;.crt</span>
+<span class="tl blank"> </span></code></pre></div>
+<blockquote class="cal cal--note">
+<p><strong>Set a calendar reminder ~60 days before the 1095-day expiry.</strong> Nothing in this
+design warns you.</p>
+</blockquote>
+<hr />
+<h2 id="auditing-an-existing-build">Auditing an Existing Build</h2>
+<p>Read-only. Use when inheriting a container someone else set up.</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">docker</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmt"># What the container actually is</span>
+<span class="tl cmd"><span class="ps">$</span>docker inspect pg_db --format &#x27;{{json .Config.Cmd}}&#x27;</span>
+<span class="tl cmd"><span class="ps">$</span>docker inspect pg_db --format &#x27;{{range .Mounts}}{{.Type}} {{.Name}}{{.Source}} -&gt; {{.Destination}} (rw={{.RW}}){{&quot;\n&quot;}}{{end}}&#x27;</span>
+<span class="tl cmd"><span class="ps">$</span>docker inspect pg_db --format &#x27;{{json .NetworkSettings.Networks}}&#x27;</span>
+<span class="tl cmd"><span class="ps">$</span>docker inspect pg_db --format &#x27;{{json .NetworkSettings.Ports}}&#x27;</span>
+<span class="tl cmd"><span class="ps">$</span>docker inspect pg_db --format &#x27;{{range .Config.Env}}{{println .}}{{end}}&#x27; | grep -v PASSWORD</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># What Postgres thinks its config is — the &#x27;source&#x27; column distinguishes</span>
+<span class="tl cmt"># command-line flags from a hand-edited postgresql.conf inside the volume</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db psql -U postgres -Atc \</span>
+<span class="tl cont"> &quot;SELECT name||&#x27; = &#x27;||setting||&#x27;  [&#x27;||source||&#x27;]&#x27; FROM pg_settings</span>
+<span class="tl cmd"><span class="ps">$</span>  WHERE name IN (&#x27;ssl&#x27;,&#x27;ssl_cert_file&#x27;,&#x27;ssl_key_file&#x27;,&#x27;ssl_ca_file&#x27;,</span>
+<span class="tl cmd"><span class="ps">$</span>                 &#x27;hba_file&#x27;,&#x27;listen_addresses&#x27;,&#x27;password_encryption&#x27;);&quot;</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># The one that matters</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db grep -vE &#x27;^\s*#|^\s*$&#x27; /var/lib/postgresql/data/pg_hba.conf</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># Certificate and key, as the container sees them and on the host</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db ls -ln /etc/ssl/pg/</span>
+<span class="tl cmd"><span class="ps">$</span>ls -la /opt/resources/ssl/; getfacl -p /opt/resources/ssl/* 2&gt;/dev/null</span>
+<span class="tl cmd"><span class="ps">$</span>openssl x509 -in /opt/resources/ssl/pg_ssl.crt \</span>
+<span class="tl cont">  -noout -subject -dates -ext subjectAltName -fingerprint -sha256</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Red flags, in priority order:</p>
+<ol>
+<li><code>POSTGRES_HOST_AUTH_METHOD=trust</code> in <code>Env</code> — unauthenticated database</li>
+<li>A <code>host</code> (not <code>hostssl</code>) catch-all rule with a non-loopback address</li>
+<li>A SAN carrying another environment's IP — certificate was copied, not generated</li>
+<li>SSL settings sourced from <code>configuration file</code> rather than <code>command line</code> —
+   someone edited <code>postgresql.conf</code> inside the volume, diverging from this document</li>
+<li>Container not on <code>pg_net</code> — <code>DNS:pg_db</code> will not resolve for dockerized apps</li>
+<li>Anonymous data volume — makes any container recreate risky</li>
+</ol>
+<p><strong>Not problems.</strong> A key at <code>600</code> owned by root, or <code>640</code> owned by root — both are
+permitted. <code>ls -l</code> showing <code>dd-agent</code> instead of <code>999</code>. Do not "fix" a healthy
+container.</p>
+<hr />
+<h2 id="known-divergences-on-existing-hosts">Known Divergences on Existing Hosts</h2>
+<p>Hosts built before this revision differ in ways that are <strong>not</strong> faults:</p>
+<table>
+<thead>
+<tr>
+<th>Divergence</th>
+<th>Consequence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Per-file bind mounts instead of the directory mount</td>
+<td>Certificate rotation requires <code>docker restart pg_db</code> rather than a reload</td>
+</tr>
+<tr>
+<td>Certificate at <code>640</code> with an ACL granting <code>u:999:r</code></td>
+<td>Works; the ACL must be re-applied after every regeneration</td>
+</tr>
+<tr>
+<td><code>-e POSTGRES_PASSWORD</code> inline</td>
+<td>Password visible in <code>docker inspect</code> and shell history</td>
+</tr>
+<tr>
+<td>Docker <code>data-root</code> on the OS disk</td>
+<td>Verify capacity; relocating later means downtime</td>
+</tr>
+</tbody>
+</table>
+<p>Migrating an existing host to the current build is a container recreate — plan it
+alongside the <a href="#appendix-c--cleanup-backlog">Cleanup Backlog</a> rather than piecemeal.</p>
+<hr />
+<h1 class="part" id="part-2--connection-guide"><span class="part__n">02</span><span class="part__t">CONNECTION GUIDE</span></h1>
+<p><em>For developers. You do not need VM access to follow this section.</em></p>
+<p>TLS is <strong>mandatory</strong> on all environments — unencrypted connections are rejected by
+the server.</p>
+<h2 id="before-you-start">Before You Start</h2>
+<p>You need three things:</p>
+<ol>
+<li><strong>The server certificate</strong> (<code>pg_ssl_&lt;env&gt;.crt</code>) — copy it from
+   <a href="#appendix-d--certificates">Appendix D</a>. You will never need the private key. If
+   someone sends you a <code>.key</code> file, that is a mistake.</li>
+<li><strong>An NSG allowlist entry</strong> — port 5432 is closed by default. Send your public IP
+   (see below).</li>
+<li><strong>Database credentials</strong> — database name, role, and password.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Host (IP)</td>
+<td><code>&lt;VM_PUBLIC_IP&gt;</code></td>
+</tr>
+<tr>
+<td>Host (certificate name)</td>
+<td><code>postgres-server</code></td>
+</tr>
+<tr>
+<td>Port</td>
+<td><code>5432</code></td>
+</tr>
+<tr>
+<td>Database</td>
+<td><code>dev</code>, <code>staging</code>, or <code>prod</code> — matching the host you are connecting to</td>
+</tr>
+<tr>
+<td>SSL mode</td>
+<td><code>verify-full</code></td>
+</tr>
+<tr>
+<td>Certificate fingerprint</td>
+<td><em>(supplied with the cert)</em></td>
+</tr>
+</tbody>
+</table>
+<blockquote class="cal cal--note">
+<p><strong>Each environment has its own certificate. They are not interchangeable.</strong></p>
+<p>On the <strong>VM</strong>, the file is always <code>/opt/resources/ssl/pg_ssl.crt</code> — each host is one
+environment, so no suffix is needed or wanted.</p>
+<p>On a <strong>developer workstation</strong>, you may hold several. Name local copies
+<code>pg_ssl_staging.crt</code>, <code>pg_ssl_dev.crt</code> to keep them apart, and verify the
+fingerprint before trusting a copy you did not receive directly.</p>
+<p><strong>Dockerized apps on this host need no copy at all</strong> — they read the certificate
+through the standard <code>/opt/resources:/opt/resources:ro</code> mount, with
+<code>PG_SSL_PATH=/opt/resources/ssl/pg_ssl.crt</code>. Only external clients and App Service
+deployments need their own copy.</p>
+</blockquote>
+<h3 id="getting-your-ip">Getting your IP</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">curl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>curl -s https://ifconfig.me; echo</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Send that to the DB owner. <strong>On residential or VPN connections this address changes
+periodically</strong> — when connections suddenly time out, re-run this and send the new
+value. It is the most common cause of "the database is down."</p>
+<p>For <strong>Azure Web Apps</strong>, send the full outbound set instead:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>az webapp show -g &lt;RG&gt; -n &lt;APP_NAME&gt; --query possibleOutboundIpAddresses -o tsv</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Use <code>possibleOutboundIpAddresses</code>, <strong>not</strong> <code>outboundIpAddresses</code> — the latter is only
+the currently-active subset and changes when the app scales or restarts, which will
+break your connection at an unpredictable moment.</p>
+<h2 id="certificate-placement">Certificate placement</h2>
+<p>The DEV and STAGING certificates are reproduced in
+<a href="#appendix-d--certificates">Appendix D — Certificates</a> as ready-to-paste blocks. Use
+those; there is no need to request a copy from anyone.</p>
+<p>If you have SSH access and would rather pull it from the host:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>mkdir -p ~/ssl</span>
+<span class="tl cmd"><span class="ps">$</span>scp &lt;ssh-alias&gt;:/opt/resources/ssl/pg_ssl.crt ~/ssl/pg_ssl_&lt;env&gt;.crt</span>
+<span class="tl cmd"><span class="ps">$</span>openssl x509 -in ~/ssl/pg_ssl_&lt;env&gt;.crt -noout -fingerprint -sha256 -ext subjectAltName</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>The fingerprint must match the one you were given. The SAN should list <code>pg_db</code>,
+<code>postgres-server</code>, <code>localhost</code>, the VM's public IP, and <code>127.0.0.1</code>.</p>
+<blockquote class="cal cal--note">
+<p><strong>WSL users:</strong> a Windows IDE cannot read a path inside your WSL filesystem. Copy
+the certificate to the Windows side as well:
+</p>
+</blockquote>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>mkdir -p /mnt/c/Users/&lt;you&gt;/pg-ssl</span>
+<span class="tl cmd"><span class="ps">$</span>cp ~/ssl/pg_ssl_&lt;env&gt;.crt /mnt/c/Users/&lt;you&gt;/pg-ssl/</span>
+<span class="tl blank"> </span></code></pre></div>
+<blockquote class="cal cal--note">
+<p>Then reference <code>C:\Users\&lt;you&gt;\pg-ssl\pg_ssl_&lt;env&gt;.crt</code> in the IDE.</p>
+</blockquote>
+<h2 id="psql">psql</h2>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">psql</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>psql &quot;host=postgres-server hostaddr=&lt;VM_PUBLIC_IP&gt; port=5432 dbname=&lt;db&gt; \</span>
+<span class="tl cont">user=postgres sslmode=verify-full sslrootcert=$HOME/ssl/pg_ssl_&lt;env&gt;.crt connect_timeout=5&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<h3 id="why-both-host-and-hostaddr">Why both <code>host</code> and <code>hostaddr</code></h3>
+<p><code>hostaddr</code> is where the connection goes; <code>host</code> is the name verified against the
+certificate. <strong>Use this form regardless of your psql version</strong> — it works on all of
+them.</p>
+<p>Connecting by IP alone works only on psql 16 and newer. Older clients produce
+<code>server certificate for "pg_db" (and 2 other names) does not match host name "&lt;IP&gt;"</code>,
+because libpq only gained <code>iPAddress</code> SAN matching in PostgreSQL 16. That is a client
+limitation, <strong>not</strong> a broken certificate — do not request a new one when you see it.</p>
+<h2 id="express--nodejs">Express / Node.js</h2>
+<p>The <code>pg</code> driver passes the <code>ssl</code> object to Node's TLS stack, which <strong>does</strong> match IP
+SANs — no <code>hostaddr</code> workaround needed.</p>
+<div class="term term--src"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">javascript</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl src">const fs = require(&#x27;fs&#x27;);</span>
+<span class="tl src">const { Pool } = require(&#x27;pg&#x27;);</span>
+<span class="tl src"> </span>
+<span class="tl src">const pool = new Pool({</span>
+<span class="tl src">  host: process.env.PG_HOST,</span>
+<span class="tl src">  port: process.env.PG_PORT,</span>
+<span class="tl src">  database: process.env.PG_DB,</span>
+<span class="tl src">  user: process.env.PG_USER,</span>
+<span class="tl src">  password: process.env.PG_PW,</span>
+<span class="tl src">  ssl: {</span>
+<span class="tl src">    ca: fs.readFileSync(process.env.PG_SSL_PATH),</span>
+<span class="tl src">    rejectUnauthorized: true,</span>
+<span class="tl src">  },</span>
+<span class="tl src">});</span>
+<span class="tl src"> </span>
+<span class="tl src">module.exports = pool;</span>
+<span class="tl src"> </span></code></pre></div>
+<p>Using <code>pg-promise</code>? The config object is identical — pass it to <code>pgp(config)</code>.</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">shell</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>PG_HOST=&lt;VM_PUBLIC_IP&gt;       # or pg_db for dockerized apps on pg_net</span>
+<span class="tl cmd"><span class="ps">$</span>PG_PORT=5432</span>
+<span class="tl cmd"><span class="ps">$</span>PG_DB=&lt;db&gt;</span>
+<span class="tl cmd"><span class="ps">$</span>PG_USER=postgres</span>
+<span class="tl cmd"><span class="ps">$</span>PG_PW=&lt;password&gt;</span>
+<span class="tl cmd"><span class="ps">$</span>PG_SSL_PATH=./ssl/pg_ssl_&lt;env&gt;.crt</span>
+<span class="tl blank"> </span></code></pre></div>
+<h3 id="things-that-will-bite-you">Things that will bite you</h3>
+<ul>
+<li><strong><code>ca</code>, not <code>cert</code>.</strong> The <code>cert</code> field is for <em>client</em> certificates, which are not
+  used here. Putting the server certificate there silently disables verification.
+  This replaced the Azure Flexi-server <code>BaltimoreCyberTrustRoot.crt.pem</code> setup, where
+  <code>cert</code> was correct — hence the confusion.</li>
+<li><strong><code>rejectUnauthorized: true</code> is what enforces verification.</strong> Setting it to <code>false</code>
+  gives encryption with no identity check, defeating the point. It defaults to
+  <code>true</code>; just do not override it.</li>
+<li><strong><code>require: true</code> does nothing.</strong> It is not a <code>tls.connect()</code> option. Harmless, but
+  do not mistake it for a safety net.</li>
+<li><strong>Ship the certificate with the app.</strong> For App Service, it must be part of the
+  deployed artifact and not <code>.gitignore</code>'d out. Reference it by a path relative to
+  the app root, not an absolute local path.</li>
+</ul>
+<h3 id="verify-from-inside-the-app">Verify from inside the app</h3>
+<div class="term term--src"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">javascript</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl src">const { rows } = await pool.query(</span>
+<span class="tl src">  &#x27;SELECT ssl, version, cipher FROM pg_stat_ssl WHERE pid = pg_backend_pid()&#x27;</span>
+<span class="tl src">);</span>
+<span class="tl src">console.log(rows[0]);   // { ssl: true, version: &#x27;TLSv1.3&#x27;, cipher: &#x27;...&#x27; }</span>
+<span class="tl src"> </span></code></pre></div>
+<p><code>ssl: true</code> plus <code>rejectUnauthorized: true</code> not throwing equals full verification.</p>
+<h2 id="database-ides">Database IDEs</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Host</td>
+<td><code>&lt;VM_PUBLIC_IP&gt;</code></td>
+</tr>
+<tr>
+<td>Port</td>
+<td><code>5432</code></td>
+</tr>
+<tr>
+<td>Database</td>
+<td><code>dev</code>, <code>staging</code>, or <code>prod</code></td>
+</tr>
+<tr>
+<td>SSL</td>
+<td>enabled, mode <code>verify-full</code></td>
+</tr>
+<tr>
+<td>CA / Root certificate</td>
+<td>path to <code>pg_ssl_&lt;env&gt;.crt</code></td>
+</tr>
+<tr>
+<td>Client certificate &amp; key</td>
+<td>leave empty</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Beekeeper Studio</strong> — toggle <strong>Enable SSL</strong> first; the certificate fields only
+appear afterwards. Set <strong>CA Cert</strong> to the certificate path, leave <strong>Certificate</strong> and
+<strong>Key</strong> empty, and leave "Trust server certificate" / "Reject Unauthorized"
+unchecked — checking it disables verification.</p>
+<p><strong>DBeaver</strong> — SSL tab, check "Use SSL", set Root certificate, SSL mode
+<code>verify-full</code>. Leave client certificate and key blank.</p>
+<p><strong>pgAdmin</strong> — SSL mode <code>verify-full</code>, Root certificate set to the path. pgAdmin
+bundles libpq; if it reports a hostname mismatch, use <code>postgres-server</code> as the host
+and add a hosts-file entry pointing it at the VM IP.</p>
+<blockquote class="cal cal--note">
+<p>Some IDEs proxy connections through localhost internally, which is why <code>localhost</code>
+and <code>127.0.0.1</code> are in the certificate SAN. A hostname mismatch mentioning
+localhost is expected and covered.</p>
+</blockquote>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Connection timed out</code> / hangs</td>
+<td>Your IP is not in the NSG allowlist, or it changed</td>
+<td>Re-run <code>curl ifconfig.me</code>, send it to the DB owner</td>
+</tr>
+<tr>
+<td><code>no pg_hba.conf entry ... no encryption</code></td>
+<td>SSL disabled in your client</td>
+<td>Set <code>sslmode=require</code> or higher / add the <code>ssl</code> block</td>
+</tr>
+<tr>
+<td><code>certificate for "pg_db" ... does not match host name</code></td>
+<td>Connected by IP on psql ≤15</td>
+<td>Use <code>host=postgres-server hostaddr=&lt;IP&gt;</code></td>
+</tr>
+<tr>
+<td><code>SELF_SIGNED_CERT_IN_CHAIN</code> / <code>UNABLE_TO_VERIFY_LEAF_SIGNATURE</code></td>
+<td>Wrong certificate — another environment's, or an old one</td>
+<td>Check the fingerprint</td>
+</tr>
+<tr>
+<td><code>ERR_TLS_CERT_ALTNAME_INVALID</code></td>
+<td>Connecting by a hostname not in the SAN</td>
+<td>Use the IP or <code>postgres-server</code>; request a SAN addition if you need another name</td>
+</tr>
+<tr>
+<td><code>Connection refused</code></td>
+<td>Reachable but nothing listening — container down</td>
+<td>Report it; server-side problem</td>
+</tr>
+<tr>
+<td><code>password authentication failed</code></td>
+<td>Credentials — <strong>TLS worked fine</strong></td>
+<td>Check your role and password</td>
+</tr>
+</tbody>
+</table>
+<p>Separate network problems from TLS problems before debugging anything else:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">netcat</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>nc -zv -w5 &lt;VM_PUBLIC_IP&gt; 5432</span>
+<span class="tl blank"> </span></code></pre></div>
+<p><code>succeeded</code> means the network path is fine and any remaining error is TLS or auth.
+<code>timed out</code> means an allowlist problem, and no client configuration will fix it.</p>
+<h2 id="rules">Rules</h2>
+<ul>
+<li><strong>Never commit the private key.</strong> You should never have it — only the <code>.crt</code> is
+  distributed.</li>
+<li><strong>The certificate is public information.</strong> Safe to share internally and to bundle
+  into deployment artifacts. It is not a secret; your password is.</li>
+<li><strong>If the certificate is regenerated</strong>, re-pull it and redeploy. Connections fail
+  with a verification error until you do.</li>
+</ul>
+<hr />
+<h1 class="part" id="appendices"><span class="part__n">A–D</span><span class="part__t">Appendices</span></h1>
+<p>Reference material: CLI setup, a condensed command list, outstanding work, and
+notes for an LLM session.</p>
+<h2 id="appendix-a--multi-tenant-azure-cli">Appendix A — Multi-Tenant Azure CLI</h2>
+<p>Where environments live in separate Entra tenants, <code>az login --tenant</code> replaces the
+token cache and evicts your other sessions. Isolate caches per environment:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>AZURE_CONFIG_DIR=~/.azure-&lt;env&gt; az login --tenant &lt;TENANT_ID&gt; --use-device-code</span>
+<span class="tl cmd"><span class="ps">$</span>AZURE_CONFIG_DIR=~/.azure-&lt;env&gt; az network nsg list -o table</span>
+<span class="tl blank"> </span></code></pre></div>
+<p><code>--use-device-code</code> is required under WSL, which has no browser to launch.</p>
+<p>Check whether environments are separate tenants or merely separate subscriptions —
+subscriptions need no re-authentication:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">azure-cli</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>az account list --all --query &quot;[].{name:name, id:id, tenant:tenantId}&quot; -o table</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>Find a tenant ID from its domain without authenticating:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">curl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>curl -s https://login.microsoftonline.com/&lt;subdomain&gt;.onmicrosoft.com/v2.0/.well-known/openid-configuration \</span>
+<span class="tl cont">  | grep -o &#x27;&quot;issuer&quot;:&quot;[^&quot;]*&quot;&#x27;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>The <code>azenv</code> wrapper script automates this and lives with the ops tooling. It is a
+convenience for anyone switching between tenants frequently, not a requirement —
+plain <code>az login --tenant</code> works fine.</p>
+<hr />
+<h2 id="appendix-b--quick-reference">Appendix B — Quick Reference</h2>
+<p>Once you have built a VM before:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">curl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmt"># 0. Identify host + record public IP</span>
+<span class="tl cmd"><span class="ps">$</span>curl -s -H Metadata:true &quot;http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&amp;format=text&quot;</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># 4. Certificate</span>
+<span class="tl cmd"><span class="ps">$</span>mkdir -p /opt/resources/ssl</span>
+<span class="tl cmd"><span class="ps">$</span>openssl genrsa -out /opt/resources/ssl/pg_ssl.key 2048</span>
+<span class="tl cmd"><span class="ps">$</span>openssl req -new -x509 -days 1095 -key /opt/resources/ssl/pg_ssl.key \</span>
+<span class="tl cont">  -out /opt/resources/ssl/pg_ssl.crt -subj &quot;/CN=pg_db&quot; \</span>
+<span class="tl cont">  -addext &quot;subjectAltName=DNS:pg_db,DNS:postgres-server,DNS:localhost,IP:&lt;IP&gt;,IP:127.0.0.1&quot;</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># 5. Permissions</span>
+<span class="tl cmd"><span class="ps">$</span>chmod 644 /opt/resources/ssl/pg_ssl.crt</span>
+<span class="tl cmd"><span class="ps">$</span>sudo chown 999:docker /opt/resources/ssl/pg_ssl.key</span>
+<span class="tl cmd"><span class="ps">$</span>sudo chmod 600 /opt/resources/ssl/pg_ssl.key</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># 6. Container</span>
+<span class="tl cmd"><span class="ps">$</span>docker run -d --name pg_db --network pg_net --env-file /opt/resources/pg.env \</span>
+<span class="tl cont">  -p 5432:5432 -v postgres_data:/var/lib/postgresql/data \</span>
+<span class="tl cont">  -v /opt/resources/ssl:/etc/ssl/pg:ro --restart unless-stopped postgres:16 \</span>
+<span class="tl cont">  -c ssl=on -c ssl_cert_file=/etc/ssl/pg/pg_ssl.crt -c ssl_key_file=/etc/ssl/pg/pg_ssl.key</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># 7. pg_hba</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db cp /var/lib/postgresql/data/pg_hba.conf /var/lib/postgresql/data/pg_hba.conf.bak</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db sed -i -E &#x27;s/^host([[:space:]]+all[[:space:]]+all[[:space:]]+all[[:space:]]+)/hostssl\1/&#x27; /var/lib/postgresql/data/pg_hba.conf</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db grep -vE &#x27;^\s*#|^\s*$&#x27; /var/lib/postgresql/data/pg_hba.conf   # CONFIRM</span>
+<span class="tl cmd"><span class="ps">$</span>docker exec pg_db psql -U postgres -c &quot;SELECT pg_reload_conf();&quot;</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># 8. NSG — scoped, never &#x27;*&#x27;</span>
+<span class="tl cmd"><span class="ps">$</span>az network nsg rule create -g &lt;RG&gt; --nsg-name &lt;NSG&gt; -n PG_INBOUND \</span>
+<span class="tl cont">  --priority 310 --access Allow --protocol Tcp --direction Inbound \</span>
+<span class="tl cont">  --source-address-prefixes &lt;IPs&gt; --destination-port-ranges 5432</span>
+<span class="tl blank"> </span>
+<span class="tl cmt"># 9. Then run all six verification tests from a client machine</span>
+<span class="tl blank"> </span></code></pre></div>
+<hr />
+<h2 id="appendix-c--cleanup-backlog">Appendix C — Cleanup Backlog</h2>
+<p>Deferred deliberately. Several are interdependent — do not address piecemeal.</p>
+<ul>
+<li><strong>Permission model rework.</strong> The key's UID 999 ownership works but depends on a
+  numeric coincidence rather than an intentional grant. Options: a root-owned key
+  with a dedicated group and <code>--group-add</code>; a reserved placeholder system user on
+  999; a dedicated high UID via <code>--user</code> (requires re-chowning the data volume);
+  relocating certificates out of <code>/opt/resources</code> entirely. <strong>Before choosing,
+  inventory what else reads <code>/opt/resources/ssl/pg_ssl.key</code></strong> — backup jobs,
+  configuration management, other containers.</li>
+<li><strong>Internal CA.</strong> Per-host self-signed leaf certificates mean every client must
+  trust every host's certificate individually. One internal root, trusted once, with
+  per-VM server certificates, removes redistribution entirely. This gets more
+  expensive with every VM added.</li>
+<li><strong>Static IP and a DNS name in the SAN</strong>, decoupling certificate lifetime from
+  addressing.</li>
+<li><strong>Dedicated non-superuser application roles.</strong> Everything currently connects as
+  <code>postgres</code>, including applications — which is why this document hardcodes that role.
+  Applications should have their own least-privilege roles; when they do, the <code>Role</code>
+  row in <a href="#environments">Environments</a> and the connection examples need updating with
+  them.</li>
+<li><strong>Jump box / SSH tunnel for developer access</strong>, replacing rotating residential IPs
+  in the NSG allowlist.</li>
+<li><strong>Docker <code>data-root</code> placement</strong> — confirm it is on the intended persistent disk,
+  not the OS disk and not the ephemeral resource disk.</li>
+<li><strong>Version-controlled <code>pg_hba.conf</code></strong> mounted read-only, replacing the <code>sed</code>.</li>
+<li><strong>Certificate expiry monitoring</strong> — nothing currently warns before the 1095-day
+  expiry.</li>
+</ul>
+<hr />
+<h2 id="appendix-d--certificates">Appendix D — Certificates</h2>
+<p>The server certificates for DEV and STAGING are reproduced here so they do not have to
+be requested separately. <strong>These are public certificates.</strong> They are presented by the
+server to anyone who opens a TCP connection to port 5432, and contain no secret
+material. The private key is never distributed and should never appear in this or any
+other document.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>DEV</th>
+<th>STAGING</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SAN</td>
+<td><code>pg_db</code>, <code>postgres-server</code>, <code>localhost</code>, <code>20.55.72.8</code>, <code>127.0.0.1</code></td>
+<td><code>pg_db</code>, <code>postgres-server</code>, <code>localhost</code>, <code>20.121.125.115</code>, <code>127.0.0.1</code></td>
+</tr>
+<tr>
+<td>Issued</td>
+<td>2026-05-25</td>
+<td>2026-05-26</td>
+</tr>
+<tr>
+<td>Expires</td>
+<td><strong>2029-05-24</strong></td>
+<td><strong>2029-05-25</strong></td>
+</tr>
+<tr>
+<td>SHA-256</td>
+<td><code>06:53:66:62:F4:86:98:6D:BB:D1:FC:18:0E:DD:F3:32:3E:0A:D0:E2:8D:5F:09:B1:10:E2:9F:CA:37:67:0F:CB</code></td>
+<td><code>E9:F9:0F:12:4A:8C:CE:17:0C:5E:58:C9:C7:6D:7B:24:A1:05:00:F5:53:59:B7:46:E0:3D:2C:B8:C5:56:61:ED</code></td>
+</tr>
+</tbody>
+</table>
+<p>PROD is not listed — it has no Postgres host yet.</p>
+<h3 id="dev--pg_ssl_devcrt">DEV — <code>pg_ssl_dev.crt</code></h3>
+<div class="term term--src"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">certificate — paste into a terminal</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl src">mkdir -p ~/ssl &amp;&amp; cat &gt; ~/ssl/pg_ssl_dev.crt &lt;&lt;&#x27;EOF&#x27;</span>
+<span class="tl src">-----BEGIN CERTIFICATE-----</span>
+<span class="tl src">MIIDPTCCAiWgAwIBAgIUKL3el4JCZWHebv4F3fj6lzQW6w8wDQYJKoZIhvcNAQEL</span>
+<span class="tl src">BQAwEDEOMAwGA1UEAwwFcGdfZGIwHhcNMjYwNTI1MTI0NjQ0WhcNMjkwNTI0MTI0</span>
+<span class="tl src">NjQ0WjAQMQ4wDAYDVQQDDAVwZ19kYjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC</span>
+<span class="tl src">AQoCggEBAK5SBJ18UoapfLG4V2xmMwcwKG6uTnFSjgcNtsGZCdwjAQdGxg3X24vF</span>
+<span class="tl src">GtqICKcIMTC4egjPnKVrZFsF6GRsEK8Lxfh4uq0HAXHtNu3Ds5Al3H1XuF/7xEQ/</span>
+<span class="tl src">pGDsLJGa6LKTwSPNuEoB+3B7AU/u9zXe96ZPK5DiTrfuXyPg3Ho0m4CYQ8zUnABq</span>
+<span class="tl src">rEmLww594Fd6SH10doBI1DgqD4R8zRgaz4ZaMDjSskmjN36oVF1/2G5bnIdBxmlQ</span>
+<span class="tl src">jTCweKN6kyIkeUnczMpUqouWsB8nwfLL9NJilGFbmUrOVeZROkzYjjcJ7FqjDbhF</span>
+<span class="tl src">bIC7o+v6opuCy8KxP/cK+1YnrbFWvYsCAwEAAaOBjjCBizAdBgNVHQ4EFgQUQ9P6</span>
+<span class="tl src">TdyHuMfwjno1S2QCyUFG2lQwHwYDVR0jBBgwFoAUQ9P6TdyHuMfwjno1S2QCyUFG</span>
+<span class="tl src">2lQwDwYDVR0TAQH/BAUwAwEB/zA4BgNVHREEMTAvggVwZ19kYoIPcG9zdGdyZXMt</span>
+<span class="tl src">c2VydmVygglsb2NhbGhvc3SHBBQ3SAiHBH8AAAEwDQYJKoZIhvcNAQELBQADggEB</span>
+<span class="tl src">ACnUjdGVGMJMI7aX3YllIYA3maAsdQoDsmvqwAVWZl7szVtPvita/CowZrsaEIO+</span>
+<span class="tl src">nLtltMALgSi0CiZLxT+qX/flynR8upF+CNWQtDNXf4pPuFG405j+kjagkjT3dFnp</span>
+<span class="tl src">XyDfsnjHFUobYnxcNKZZ/JmYSEZrs+oN+w5DYgI9w50K4P2yp4IkaOmOPFmPX+IH</span>
+<span class="tl src">WQwiwOC+7fBNe/TvvhaS2y8fLXqG1LKW6wOfuM+maVDhRDKnVzmZA+95AqON+Mzb</span>
+<span class="tl src">AtfjwwMs9eKn+PwT8PR4wbiSU6u8Ck+eWFUQCQQs9lbGJ95Wd66Ts6KR38K6zfHR</span>
+<span class="tl src">ey++aHFYYdo210qiK1tGB1I=</span>
+<span class="tl src">-----END CERTIFICATE-----</span>
+<span class="tl src">EOF</span>
+<span class="tl src"> </span></code></pre></div>
+<h3 id="staging--pg_ssl_stagingcrt">STAGING — <code>pg_ssl_staging.crt</code></h3>
+<div class="term term--src"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">certificate — paste into a terminal</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl src">mkdir -p ~/ssl &amp;&amp; cat &gt; ~/ssl/pg_ssl_staging.crt &lt;&lt;&#x27;EOF&#x27;</span>
+<span class="tl src">-----BEGIN CERTIFICATE-----</span>
+<span class="tl src">MIIDPTCCAiWgAwIBAgIUQFYglNllTTmj+ZKs2P3lo3ZNovgwDQYJKoZIhvcNAQEL</span>
+<span class="tl src">BQAwEDEOMAwGA1UEAwwFcGdfZGIwHhcNMjYwNTI2MTQwOTI1WhcNMjkwNTI1MTQw</span>
+<span class="tl src">OTI1WjAQMQ4wDAYDVQQDDAVwZ19kYjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC</span>
+<span class="tl src">AQoCggEBAK92iWXMle7MBNXgH6IUsAVbmEDQoA/+pvIcm7G4bGD+CRrf39G0ABtP</span>
+<span class="tl src">hAUq4CsQq54rKZFjwEE2VmOaoT0iQ+E8XB5ZXs95SkRWUXZdaIAXAz1B82TsCDt9</span>
+<span class="tl src">LaEIHvBx2/5GZR6xrT6t2lZ1RbNtaewMEGmPx/44gGNVbjzd92HfPszPvymtz1O/</span>
+<span class="tl src">MxWQHK1wPFBauzVQvY5vGnhgKg/EQVlrDZNp9PpAS9Le4zQ+xrM2lUmC8Vp5fog4</span>
+<span class="tl src">V3Qk/fbbk9wHELJGZItCSKyYn4/9Rwt7HWGoGsCLTMM8RUy0T3tF9lfczhjCTujj</span>
+<span class="tl src">qINvbpTwXeaTph3d/TJVwAi6ItV4I2MCAwEAAaOBjjCBizAdBgNVHQ4EFgQUuk7n</span>
+<span class="tl src">OZ/+Fh4xNTY55pYceeFnPhgwHwYDVR0jBBgwFoAUuk7nOZ/+Fh4xNTY55pYceeFn</span>
+<span class="tl src">PhgwDwYDVR0TAQH/BAUwAwEB/zA4BgNVHREEMTAvggVwZ19kYoIPcG9zdGdyZXMt</span>
+<span class="tl src">c2VydmVygglsb2NhbGhvc3SHBBR5fXOHBH8AAAEwDQYJKoZIhvcNAQELBQADggEB</span>
+<span class="tl src">ABq6lc5QW3eM7EOo4C3wos7dwv92Bdz2EGSrp5p7DIES8pL/Ug9K3P1H/Ugpaomi</span>
+<span class="tl src">LQrjx7V2xLl2J4vErExvj+aDaHRgV7bx4AKLvawRcrJmzsDAuNWYwmUgD2gNeuvm</span>
+<span class="tl src">nwJbECKoxSv8c5rPowhHHEZKe3eBODOg+/owN8hDNV2dR9b0sKqGPGvaBXTpuhuO</span>
+<span class="tl src">JP/pNgBYJWio2owMQdjj0YrhH9se9oJU5An+nxK6HQejByrTxAfoIEGAWYezcypc</span>
+<span class="tl src">N9zZiJ5aHvA6ra61Zjf5hj5Ir8pGQXZ3XOhfeagMMhLWXo4MLZX7W38/lXKhvmQM</span>
+<span class="tl src">m37ihjQr+KSocNlisiK61XA=</span>
+<span class="tl src">-----END CERTIFICATE-----</span>
+<span class="tl src">EOF</span>
+<span class="tl src"> </span></code></pre></div>
+<h3 id="verify-what-you-pasted">Verify what you pasted</h3>
+<p>Check the copy you just wrote against the fingerprints in the table:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">openssl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>openssl x509 -in ~/ssl/pg_ssl_dev.crt -noout -fingerprint -sha256 -dates -ext subjectAltName</span>
+<span class="tl cmd"><span class="ps">$</span>openssl x509 -in ~/ssl/pg_ssl_staging.crt -noout -fingerprint -sha256 -dates -ext subjectAltName</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>A mismatch means a copy-paste error — a truncated line, or a mail client that wrapped
+the base64.</p>
+<blockquote class="cal cal--note">
+<p>A self-signed certificate is its own trust anchor, so a tampered document would hand
+you a tampered anchor, and the fingerprint printed beside it would have been altered
+to match. Comparing against the table proves the paste is intact, not that the
+certificate is genuine. The check that proves that is against the live server:
+</p>
+</blockquote>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">openssl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>openssl s_client -starttls postgres -connect &lt;VM_PUBLIC_IP&gt;:5432 &lt;/dev/null 2&gt;/dev/null \</span>
+<span class="tl cont">  | openssl x509 -noout -fingerprint -sha256</span>
+<span class="tl blank"> </span></code></pre></div>
+<blockquote class="cal cal--warn">
+<p>Substitute the public IP for the environment whose certificate you are checking —
+DEV <code>20.55.72.8</code>, STAGING <code>20.121.125.115</code>, per <a href="#environments">Environments</a>.
+Requires your IP to be on the allowlist. If the result matches your local copy, the
+copy is the certificate that host is actually presenting.</p>
+<p><span class="cue cue--warn">CAUTION</span> <strong>These become wrong the moment a certificate is regenerated.</strong> Rotation must
+include updating this appendix and redistributing the document — see
+<a href="#regenerating-the-certificate">Regenerating the Certificate</a>.</p>
+</blockquote>
+<hr />
+<h1 class="part" id="reverse-prompts"><span class="part__n">RP</span><span class="part__t">Reverse Prompts</span></h1>
+<h2 id="how-to-invoke-this">How to invoke this</h2>
+<p>Attach <strong><code>pg_docker_guide.html</code></strong> to the session and open with:</p>
+<div class="term term--src"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">text</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl src">Follow Rev Prompts</span>
+<span class="tl src"> </span></code></pre></div>
+<p>The HTML file is the single distributable — it renders as a readable document, needs
+no tooling, and carries these instructions in a directive block at the top of the
+file so they are read before the body.</p>
+<p>The seed prompt still matters. This section sits near the end of a long file, and a
+session opened with "summarise this" will summarise it. <code>Follow Rev Prompts</code> is what
+redirects it.</p>
+<blockquote class="cal cal--note">
+<p><strong>Untested.</strong> This section is an experiment in making the document self-directing.
+It has not been validated in practice, so treat anything it produces as a draft to
+review rather than a command to run unexamined.</p>
+</blockquote>
+<h2 id="on-receiving-follow-rev-prompts">On receiving "Follow Rev Prompts"</h2>
+<p>Use this document as the source of truth and work from the referenced section rather
+than from memory. Work through the steps below <strong>in order</strong> — environment first, task
+second, inputs third.</p>
+<p><strong>Every choice must be rendered as clickable options, not as text.</strong> If your interface
+has a tool for presenting selectable choices — an option picker, elicitation widget,
+multiple-choice or tappable-button component — use it for every question below. The
+user should be able to answer by clicking, never by typing a number back or retyping
+an option's wording.</p>
+<p>Fall back to a numbered text list only if no such capability exists, and say so when
+you do.</p>
+<p>Use free text only where the answer genuinely cannot be enumerated — an IP address, a
+person's name, a database role. Never present a free-text prompt where a fixed set of
+options exists.</p>
+<p>The option sets below are the choices to render, not literal output to print.</p>
+<h3 id="step-1--ask-the-environment-always-first-always-before-anything-else">Step 1 — Ask the environment. Always first, always before anything else.</h3>
+<p>Question: <strong>"Which environment?"</strong>
+Clickable options: <code>DEV</code> · <code>STAGING</code> · <code>PROD</code></p>
+<p>This comes first because every value in every command differs by environment, and
+because VM names and NSG names are identical across them — nothing can be inferred
+later. Once answered, look the environment up in <a href="#environments">Environments</a> and
+hold its IP, database, NSG, resource group, subscription, tenant, and SSH alias for
+the rest of the session.</p>
+<p>If the user picks <strong>PROD</strong>, say that PROD has no Postgres host yet — the container has
+not been replicated there — and ask whether they meant a different environment. Do not
+proceed with PROD values.</p>
+<p>If any value needed later is marked <em>TBD</em>, stop and ask. Do not infer it.</p>
+<h3 id="step-2--ask-the-task">Step 2 — Ask the task</h3>
+<p>First establish which group they are in — the two lists are different, and most
+people only ever need the developer one.</p>
+<p>Question: <strong>"Are you connecting to a database, or administering one?"</strong>
+Clickable options: <code>Connecting (developer)</code> · <code>Administering (infra)</code></p>
+<p>Then render that group's tasks as clickable options.</p>
+<h4 id="developer-tasks">Developer tasks</h4>
+<p>Nothing here requires VM access, Azure permissions, or sudo.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Task</th>
+<th>Work from</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>D1</td>
+<td><strong>Connect to a Postgres container</strong></td>
+<td><a href="#connect-to-a-postgres-container">Connect to a Postgres container</a> — the guided flow below</td>
+</tr>
+<tr>
+<td>D2</td>
+<td>Diagnose a connection failure</td>
+<td><a href="#troubleshooting">Troubleshooting</a></td>
+</tr>
+<tr>
+<td>D3</td>
+<td>Get a certificate</td>
+<td><a href="#appendix-d--certificates">Appendix D — Certificates</a></td>
+</tr>
+<tr>
+<td>D4</td>
+<td>Find out why I cannot reach the database</td>
+<td><a href="#connect-to-a-postgres-container">Connect to a Postgres container</a>, step 1 — almost always the allowlist</td>
+</tr>
+<tr>
+<td>D5</td>
+<td>Something else</td>
+<td>Free text — see below</td>
+</tr>
+</tbody>
+</table>
+<h4 id="admin-tasks">Admin tasks</h4>
+<p>These need Azure CLI access to the right tenant, SSH to the VM, or both.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Task</th>
+<th>Work from</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A1</td>
+<td>Add or remove IPs on the allowlist</td>
+<td><a href="#maintaining-the-allowlist">Maintaining the allowlist</a></td>
+</tr>
+<tr>
+<td>A2</td>
+<td>Onboard a developer</td>
+<td><a href="#part-2--connection-guide">Part 2 — Connection Guide</a> + <a href="#appendix-d--certificates">Appendix D</a></td>
+</tr>
+<tr>
+<td>A3</td>
+<td>Regenerate or rotate a certificate</td>
+<td><a href="#regenerating-the-certificate">Regenerating the Certificate</a></td>
+</tr>
+<tr>
+<td>A4</td>
+<td>Audit a container someone else built</td>
+<td><a href="#auditing-an-existing-build">Auditing an Existing Build</a></td>
+</tr>
+<tr>
+<td>A5</td>
+<td>Confirm TLS is actually enforced</td>
+<td><a href="#step-9--verification-tests">Step 09 — Verification Tests</a></td>
+</tr>
+<tr>
+<td>A6</td>
+<td>Build Postgres on a new VM</td>
+<td><a href="#part-1--build-runbook">Part 1 — Build Runbook</a></td>
+</tr>
+<tr>
+<td>A7</td>
+<td>Look up an IP, resource group, NSG, or tenant</td>
+<td><a href="#environments">Environments</a></td>
+</tr>
+<tr>
+<td>A8</td>
+<td>Something else</td>
+<td>Free text — see below</td>
+</tr>
+</tbody>
+</table>
+<p>If a developer's task turns out to need admin rights — most often adding their own IP
+to the allowlist — say so plainly, give them the exact value to pass on (their egress
+IP), and name who they need. Do not generate an <code>az</code> command for someone who cannot
+run it.</p>
+<p>On <strong>D5</strong> or <strong>A8</strong>, take the description as free text, then say which section you believe
+covers it and confirm before proceeding. If nothing in this document covers it, say so
+plainly rather than improvising a command.</p>
+<h3 id="step-3--collect-the-tasks-inputs">Step 3 — Collect the task's inputs</h3>
+<p>Ask only for what the chosen task needs, one prompt at a time, using selectable
+options wherever the set is known:</p>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Ask for</th>
+<th>How to ask</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Connect to a container</td>
+<td>How they are connecting</td>
+<td><strong>clickable</strong> — <code>psql</code> · <code>IDE</code> · <code>Node.js app</code> · <code>Something else</code></td>
+</tr>
+<tr>
+<td>Connect to a container</td>
+<td>Which IDE, if they chose IDE</td>
+<td><strong>clickable</strong> — <code>Beekeeper</code> · <code>DBeaver</code> · <code>pgAdmin</code> · <code>Other</code></td>
+</tr>
+<tr>
+<td>Connect to a container</td>
+<td>Their egress IP, if not yet allowlisted</td>
+<td>free text</td>
+</tr>
+<tr>
+<td>Allowlist add</td>
+<td>Current rule contents</td>
+<td><strong>read first</strong> — see below</td>
+</tr>
+<tr>
+<td>Allowlist add</td>
+<td>IP(s) to add, and a label for each (initials)</td>
+<td>free text</td>
+</tr>
+<tr>
+<td>Allowlist remove</td>
+<td>Which entry to remove</td>
+<td><strong>clickable</strong> — one option per current entry</td>
+</tr>
+<tr>
+<td>Onboard a developer</td>
+<td>Their name, their egress IP</td>
+<td>free text</td>
+</tr>
+<tr>
+<td>Onboard a developer</td>
+<td>Which environment's certificate to send</td>
+<td><strong>clickable</strong> — <code>DEV</code> · <code>STAGING</code></td>
+</tr>
+<tr>
+<td>Regenerate a certificate</td>
+<td>Any additional SAN entries</td>
+<td>free text, may be empty</td>
+</tr>
+<tr>
+<td>Regenerate a certificate</td>
+<td>Confirm this host's own public IP</td>
+<td><strong>clickable</strong> — confirm / cancel</td>
+</tr>
+<tr>
+<td>Verification tests</td>
+<td><em>(role is <code>postgres</code>; ask only for the password, or have the user supply it at the prompt)</em></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Diagnose a failure</td>
+<td>Which symptom</td>
+<td><strong>clickable</strong> — rows from <a href="#troubleshooting">Troubleshooting</a></td>
+</tr>
+<tr>
+<td>Audit / lookup</td>
+<td><em>(nothing beyond environment)</em></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Read before replace.</strong> <code>az network nsg rule update</code> overwrites the entire source
+list rather than appending. For any allowlist change, first have the user run the
+<code>rule show</code> command from
+<a href="#maintaining-the-allowlist">Maintaining the allowlist</a> and paste the result, then
+build the new list from what actually exists. Never compose an <code>update</code> from memory or
+from earlier in the conversation.</p>
+<h2 id="connect-to-a-postgres-container">Connect to a Postgres container</h2>
+<p>The most common request, and the one most likely to come from someone who has never
+touched the VM. Work these in order. Everything needed is in this document — do not
+ask the user to request a certificate from anyone.</p>
+<h3 id="1-confirm-their-ip-is-on-the-allowlist">1. Confirm their IP is on the allowlist</h3>
+<p>Port 5432 is closed by default, so a missing allowlist entry looks like a hang, and
+is easily mistaken for a TLS or credentials problem. Check it before anything else.</p>
+<p>Have them run:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">curl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>curl -s https://ifconfig.me; echo</span>
+<span class="tl cmd"><span class="ps">$</span>nc -zv -w5 &lt;VM_PUBLIC_IP&gt; 5432</span>
+<span class="tl blank"> </span></code></pre></div>
+<ul>
+<li><code>succeeded</code> — they are on the allowlist. Continue to step 2.</li>
+<li><code>timed out</code> — they are <strong>not</strong> on it, or their IP has changed. Nothing in the
+  client configuration will fix this. Give them the IP from <code>ifconfig.me</code> to send to
+  whoever administers the NSG, or, if the user is that administrator, offer to run
+  task 2 (Add or remove IPs on the allowlist) now.</li>
+<li><code>refused</code> — reachable but nothing listening; the container is down. Report it as a
+  server-side problem and stop.</li>
+</ul>
+<p>If <code>nc</code> is unavailable, <code>curl -v --connect-timeout 5 telnet://&lt;VM_PUBLIC_IP&gt;:5432</code>
+gives the same signal — read only the connect line.</p>
+<h3 id="2-give-them-the-certificate">2. Give them the certificate</h3>
+<p>Take the ready-to-paste block for their environment from
+<a href="#appendix-d--certificates">Appendix D — Certificates</a> and give it to them directly.
+Then have them confirm the paste against the fingerprint in that appendix:</p>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">openssl</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>openssl x509 -in ~/ssl/pg_ssl_&lt;env&gt;.crt -noout -fingerprint -sha256 -ext subjectAltName</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>A mismatch is a copy-paste error — usually a wrapped base64 line — not a bad
+certificate.</p>
+<p><strong>WSL users:</strong> a Windows IDE cannot read a path inside the WSL filesystem. They need a
+second copy on the Windows side, and must reference the <code>C:\...</code> path in the IDE.</p>
+<h3 id="3-ask-how-they-are-connecting">3. Ask how they are connecting</h3>
+<p>Question: <strong>"How are you connecting?"</strong>
+Clickable options: <code>psql</code> · <code>Database IDE</code> · <code>Node.js / Express app</code> · <code>Something else</code></p>
+<p>Then give only that path's setup — not all three.</p>
+<table>
+<thead>
+<tr>
+<th>Choice</th>
+<th>Work from</th>
+<th>The thing they will get wrong</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>psql</code></td>
+<td><a href="#psql">psql</a></td>
+<td>Connecting by IP alone. Give them the <code>host=postgres-server hostaddr=&lt;IP&gt;</code> form, which works on every client version.</td>
+</tr>
+<tr>
+<td><code>Database IDE</code></td>
+<td><a href="#database-ides">Database IDEs</a></td>
+<td>Ask which IDE and give that one's panel. In Beekeeper the certificate fields only appear after SSL is toggled on; leave "trust server certificate" unchecked.</td>
+</tr>
+<tr>
+<td><code>Node.js / Express app</code></td>
+<td><a href="#express--nodejs">Express / Node.js</a></td>
+<td><code>ca:</code> not <code>cert:</code>. <code>cert</code> is for client certificates and silently disables verification. Also ensure the certificate ships with the App Service artifact and is not gitignored.</td>
+</tr>
+<tr>
+<td><code>Something else</code></td>
+<td>Free text</td>
+<td>Establish whether the client verifies IP SANs. If unsure, have them use <code>postgres-server</code> as the host.</td>
+</tr>
+</tbody>
+</table>
+<p>They will also need the database name and the password. Both the database and the
+role (<code>postgres</code>) are in <a href="#environments">Environments</a>. <strong>The password is not in this
+document and must never be added to it</strong> — say so and point them at whoever owns
+credentials.</p>
+<h3 id="4-confirm-it-worked">4. Confirm it worked</h3>
+<div class="term term--cmd"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">psql</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl cmd"><span class="ps">$</span>psql &quot;host=postgres-server hostaddr=&lt;VM_PUBLIC_IP&gt; port=5432 dbname=&lt;db&gt; user=postgres \</span>
+<span class="tl cont">sslmode=verify-full sslrootcert=$HOME/ssl/pg_ssl_&lt;env&gt;.crt connect_timeout=5&quot;</span>
+<span class="tl blank"> </span></code></pre></div>
+<p>A password prompt means TLS completed and the certificate verified — that is success
+before credentials are even considered. <code>password authentication failed</code> is also a TLS
+success; send them to whoever owns credentials.</p>
+<p>For an app, have them run this once connected:</p>
+<div class="term term--src"><div class="term__bar"><span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term__label">javascript</span><button class="copy" type="button" aria-label="Copy commands">copy</button></div><pre class="term__body"><code><span class="tl src">const { rows } = await pool.query(</span>
+<span class="tl src">  &#x27;SELECT ssl, version, cipher FROM pg_stat_ssl WHERE pid = pg_backend_pid()&#x27;</span>
+<span class="tl src">);</span>
+<span class="tl src">console.log(rows[0]);   // { ssl: true, ... }</span>
+<span class="tl src"> </span></code></pre></div>
+<p>If anything fails, go to <a href="#troubleshooting">Troubleshooting</a> and match the exact error
+text rather than guessing.</p>
+<h2 id="before-running-anything-destructive">Before running anything destructive</h2>
+<p><strong>Establish whether the change is additive or subtractive</strong>, and say which out loud
+before generating the command. Adding an allowlist entry is safe. Narrowing one drops
+live connections — including App Service, which reaches Postgres over the public IP.
+The same asymmetry applies to rollbacks: undoing a tightening re-opens access, undoing
+a widening can drop clients.</p>
+<h2 id="standing-constraints">Standing constraints</h2>
+<ul>
+<li>Before any Azure command, confirm the shell is authenticated to the intended
+  tenant — <code>az account show</code> — because the same command hits a different environment
+  depending on the active session. Do not assume, and do not require a particular
+  wrapper; plain <code>az</code> is correct.</li>
+<li>Never substitute <code>'*'</code> for an NSG source prefix.</li>
+<li>Never generate a command that omits the user's own IP from an allowlist they are
+  connected through.</li>
+<li>Treat <code>sslmode=disable</code> succeeding, or a wrong certificate being accepted, as
+  alarms rather than passing results.</li>
+<li>If a value is unknown, ask. A plausible-looking IP, resource group, or tenant ID is
+  worse than a question.</li>
+<li>Prefer read-only commands until the user has confirmed the state they expect.</li>
+</ul>
+<h2 id="known-gaps-in-this-document">Known gaps in this document</h2>
+<p>Worth surfacing to the user if relevant, rather than working around silently:</p>
+<ul>
+<li>Concrete values live in the <a href="#environments">Environments</a> table. Anything marked
+  <em>TBD</em> there has not been confirmed — ask rather than infer it.</li>
+<li>PROD has no Postgres host yet — the container has not been replicated to that
+  environment, so its column is <em>TBD</em> by circumstance rather than by omission.</li>
+<li>Deployed hosts diverge from Part 1 in the ways listed under
+  <a href="#known-divergences-on-existing-hosts">Known Divergences</a>.</li>
+<li>Outstanding work is tracked in <a href="#appendix-c--cleanup-backlog">Appendix C</a>.</li>
+</ul></main>
+</div>
+<script>
+document.querySelectorAll('.copy').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var body = btn.closest('.term').querySelector('.term__body code');
+    var lines = [];
+    body.querySelectorAll('.tl').forEach(function(l){
+      if (l.classList.contains('blank')) { lines.push(''); return; }
+      var t = l.textContent;
+      if (l.querySelector('.ps')) t = t.replace(/^\$/, '');
+      lines.push(t);
+    });
+    navigator.clipboard.writeText(lines.join('\n').trim()).then(function(){
+      btn.textContent = 'copied';
+      btn.classList.add('done');
+      setTimeout(function(){ btn.textContent = 'copy'; btn.classList.remove('done'); }, 1400);
+    });
+  });
+});
+
+var links = Array.prototype.slice.call(document.querySelectorAll('.side nav a[href^="#"]'));
+var targets = links.map(function(a){ return document.getElementById(a.hash.slice(1)); });
+function mark(){
+  var y = window.scrollY + 90, idx = 0;
+  targets.forEach(function(t,i){ if (t && t.offsetTop <= y) idx = i; });
+  links.forEach(function(a,i){ a.classList.toggle('here', i === idx); });
+  var active = links[idx];
+  if (active) {
+    var grp = active.closest('.nav__group');
+    if (grp && grp.classList.contains('is-collapsed')) {
+      grp.classList.remove('is-collapsed');
+      var t = grp.querySelector('.nav__tog');
+      if (t) t.setAttribute('aria-expanded', 'true');
+    }
+  }
+}
+window.addEventListener('scroll', mark, {passive:true});
+mark();
+
+
+// Collapsible nav groups. Default open; the group holding the active section
+// re-opens itself if it was collapsed, so scroll-spy never highlights a hidden row.
+document.querySelectorAll('.nav__tog').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var grp = btn.closest('.nav__group');
+    var collapsed = grp.classList.toggle('is-collapsed');
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    var name = grp.querySelector('.nav__part span:last-child').textContent;
+    btn.setAttribute('aria-label', (collapsed ? 'Expand ' : 'Collapse ') + name);
+  });
+});
+</script>
+</body>
+</html>
