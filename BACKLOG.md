@@ -60,8 +60,17 @@ Affected systems (fail every cycle until keyed):
       failed-NULL rows on the **hhm** table, most likely the decrypt-era
       failures that aborted before classification — recheck after a clean day
       and open a fresh item only if new ones appear.
-- [ ] **1d. Philips-MRI rsync bypasses the SSH choke point** (found 2026-08-20 while
-      planning 1b): `jobs/philips_mri/rsync_philips-mri.js:82` invokes the legacy
+- [x] **1d closed 2026-08-21:** hardened in place (`4904948`) rather than repointed —
+      the two scripts serve different purposes (directory mirror vs single file),
+      so `read/sh/rsync_mmb.sh` kept its args/semantics and gained the modern
+      pattern: 600 temp key copy + `ssh -F /opt/resources/ssh/config` (strict,
+      central known_hosts), replacing the inline accept-new. All 10 Philips
+      collector IPs pre-verified present in known_hosts; first post-fix burst
+      (13:28): **9/9 acquisitions successful, 9 systems, zero host-key errors** —
+      identical results, now actually verified. Future unknown collectors fail
+      loudly as `host_key_unknown` (1c) instead of being silently trusted.
+      Original finding:
+- [historical] **1d as found:** `jobs/philips_mri/rsync_philips-mri.js:82` invokes the legacy
       `./read/sh/rsync_mmb.sh`, which hardcodes `StrictHostKeyChecking=accept-new`
       and skips `-F /opt/resources/ssh/config` — and since the bundle mounts `:ro`,
       the accepted key is never persisted, so those hosts are blind-accepted every
