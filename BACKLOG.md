@@ -46,16 +46,20 @@ Affected systems (fail every cycle until keyed):
       import a standard post-seed step; STEP 4 repointed at the now-tracked
       `scripts/redis_migrate.sh`. Merge logic fixture-tested (dup/new/CRLF/
       malformed-abort/@marker); remote leg exercised by 1a's dry run.
-- [ ] **1c. Fix error classification** — the host-key failure is logged into
-      `alert.offline_mmb_conn` as `connection_error='rsync connection closed by
-      peer'`, `error_category='connection_reset'`, pointing an operator at the
-      network rather than at SSH trust. The rsync stderr contains the real cause.
-      Improvements: (i) classify `Host key verification failed` / `No … host key is
-      known` as its own category (a `host_key_changed` category already exists —
-      add the "unknown key" sibling, e.g. `host_key_unknown`); (ii) propagate the
-      informative stderr line into `connection_error`; (iii) coverage: 138 of 172
-      rows in the last 17 h have NULL `error_category` — the classifier misses most
-      events entirely. Owner: Claude (code), data_acquisition mmb error path.
+- [x] **1c. Fix error classification** — done 2026-08-21: `host_key_unknown`
+      root-cause entry added to `util/tools/connection_regex.js` in the SSH-key
+      block (below `host_key_changed`, which must match first — the
+      identification-changed banner also contains "Host key verification
+      failed"). Covers (i) the category and (ii) the informative message that
+      lands in `connection_error`; bonus: as a key-class (non-connection) error
+      it stops the pointless tunnel-reset retry these failures used to trigger.
+      Six-case ordering test passed (real blob, scp form, MITM banner,
+      plain reset, publickey, timeout). (iii) resolved as **not a gap on mmb**:
+      NULL categories there are success rows (138) and never-attempted
+      placeholders (85); zero failed rows lack a category. Residual: 47
+      failed-NULL rows on the **hhm** table, most likely the decrypt-era
+      failures that aborted before classification — recheck after a clean day
+      and open a fresh item only if new ones appear.
 - [ ] **1d. Philips-MRI rsync bypasses the SSH choke point** (found 2026-08-20 while
       planning 1b): `jobs/philips_mri/rsync_philips-mri.js:82` invokes the legacy
       `./read/sh/rsync_mmb.sh`, which hardcodes `StrictHostKeyChecking=accept-new`

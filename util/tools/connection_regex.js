@@ -160,6 +160,24 @@ const connection_regexes = [
     successful_acquisition: false,
     re: /remote host identification has changed/i
   },
+  // Host key NOT in known_hosts under strict checking. Sibling of
+  // host_key_changed, which must stay ABOVE this entry: OpenSSH's
+  // identification-has-changed banner also ends with "Host key verification
+  // failed.", and the changed-key signal is the more specific root cause.
+  // Classified as a key-layer ROOT CAUSE (connection_error: false) so the job
+  // skips the tunnel-reset retry cycle - a VPN reset cannot create trust.
+  // Fix: verify/import the host key (doc 2.1, SHARED SSH BUNDLE -> incremental
+  // import; observed 2026-08-19 as ~1,000/day misclassified connection_reset).
+  {
+    connection_error: false,
+    extraction_error: true,
+    error_type: "key",
+    error_category: "host_key_unknown",
+    message: "host key not in known_hosts (strict checking) - verify/import the host key",
+    manual_intervention: true,
+    successful_acquisition: false,
+    re: /No \S+ host key is known for|Host key verification failed/i
+  },
   {
     connection_error: false,
     extraction_error: true,
