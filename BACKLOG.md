@@ -142,9 +142,21 @@ ops-dashboard trends, incident-engine watermarks/baselines, and any before/after
 comparison. Nothing to fix — just remember that "since when?" answers start at the
 wipe, and that incident-engine dedup/aggregation state reset with the DB.
 
-- [ ] One-time sanity check that incident-engine re-materialized cleanly against
-      the fresh `util.app_run_logs` (its :25/:55 runs are succeeding — confirm its
-      incidents look sane, no re-materialization weirdness). Owner: Matt/Claude.
+- [ ] **4b is a real defect, found 2026-08-21:** the reseed destroyed all three app
+      roles' grants and the `incidents` schema (prod's DB never had it; roles
+      survive but grants die with recreated objects — silently). Impact:
+      **incident-engine failed every :25/:55 run for ~2 days** (`permission denied
+      for schema util`, disk-logs only — it can't even self-log to the DB, which
+      is why nothing showed red); **ops-dashboard served data frozen at
+      2026-08-19 16:29** while returning 200s (`"stale":"last refresh failed:
+      permission denied"` in its payload); **reports_rw** broken-but-latent (no
+      schedule here). Fix = the four superuser commands now written up as
+      **doc 2.1 §5.9** (incident-engine schema + owner-role first, then
+      ops-dashboard readonly, then reports; stored /root/*_pw values reused so
+      `.env`s stay valid; DB-03 caution on the reports script — non-transactional,
+      read any midway error rather than re-running blind). Owner: **Matt** (sudo
+      for the password files). Verify after: three `SET ROLE` probes pass, next
+      incident-engine run logs an outcome, dashboard `asOf` goes current.
 
 ---
 

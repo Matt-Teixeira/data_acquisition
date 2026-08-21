@@ -662,6 +662,32 @@ seeding**, push the source server's verified `known_hosts` — run
 `scripts/known_hosts_migrate.sh` **on the source server** (dry-run first). Full
 procedure and verification: SHARED SSH BUNDLE → "Incremental import after a migration".
 
+### 5.9 Re-provision app DB schemas & roles (every reseed — learned the hard way 2026-08-21)
+
+Recreating schemas/tables **destroys every grant on them**, and app-owned schemas
+that don't exist in the source DB (`incidents`) vanish entirely. Roles survive (they
+are cluster-level) — which makes the breakage *silent*: after the 2026-08-19 reseed,
+incident-engine failed every run for two days (`permission denied for schema util`,
+unable to even self-log to the DB), ops-dashboard served data frozen at the pre-wipe
+timestamp while returning 200s (`"stale":"last refresh failed: permission denied"`
+in the payload), and reports_rw sat broken-but-latent (no schedule on this box).
+
+After **every** reseed, re-run in this order (incident-engine before ops-dashboard —
+its role script grants SELECT on `incidents.*`; password-file pattern per DATABASE
+ROLES — the stored `/root/*_pw` values are reused, so app `.env`s stay valid):
+
+```bash
+docker exec -i pg_db psql -U postgres -d <DB_NAME> -f - < /opt/apps/incident-engine/db/schema.sql
+docker exec -i pg_db psql -U postgres -d <DB_NAME> -v pw="$(sudo cat /root/incident_engine_rw_pw)" -f - < /opt/apps/incident-engine/db/setup-owner-role.sql
+docker exec -i pg_db psql -U postgres -d <DB_NAME> -v ro_pw="$(sudo cat /root/ops_dashboard_ro_pw)" < /opt/apps/ops-dashboard/db/setup-readonly-role.sql
+docker exec -i pg_db psql -U postgres -d <DB_NAME> -v pw="$(sudo cat /root/reports_rw_pw)" -f - < /opt/apps/reports/db/setup-role.sql
+```
+
+Verify: `SET ROLE <role>; SELECT count(*) FROM util.app_run_logs;` passes for all
+three; the next `:25/:55` incident-engine run logs an outcome; ops-dashboard's
+`/api/jobs/latest` shows a current `asOf` with no `stale` field. (This list must
+grow with the DATABASE ROLES rollout — add a line here for every future role.)
+
 ------------------------------------------------------------------------
 
 # STEP 6: DATA ACQUISITION APP SETUP
