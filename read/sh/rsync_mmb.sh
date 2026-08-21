@@ -1,24 +1,31 @@
 #!/bin/bash
 
-# LEGACY — still invoked by jobs/philips_mri/rsync_philips-mri.js:82 via the
-# cwd-relative path ./read/sh/rsync_mmb.sh. Uses StrictHostKeyChecking=accept-new
-# and skips -F /opt/resources/ssh/config, BYPASSING the fleet host-key policy;
-# and because the bundle is mounted :ro, accepted keys are never persisted — the
-# host is blind-accepted again every cycle. Do NOT copy this pattern (BACKLOG
-# item 1d). Delete only after the Philips job is repointed to
-# jobs/mmb/read/sh/rsync_mmb.sh — note the arg orders differ:
-#   this script: $1=user  $2=ip          $3=dest
-#   hardened:    $1=sme   $2=remote_path $3=dest  $4=ip  $5=user
+# Philips-MRI directory-mirror rsync — invoked by
+# jobs/philips_mri/rsync_philips-mri.js via ./read/sh/rsync_mmb.sh.
+# Args: $1=user  $2=ip  $3=dest  (mirrors $1@$2:/home/avante/host_logfiles -> $3)
+#
+# Hardened 2026-08-21 (BACKLOG 1d): host-key policy now comes from the shared
+# /opt/resources/ssh/config (StrictHostKeyChecking yes + central known_hosts),
+# replacing an inline accept-new that bypassed verification — and, with the
+# bundle mounted :ro, could never persist accepted keys anyway (every cycle was
+# a blind first contact). An unknown host now fails loudly and classifies as
+# host_key_unknown; fix = import/verify the key (doc 2.1, SHARED SSH BUNDLE).
+# Distinct from jobs/mmb/read/sh/rsync_mmb.sh, which pulls a single named file
+# with different args — this one stays the directory-mirror variant.
 
 # BOMB SCRIPT FOR UNDEFINED VAR OR ERR DURING EXECUTION
 set -ue
 
-# SYNC THE REMOTE MMB LOG TO LOCAL FILE MIRROR
+# Copy SSH key to a per-process tmp file with correct perms — source is group-read
+# on a read-only mount; OpenSSH wants a private 600 copy.
+KEY="/tmp/.ssh_runtime_key.$$"
+trap 'rm -f "$KEY"' EXIT
+install -m 600 "/opt/resources/ssh/${SSH_KEY}" "$KEY"
 
-# "ssh -o KexAlgorithms=ecdh-sha2-nistp521"
-# rsync -e ssh -r avante@172.31.3.51:/home/avante/host_logfiles /home/matt-teixeira/hep3/hhm_data_acquisition/test/15805
-# echo $4 | sudo -S 
-rsync --timeout=20 --delete -e "ssh -i /opt/resources/ssh/${SSH_KEY} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/opt/resources/ssh/known_hosts" -rz $1@$2:/home/avante/host_logfiles $3
+SSH_CFG="/opt/resources/ssh/config"
+
+# SYNC THE REMOTE MMB LOG DIRECTORY TO LOCAL FILE MIRROR
+rsync --timeout=20 --delete -e "ssh -F $SSH_CFG -i $KEY" -rz $1@$2:/home/avante/host_logfiles $3
 
 
 # sudo chown -R remoteservices:ansible_users /opt/files/SMEXXXXX
