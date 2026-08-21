@@ -142,7 +142,17 @@ ops-dashboard trends, incident-engine watermarks/baselines, and any before/after
 comparison. Nothing to fix — just remember that "since when?" answers start at the
 wipe, and that incident-engine dedup/aggregation state reset with the DB.
 
-- [ ] **4b is a real defect, found 2026-08-21:** the reseed destroyed all three app
+- [x] **4b closed 2026-08-21:** Matt re-provisioned per doc 2.1 §5.9 (password
+      files recreated from `.env`s — they had never existed on this host — then
+      the five role/schema scripts). Verified: grant matrix correct for all four
+      roles (incl. the by-design shapes: reports_rw INSERT-not-SELECT,
+      ops_dashboard_rw function-execute-only); `incidents` schema back (3
+      tables); **first incident-engine run in 2 days succeeded at 13:25**
+      (materialize from epoch watermark, 759 incidents assessed/written, zero
+      errors). §5.9 rewritten as the complete as-executed sequence (`478b0aa`).
+      Residual: ops-dashboard refresh is still blocked — but by item 5 below,
+      not by grants. Original finding:
+- [historical] **4b as found:** the reseed destroyed all three app
       roles' grants and the `incidents` schema (prod's DB never had it; roles
       survive but grants die with recreated objects — silently). Impact:
       **incident-engine failed every :25/:55 run for ~2 days** (`permission denied
@@ -157,6 +167,31 @@ wipe, and that incident-engine dedup/aggregation state reset with the DB.
       read any midway error rather than re-running blind). Owner: **Matt** (sudo
       for the password files). Verify after: three `SET ROLE` probes pass, next
       incident-engine run logs an outcome, dashboard `asOf` goes current.
+
+## 5. mmb-rpp writes NUL-poisoned JSON into util.app_run_logs (found 2026-08-21)
+
+mmb-rpp (Jonathan's app, deployed to `/opt/apps/mmb-rpp` ~2026-08-19 20:27 with the
+migration) logs raw machine-file excerpts — a `"reading"` field containing form-feeds
+and ` ` runs — into the shared `util.app_run_logs` (~4 rows/h, 235 rows so far).
+Postgres' `json` type stores it, but consumers that extract those strings as text
+throw `unsupported Unicode escape sequence`. **Impact today: ops-dashboard's refresh
+fails on it** (dashboard frozen at 2026-08-19 16:29 even after the 4b grant fix —
+payload says `"stale":"last refresh failed: unsupported Unicode escape sequence"`).
+incident-engine proved immune (13:25 run scanned the full table cleanly). Rows stay
+inside the dashboard's 30-day lookback until ~2026-09-19, so producer-side fixes
+alone won't unfreeze it.
+
+- [ ] **5a. Harden ops-dashboard's refresh** against ` ` in shared-table JSON
+      (neutralize at text level before extraction, or skip-and-count poisoned
+      rows). A shared-table consumer must not be crashable by one producer's
+      data. Owner: Matt/Claude (ops-dashboard repo).
+- [ ] **5b. Jonathan: sanitize the mmb-rpp logger** (strip/escape NUL before the
+      DB insert — his vendored logger diverges from the fleet's on this). His
+      app, hands off; Matt to coordinate.
+- [ ] **5c. Optional one-time cleanup** of the existing poisoned rows (strip
+      ` ` in place) once 5b lands — only needed if 5a chooses skip-rows
+      rather than neutralize, or to make historical queries clean. DB state
+      change; owner call.
 
 ---
 
