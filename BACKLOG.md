@@ -181,7 +181,7 @@ wipe, and that incident-engine dedup/aggregation state reset with the DB.
 
 mmb-rpp (Jonathan's app, deployed to `/opt/apps/mmb-rpp` ~2026-08-19 20:27 with the
 migration) logs raw machine-file excerpts — a `"reading"` field containing form-feeds
-and ` ` runs — into the shared `util.app_run_logs` (~4 rows/h, 235 rows so far).
+and `NUL` runs — into the shared `util.app_run_logs` (~4 rows/h, 235 rows so far).
 Postgres' `json` type stores it, but consumers that extract those strings as text
 throw `unsupported Unicode escape sequence`. **Impact today: ops-dashboard's refresh
 fails on it** (dashboard frozen at 2026-08-19 16:29 even after the 4b grant fix —
@@ -190,17 +190,24 @@ incident-engine proved immune (13:25 run scanned the full table cleanly). Rows s
 inside the dashboard's 30-day lookback until ~2026-09-19, so producer-side fixes
 alone won't unfreeze it.
 
-- [ ] **5a. Harden ops-dashboard's refresh** against ` ` in shared-table JSON
-      (neutralize at text level before extraction, or skip-and-count poisoned
-      rows). A shared-table consumer must not be crashable by one producer's
-      data. Owner: Matt/Claude (ops-dashboard repo).
-- [ ] **5b. Jonathan: sanitize the mmb-rpp logger** (strip/escape NUL before the
-      DB insert — his vendored logger diverges from the fleet's on this). His
-      app, hands off; Matt to coordinate.
-- [ ] **5c. Optional one-time cleanup** of the existing poisoned rows (strip
-      ` ` in place) once 5b lands — only needed if 5a chooses skip-rows
-      rather than neutralize, or to make historical queries clean. DB state
-      change; owner call.
+- [x] **5a. done 2026-08-21** — ops-dashboard `9d33d08`: `SAFE_JSON` conditional
+      neutralizer (LIKE pre-check → replace the NUL escape with the
+      replacement-char escape; same length, cast-safe) applied at every
+      shared-table query's json SOURCE. Key discovery: on the `json` type even
+      bare `->0` navigation throws on a poisoned value, so per-slice guards are
+      impossible — sanitize the whole column first. Verified: full query battery
+      passes over live poisoned rows; 171/171 tests; container restarted;
+      **dashboard live again** (`asOf` current, `stale` gone, mmb-rpp on the
+      grid honestly showing ERROR).
+- [x] **5b. DROPPED (owner decision 2026-08-21)** — Jonathan's logger stays as-is;
+      no coordination. Consequence accepted: mmb-rpp keeps writing NUL-poisoned
+      rows (~4/h). 5a makes the dashboard immune; the poison is inert unless a
+      future consumer extracts those json values without the SAFE_JSON guard —
+      **any new consumer of `util.app_run_logs` must copy the pattern**.
+- [x] **5c. done 2026-08-21** — one-time in-place cleanup: 57 `verbose_log` +
+      57 `warn_error_logs` rows sanitized (same replacement-char substitution,
+      cast-validated, one transaction), zero residual. Point-in-time only, per
+      5b's drop — new poisoned rows accumulate again and that's accepted.
 
 ---
 
