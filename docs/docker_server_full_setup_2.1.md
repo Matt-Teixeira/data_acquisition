@@ -672,21 +672,64 @@ unable to even self-log to the DB), ops-dashboard served data frozen at the pre-
 timestamp while returning 200s (`"stale":"last refresh failed: permission denied"`
 in the payload), and reports_rw sat broken-but-latent (no schedule on this box).
 
-After **every** reseed, re-run in this order (incident-engine before ops-dashboard —
-its role script grants SELECT on `incidents.*`; password-file pattern per DATABASE
-ROLES — the stored `/root/*_pw` values are reused, so app `.env`s stay valid):
+**Step 0 — make sure the role password files exist.** The scripts read each role's
+password from a root-only file (`/root/<role>_pw`, DATABASE ROLES pattern). These
+files are host state — a rebuilt/never-provisioned host won't have them (found
+missing on acq-vm-0, 2026-08-21). No password is lost when they're absent: the live
+value is in each app's untracked `.env`. Recreate them from there — values flow
+through pipes only, never shell history or `ps`, and **nothing is rotated** (the
+scripts will re-set each role to the password the apps already use):
+
+```bash
+sudo ls -l /root/incident_engine_rw_pw /root/ops_dashboard_ro_pw /root/ops_dashboard_rw_pw /root/reports_rw_pw
+# For any file MISSING (source key is PGPASSWORD, except the ops-dashboard
+# writer, which lives in PG_WRITER_PASSWORD):
+sudo install -m 600 -o root -g root /dev/null /root/incident_engine_rw_pw
+grep '^PGPASSWORD=' /opt/apps/incident-engine/.env | cut -d= -f2- | sudo tee /root/incident_engine_rw_pw >/dev/null
+sudo install -m 600 -o root -g root /dev/null /root/ops_dashboard_ro_pw
+grep '^PGPASSWORD=' /opt/apps/ops-dashboard/.env | cut -d= -f2- | sudo tee /root/ops_dashboard_ro_pw >/dev/null
+sudo install -m 600 -o root -g root /dev/null /root/ops_dashboard_rw_pw
+grep '^PG_WRITER_PASSWORD=' /opt/apps/ops-dashboard/.env | cut -d= -f2- | sudo tee /root/ops_dashboard_rw_pw >/dev/null
+sudo install -m 600 -o root -g root /dev/null /root/reports_rw_pw
+grep '^PGPASSWORD=' /opt/apps/reports/.env | cut -d= -f2- | sudo tee /root/reports_rw_pw >/dev/null
+sudo sh -c 'wc -c /root/*_pw'    # every file non-empty (~20-50 bytes) before proceeding
+```
+
+**Steps 1–5 — re-run the provisioning scripts, in this order** (incident-engine
+before ops-dashboard: its role script grants SELECT on `incidents.*`; the writer
+role is required whenever ops-dashboard runs `SELF_LOG_ENABLED=true`, which is the
+standard config). Stop on any `ERROR` line; the reports script is non-transactional
+(DB-03) — read a midway error rather than re-running blind:
 
 ```bash
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -f - < /opt/apps/incident-engine/db/schema.sql
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v pw="$(sudo cat /root/incident_engine_rw_pw)" -f - < /opt/apps/incident-engine/db/setup-owner-role.sql
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v ro_pw="$(sudo cat /root/ops_dashboard_ro_pw)" < /opt/apps/ops-dashboard/db/setup-readonly-role.sql
+docker exec -i pg_db psql -U postgres -d <DB_NAME> -v rw_pw="$(sudo cat /root/ops_dashboard_rw_pw)" < /opt/apps/ops-dashboard/db/setup-writer-role.sql
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v pw="$(sudo cat /root/reports_rw_pw)" -f - < /opt/apps/reports/db/setup-role.sql
 ```
 
-Verify: `SET ROLE <role>; SELECT count(*) FROM util.app_run_logs;` passes for all
-three; the next `:25/:55` incident-engine run logs an outcome; ops-dashboard's
-`/api/jobs/latest` shows a current `asOf` with no `stale` field. (This list must
-grow with the DATABASE ROLES rollout — add a line here for every future role.)
+**Verify** (executed and confirmed on acq-vm-0, 2026-08-21) — note each role's
+*intended* shape differs; test what it should have, not blanket SELECT:
+
+```bash
+docker exec pg_db psql -U postgres -d <DB_NAME> -tAc "
+SELECT r, has_schema_privilege(r,'util','USAGE'),
+       has_table_privilege(r,'util.app_run_logs','SELECT'),
+       has_table_privilege(r,'util.app_run_logs','INSERT')
+FROM unnest(ARRAY['incident_engine_rw','ops_dashboard_ro','reports_rw']) r"
+# expect: incident_engine_rw t|t|f · ops_dashboard_ro t|t|f · reports_rw t|f|t
+# (reports_rw is INSERT-not-SELECT by design; ops_dashboard_rw has NO table
+#  grants by design — it only executes the writer function:)
+docker exec pg_db psql -U postgres -d <DB_NAME> -tAc "
+SELECT has_function_privilege('ops_dashboard_rw','ops.log_ops_dashboard_run(uuid,json,json)','EXECUTE')"   # t
+```
+
+Then: the next `:25/:55` incident-engine run logs an outcome to `util.app_run_logs`,
+and ops-dashboard's `/api/jobs/latest` shows a current `asOf` with no `stale` field
+(its refresh recovers unaided within minutes). This list must grow with the
+DATABASE ROLES rollout — add a Step-0 line and a script line here for every future
+role.
 
 ------------------------------------------------------------------------
 
@@ -970,7 +1013,10 @@ The pattern (proven three times; scripts to copy):
   database-wide fail-closed allowlist audit
 
 **Passwords never go on a command line as literals** (SEC-09 — shell history and
-`ps` exposure). Generate into a root-only file first, then expand from it:
+`ps` exposure). Generate into a root-only file first, then expand from it. The
+`/root/<role>_pw` files are **host state** — keep them; if a host is missing them
+(found on acq-vm-0 2026-08-21), recreate each from the owning app's `.env` per
+**§5.9 Step 0** before re-running any role script:
 
 ```bash
 sudo install -m 600 -o root -g root /dev/null /root/<role>_pw
