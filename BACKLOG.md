@@ -20,12 +20,22 @@ inventory contains IPs the Apr-03 `/opt/resources/ssh/known_hosts` has never see
 Affected systems (fail every cycle until keyed):
 `SME21284 SME21824 SME20556 SME21580 SME22407 SME22721 SME13615 SME22722 SME12631 SME01097 SME18352`
 
-- [ ] **1a. Clear the current backlog of 11** — run the new push process
-      (`scripts/known_hosts_migrate.sh` on the prod server: `--dry-run`, review the
-      would-append report, then the real run), then verify:
-      `ssh-keygen -F <ip> -f /opt/resources/ssh/known_hosts` per system + zero
-      `%host key%` err_msg rows on the next `:00/:30` burst. Owner: **Matt** (needs
-      prod-side shell; the script and procedure are ready as of 2026-08-20).
+- [ ] **1a. Clear the current backlog of 11** — **import ran 2026-08-20 18:23**
+      (prod → staging: 395 hashed lines appended, 289 local intact, ownership/mode
+      preserved, no regression — still exactly 7 failing IPs overnight, nothing
+      new). **Finding: this was never a known_hosts gap prod could fill** — none of
+      the 7 IPs exist in prod's `~/.ssh/known_hosts` (its 395 entries are
+      ecdsa/ssh-rsa, zero ed25519, zero matches via `ssh-keygen -F`), and 9 of the
+      11 systems have NULL `ip_address` in `public.systems` (rsync targets come
+      from migrated Redis/config state). Remaining question is prod-side: does
+      prod acquire these systems at all, and from which account/known_hosts?
+      Checks for Matt on prod: `ssh-keygen -F 10.154.16.180 -f
+      /home/prod/.ssh/known_hosts` (expect miss); look for other accounts'
+      known_hosts (`sudo ls /root/.ssh /home/*/.ssh`); check prod's own success
+      for SME21284/SME01097. If another account holds the keys → rerun
+      `known_hosts_migrate.sh` with `SRC` pointed there. If prod doesn't reach
+      them → fold these 11 into **item 4a** (inventory drift) and close 1a.
+      Owner: Matt (prod shell required).
 - [x] **1b. Standing procedure** — done 2026-08-20, reshaped per owner direction to
       a **prod-side push** mirroring `redis_migrate.sh`: new
       `scripts/known_hosts_migrate.sh` (runs on the source server; validates,
