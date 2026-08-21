@@ -36,6 +36,9 @@ Affected systems (fail every cycle until keyed):
       `known_hosts_migrate.sh` with `SRC` pointed there. If prod doesn't reach
       them → fold these 11 into **item 4a** (inventory drift) and close 1a.
       Owner: Matt (prod shell required).
+      **Update 2026-08-21: folded into 4a** (worksheet clusters B+C — the import
+      revealed 4 of them are re-keyed hosts, the rest never-keyed collectors) and
+      **parked with it** by owner decision. Close both together when 4a resumes.
 - [x] **1b. Standing procedure** — done 2026-08-20, reshaped per owner direction to
       a **prod-side push** mirroring `redis_migrate.sh`: new
       `scripts/known_hosts_migrate.sh` (runs on the source server; validates,
@@ -137,13 +140,15 @@ This is **inventory-vs-reality drift, not a code or migration problem**: the
 inventory now faithfully mirrors prod, including prod's stale entries. It is
 doc 2.1 §5.5 (decision B0a) showing up in the error stream.
 
-- [ ] Reconcile: for each stable-failing system decide retired / temporarily dark /
-      wrong IP, and either flag it out of polling in `public.systems` or fix its
-      record. Snapshot first (pattern:
-      `/opt/resources/backups/systems-flags-snapshot-<date>.txt`). This is also the
-      natural moment to make the B0a call (named sync policy vs. manual-on-change
-      with an owner), since staging inventory is momentarily in perfect sync with
-      prod. Owner: Matt (+ whoever owns prod inventory).
+- [ ] **PARKED by owner 2026-08-21** — evidence is captured and waiting in
+      `INVENTORY_RECONCILIATION_2026-08-21.md` (27 stable-failing systems in 7
+      clusters with per-cluster recommendations, the four questions only Matt can
+      answer, and the open B0a policy options). 1a folds in here (its 7-IP
+      question = clusters B+C). Nothing is time-critical: the failures are
+      steady-state noise (~1,500 events/day), all honestly classified since 1c,
+      and the fleet's healthy majority is unaffected. When resumed: answer the
+      worksheet's four questions, snapshot, then act per cluster.
+      Owner: Matt (+ whoever owns prod inventory). No deadline.
 
 **4b. The observability history reset (expected, one-time).** `util.app_run_logs`
 now begins 2026-08-19 19:15. Anything that reads history restarted from zero:
