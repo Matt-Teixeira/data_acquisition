@@ -15,12 +15,12 @@ const logger = createLogger({
   format: combine(timestamp(), customFormat),
   transports: [
     new transports.File({
-      filename: `./logs/adp.${process.env.LOGGER}_${now}.log`,
+      filename: `./logs/adp.${process.env.USER_ID}_${now}.log`,
     }),
   ],
 });
 
-if (process.env.LOGGER === 'dev') {
+if (process.env.LOGGER_MODE === 'log_and_console') {
    logger.add(
       new transports.Console({
          format: combine(timestamp(), customFormat),

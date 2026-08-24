@@ -26,8 +26,9 @@ x-common-mounts: &common_mounts
     # 2) node_modules cache
     - ${NODE_MOD_CACHE_DEV}:/workspace/node_modules
 
-    # 3) Centralized run logs
-    - ${RUN_LOGS_DIR}
+    # 3) Run logs. Host destination is env-dependent; defaults to the DEV path
+    #    so a missing LOG_DIR fails safe (never writes into /opt/run-logs).
+    - ${LOG_DIR:-./utils/logger/logs}:/workspace/utils/logger/logs
 
     # 4) ACQ files: host path -> container /workspace/files
     - ${DATA_STORE_DEV}:/workspace/files
@@ -70,7 +71,7 @@ services:
     volumes:
       - ./:/workspace
       - ${NODE_MOD_CACHE_DEV}:/workspace/node_modules
-      - ${RUN_LOGS_DIR}
+      - ${LOG_DIR:-./utils/logger/logs}:/workspace/utils/logger/logs
       - ${DATA_STORE_DEV}:/workspace/files
       # Shared SSH bundle (read-only). Entrypoint is now baked into the image,
       # so we no longer mount the full /opt/resources tree.
