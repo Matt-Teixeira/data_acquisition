@@ -34,7 +34,9 @@ x-common-mounts: &common_mounts
 
 # ---------- Services ----------
 services:
-  # Lightweight container for running the app as-is
+  # DEPRECATED — use app_tools. Kept only for the cache-warm snippets in older
+  # docs (doc 2.1); build.sh replaces that role. Runs as root with no entrypoint
+  # repair, so avoid it: it drops root-owned files into the tree.
   app:
     # Base Node image (moves with LTS). For reproducibility, consider pinning:
     # image: node:22-bookworm (10/30/25)
@@ -51,11 +53,14 @@ services:
 
   # Tooling container: built from docker/Dockerfile (baked-in gosu entrypoint)
   app_tools:
-    image: data-acqu:${IMAGE_TAG}
+    # USER_ID drives the tag: data-acqu:<username> for dev builds, data-acqu:svc
+    # for the release copy (flipped by #RELEASE:USER_ID=svc at release time).
+    image: data-acqu:${USER_ID}
     build:
       context: .
       dockerfile: docker/Dockerfile
       args:
+        USER_ID: ${USER_ID}
         DOCKER_GID: ${DOCKER_GID}
         UID_0: ${UID_0}
         UID_1: ${UID_1}

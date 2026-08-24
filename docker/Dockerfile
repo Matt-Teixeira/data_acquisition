@@ -1,10 +1,15 @@
 FROM node:lts
  
 # Build-time arguments
+ARG USER_ID
 ARG DOCKER_GID
 ARG UID_0
 ARG UID_1
 ARG UID_2
+
+# Identity label: records who built this image (matches the image tag), not a
+# version. RELEASE_SHA in the deployed .env is the runtime provenance record.
+LABEL version="${USER_ID}"
  
 SHELL ["/bin/bash", "-c"]
  
