@@ -248,10 +248,14 @@ const onBoot = async () => {
   active_run_log = run_log;
 
   let note = {
-    LOGGER: process.env.LOGGER,
+    USER_ID: process.env.USER_ID,
+    LOGGER_MODE: process.env.LOGGER_MODE,
+    // STAMPED INTO THE DEPLOYED .env BY build-release.sh; ABSENT IN A DEV
+    // TREE. THIS FIELD IS WHAT TIES EVERY RUN TO THE COMMIT THAT PRODUCED IT.
+    RELEASE_SHA: process.env.RELEASE_SHA || "dev-tree",
     REDIS_IP: process.env.REDIS_HOST,
-    PG_USER: process.env.PG_USER,
-    PG_DB: process.env.PG_DB,
+    PG_USER: process.env.PGUSER,
+    PG_DB: process.env.PGDATABASE,
   };
 
   await addLogEvent(I, run_log, "onBoot", cal, note, null);

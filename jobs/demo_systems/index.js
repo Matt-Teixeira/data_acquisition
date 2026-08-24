@@ -139,10 +139,12 @@ const runJob = async (run_log, config, capture_datetime) => {
 
 const onBootDemoSystems = async (run_log, capture_datetime) => {
   let note = {
-    LOGGER: process.env.LOGGER,
+    USER_ID: process.env.USER_ID,
+    LOGGER_MODE: process.env.LOGGER_MODE,
+    RELEASE_SHA: process.env.RELEASE_SHA || "dev-tree",
     REDIS_IP: process.env.REDIS_HOST,
-    PG_USER: process.env.PG_USER,
-    PG_DB: process.env.PG_DB,
+    PG_USER: process.env.PGUSER,
+    PG_DB: process.env.PGDATABASE,
   };
 
   await addLogEvent(I, run_log, "onBootDemoSystems", cal, note, null);
