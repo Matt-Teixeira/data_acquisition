@@ -1,0 +1,85 @@
+# matt-teixeira USER crontab — post-cutover restore (2026-08-24).
+# = the suspended crontab (cron-bk/crontab.bak) with data_acquisition's 24 legacy
+# entries replaced by the hardened block below. Everything else (hhm_rpp_ge,
+# hhm_rpp_philips, incident-engine, mail trim, pg backups, prune, partition check)
+# is preserved VERBATIM in its original slot.
+#
+# Install (own crontab, so installing from a file is safe here):
+#   crontab /opt/apps/data_acquisition/cron-bk/crontab.restore-2026-08-24.cron
+# Verify:  crontab -l | grep -v '^ *#' | grep -c 'cd /opt/apps/data_acquisition'   -> expect 23
+#
+# NOTE: the fleet paradigm wants all app schedules in the shared svc crontab
+# (organized by cadence). data_acquisition (+ hhm_rpp_*, incident-engine) has
+# historically lived HERE instead; consolidating into svc's crontab is a separate
+# follow-up (BACKLOG 6f), not part of this cutover.
+
+# ---------------- DATA_ACQUISITION (hardened 2026-08-24; runs release copy as svc) ----------------
+# Same cadences/offsets as the legacy entries; adds flock -n, -T, absolute paths,
+# direct node argv (identical to the old npm-run mapping), bounded .out files,
+# 5s stagger across the 8 same-minute HHM entries.
+
+# HHM (GE / Philips / Siemens)
+00,30 * * * * sleep 0  && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ge_ct.lock       /usr/bin/docker compose run --rm -T app_tools node index.js hhm null GE CT       >/opt/run-logs/data_acquisition/cron.ge_ct.out 2>&1
+00,30 * * * * sleep 5  && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ge_cv.lock       /usr/bin/docker compose run --rm -T app_tools node index.js hhm null GE CV       >/opt/run-logs/data_acquisition/cron.ge_cv.out 2>&1
+00,30 * * * * sleep 10 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ge_mri.lock      /usr/bin/docker compose run --rm -T app_tools node index.js hhm null GE MRI      >/opt/run-logs/data_acquisition/cron.ge_mri.out 2>&1
+00,30 * * * * sleep 15 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.philips_ct.lock  /usr/bin/docker compose run --rm -T app_tools node index.js hhm null Philips CT  >/opt/run-logs/data_acquisition/cron.philips_ct.out 2>&1
+00,30 * * * * sleep 20 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.philips_cv.lock  /usr/bin/docker compose run --rm -T app_tools node index.js hhm null Philips CV  >/opt/run-logs/data_acquisition/cron.philips_cv.out 2>&1
+00,30 * * * * sleep 25 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.philips_mri.lock /usr/bin/docker compose run --rm -T app_tools node index.js hhm null Philips MRI >/opt/run-logs/data_acquisition/cron.philips_mri.out 2>&1
+00,30 * * * * sleep 30 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.siemens_ct.lock  /usr/bin/docker compose run --rm -T app_tools node index.js hhm null Siemens CT  >/opt/run-logs/data_acquisition/cron.siemens_ct.out 2>&1
+00,30 * * * * sleep 35 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.siemens_mri.lock /usr/bin/docker compose run --rm -T app_tools node index.js hhm null Siemens MRI >/opt/run-logs/data_acquisition/cron.siemens_mri.out 2>&1
+
+# MMB + althea_env
+16,46 * * * * sleep 30 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb1.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 1 >/opt/run-logs/data_acquisition/cron.mmb1.out 2>&1
+16,46 * * * * sleep 31 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb2.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 2 >/opt/run-logs/data_acquisition/cron.mmb2.out 2>&1
+16,46 * * * * sleep 32 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb3.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 3 >/opt/run-logs/data_acquisition/cron.mmb3.out 2>&1
+16,46 * * * * sleep 33 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb4.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 4 >/opt/run-logs/data_acquisition/cron.mmb4.out 2>&1
+16,46 * * * * sleep 34 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb5.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 5 >/opt/run-logs/data_acquisition/cron.mmb5.out 2>&1
+16,46 * * * * sleep 35 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb6.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 6 >/opt/run-logs/data_acquisition/cron.mmb6.out 2>&1
+16,46 * * * * sleep 36 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb7.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 7 >/opt/run-logs/data_acquisition/cron.mmb7.out 2>&1
+16,46 * * * * sleep 38 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.althea_env.lock /usr/bin/docker compose run --rm -T app_tools node index.js althea_env >/opt/run-logs/data_acquisition/cron.althea_env.out 2>&1
+# OFFSET — mmb group 0 keeps its own slot (carried over from the legacy schedule)
+19,49 * * * * sleep 30 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb0.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 0 >/opt/run-logs/data_acquisition/cron.mmb0.out 2>&1
+
+# Philips MRI MMB rsync
+58,28 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.philips_mri_mmb.lock /usr/bin/docker compose run --rm -T app_tools node index.js philips >/opt/run-logs/data_acquisition/cron.philips_mri_mmb.out 2>&1
+
+# VPN reset (three historical slots, ONE shared lock so resets never overlap) + offline alert
+10,40 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ip_reset.lock /usr/bin/docker compose run --rm -T app_tools node index.js ip_reset >/opt/run-logs/data_acquisition/cron.ip_reset.1040.out 2>&1
+17,47 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ip_reset.lock /usr/bin/docker compose run --rm -T app_tools node index.js ip_reset >/opt/run-logs/data_acquisition/cron.ip_reset.1747.out 2>&1
+20,50 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ip_reset.lock /usr/bin/docker compose run --rm -T app_tools node index.js ip_reset >/opt/run-logs/data_acquisition/cron.ip_reset.2050.out 2>&1
+15,45 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.offline_alert.lock /usr/bin/docker compose run --rm -T app_tools node index.js offline_alert >/opt/run-logs/data_acquisition/cron.offline_alert.1545.out 2>&1
+22,52 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.offline_alert.lock /usr/bin/docker compose run --rm -T app_tools node index.js offline_alert >/opt/run-logs/data_acquisition/cron.offline_alert.2252.out 2>&1
+
+# ---------------- GE RPP (preserved verbatim) ----------------
+15,45 * * * * cd /opt/apps/hhm_rpp_ge && docker compose run --rm app_tools bash -lc "npm run ge_ct"
+15,45 * * * * cd /opt/apps/hhm_rpp_ge && docker compose run --rm app_tools bash -lc "npm run ge_cv"
+15,45 * * * * cd /opt/apps/hhm_rpp_ge && docker compose run --rm app_tools bash -lc "npm run ge_mri"
+
+# ---------------- PHILIPS RPP (preserved verbatim) ----------------
+15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_ct"
+15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_cv"
+15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_monitor_1"
+15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_monitor_2"
+15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_monitor_3"
+15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_monitor_4"
+15,45 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_monitor_5"
+15,45 * * * * sleep 5; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_rmmu_1"
+15,45 * * * * sleep 10; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_rmmu_2"
+15,45 * * * * sleep 15; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_rmmu_3"
+15,45 * * * * sleep 20; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_rmmu_4"
+15,45 * * * * sleep 25; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_rmmu_5"
+15,45 * * * * sleep 30; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_log_1"
+15,45 * * * * sleep 35; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_log_2"
+15,45 * * * * sleep 40; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_log_3"
+15,45 * * * * sleep 45; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_log_4"
+15,45 * * * * sleep 50; cd /opt/apps/hhm_rpp_philips && docker compose run --rm app_tools bash -lc "npm run philips_mri_log_5"
+05,35 * * * * cd /opt/apps/hhm_rpp_philips && docker compose run --rm -T app_tools bash -lc "npm run delete_old_db_files"
+
+# ---------------- INCIDENT ENGINE (preserved verbatim) ----------------
+25,55 * * * * cd /opt/apps/incident-engine-deploy && docker compose run --rm app node index.js run
+
+# ---------------- HOST MAINTENANCE (preserved verbatim) ----------------
+0 3 1 * * tail -c 100000000 /var/mail/matt-teixeira > /tmp/mailtrim && cat /tmp/mailtrim > /var/mail/matt-teixeira && rm -f /tmp/mailtrim
+15 2 * * * /opt/apps/pg_manage_v2/scripts/backup.sh >/dev/null 2>&1
+30 3 * * * /opt/apps/data_acquisition/scripts/prune-run-logs.sh >/dev/null 2>&1
+0 9 3,25 * * /opt/apps/pg_manage_v2/scripts/check-partition-horizon.sh
