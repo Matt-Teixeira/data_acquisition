@@ -214,6 +214,45 @@ alone won't unfreeze it.
       cast-validated, one transaction), zero residual. Point-in-time only, per
       5b's drop — new poisoned rows accumulate again and that's accepted.
 
+## 6. Dev/release paradigm pilot: data_acquisition (started 2026-08-24)
+
+Aligning this app to the fleet paradigm (`docs/migration_CLAUDE.md`; reference =
+mmb-rpp) as the pilot — other apps follow one at a time if it verifies. Owner: Matt.
+Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
+
+- [x] **6a. Phase A+B done 2026-08-24** — paradigm docs committed, `STAGING_docker`
+      pushed (was 19 ahead), live tree at `/opt/apps` FROZEN (old code, cron
+      untouched); dev clone at `~/apps/data_acquisition` carries 10 alignment
+      commits: entrypoint log-dir repair, `data-acqu:${USER_ID}` tags (IMAGE_TAG
+      retired), LOG_DIR mount + fail-safe logger (RUN_ENV/RUN_LOGS_DIR/LOGGER
+      retired for USER_ID+LOGGER_MODE — incl. the winston `logger.js`), SIGTERM/
+      SIGINT graceful shutdown (E_SIGNAL, once-guarded), build.sh (in-tree
+      node_modules; shared cache mount retired), build-release.sh (guard above
+      wipe, #RELEASE transform, RELEASE_SHA stamp, extra tar excludes for ./logs
+      93k files etc.), preflight-check.sh (authed Redis PING + sibling-container
+      pg check), CLAUDE.md, proposed hardened crontab in `cron-bk/*.cron`.
+- [x] **6b. Phase C mostly done 2026-08-24** — preflight 42 OK / 0 warn / 0 err;
+      image `data-acqu:matt-teixeira` built; dev smoke (`offline_alert`) exit 0
+      with `RELEASE_SHA=dev-tree`, log in-tree, `/opt/run-logs` untouched; guard
+      negative-test refused a dirty tree. package-lock reformatted by npm 10
+      (content-identical, verified by normalized md5) and committed.
+- [ ] **6c. Remaining Phase C** — one smoke run of a winston-exercising job
+      (hhm/mmb; Matt picks which system tolerates an off-schedule pull) + SIGTERM
+      kill test on it.
+- [ ] **6d. Phase D cutover** — Matt's sudo steps per the runbook: crontab
+      snapshot, comment out entries, `.env` backup, decide fate of 268 MB
+      `logs/` history, `/opt/run-logs` chown, run `build-release.sh`, paste
+      hardened cron block.
+- [ ] **6e. Phase E verify** — 2 cron cycles all job families on the released
+      SHA, ops-dashboard/incident-engine unaffected; then remove CLAUDE.md
+      mid-migration banner.
+- [ ] **6f. Follow-ups** — dev VM `.env` needs `USER_ID` (+ retired keys removed)
+      on next pull; prune-run-logs.sh covers neither `~/apps` dev logs nor
+      `logs/` adp files (retention TBD); `app` compose service is deprecated,
+      deletion descoped; dead `RUN_ENV` switches in `read/` cleanup candidate;
+      register the dev clone's `.env` with the rotation script alongside the
+      release copy's.
+
 ---
 
 ## Done
