@@ -75,7 +75,9 @@ services:
       # so we no longer mount the full /opt/resources tree.
       - /opt/resources/ssh:/opt/resources/ssh:ro
     environment:
-      RUN_USER: ${RUN_USER}
+      # Intentionally unset in .env: empty -> entrypoint.sh defaults to svc.
+      # Dev runs pass it on the command line. ':-' silences the compose WARN.
+      RUN_USER: ${RUN_USER:-}
       NPM_CONFIG_CACHE: /tmp/.npm
       SSH_KEY: ${SSH_KEY}
     networks:

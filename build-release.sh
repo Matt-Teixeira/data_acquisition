@@ -149,11 +149,16 @@ sudo chown -R "${RELEASE_USER}:docker" "$DEST"
 # preflight/debugging. No wider access.
 sudo chmod 640 "$DEST/.env" || true
 
-# svc has no host home (/nonexistent). The docker CLI tolerates that, so no
-# HOME is set here on purpose — the reference's HOME=/tmp is a documented wart
-# (it creates /tmp/.docker svc:700, breaking docker for other users). If the
-# build fails on HOME, rerun with: env HOME="$DEST/.home" (a private dir).
-sudo -u "$RELEASE_USER" bash -c "cd '$DEST' && ./build.sh"
+# svc has no host home (/nonexistent). The docker CLI tolerates that for
+# simple commands, but BuildKit mkdirs $HOME/.docker and dies — verified on
+# the first release (2026-08-24: "mkdir /nonexistent: permission denied").
+# The reference's HOME=/tmp is a documented wart (/tmp/.docker svc:700 breaks
+# docker for other users), so use a private persistent dir instead.
+SVC_HOME="/opt/apps/.svc-home"
+sudo mkdir -p "$SVC_HOME"
+sudo chown "$RELEASE_USER":docker "$SVC_HOME"
+sudo chmod 700 "$SVC_HOME"
+sudo -u "$RELEASE_USER" env HOME="$SVC_HOME" bash -c "cd '$DEST' && ./build.sh"
 
 sudo chown -R "${RELEASE_USER}:docker" "$DEST"
 
