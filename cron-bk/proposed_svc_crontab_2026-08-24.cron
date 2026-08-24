@@ -1,0 +1,47 @@
+# data_acquisition — PROPOSED hardened svc-crontab block (migration cutover 2026-08).
+# Replaces the app's old entries (see crontab.bak). Cadences/offsets are UNCHANGED
+# (ops-dashboard schedule metadata is calibrated to them); the 8 HHM entries gain a
+# 5s stagger within their minute. Hardening per docs/migration_CLAUDE.md Part 1:
+#   - run from the RELEASE copy, direct `node index.js <args>` (argv unchanged vs
+#     the old npm-run wrappers, so ops-dashboard job identity is unaffected)
+#   - absolute /usr/bin/docker + /usr/bin/flock; `-T` (required under cron)
+#   - flock -n skips a tick rather than queueing (mmb groups advance Redis cursors)
+#   - bounded single-`>` output files: a failure BEFORE node starts is otherwise
+#     invisible (both log sinks only exist once node runs)
+#   - no RUN_USER (entrypoint defaults to svc), no HOME
+#
+# Install via `sudo crontab -u svc -e` — NEVER `crontab -u svc <file>` (replaces the
+# whole crontab and wipes the other apps' entries).
+
+# ---------------- DATA_ACQUISITION : HHM (GE / Philips / Siemens) ----------------
+00,30 * * * * sleep 0  && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ge_ct.lock       /usr/bin/docker compose run --rm -T app_tools node index.js hhm null GE CT       >/opt/run-logs/data_acquisition/cron.ge_ct.out 2>&1
+00,30 * * * * sleep 5  && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ge_cv.lock       /usr/bin/docker compose run --rm -T app_tools node index.js hhm null GE CV       >/opt/run-logs/data_acquisition/cron.ge_cv.out 2>&1
+00,30 * * * * sleep 10 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ge_mri.lock      /usr/bin/docker compose run --rm -T app_tools node index.js hhm null GE MRI      >/opt/run-logs/data_acquisition/cron.ge_mri.out 2>&1
+00,30 * * * * sleep 15 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.philips_ct.lock  /usr/bin/docker compose run --rm -T app_tools node index.js hhm null Philips CT  >/opt/run-logs/data_acquisition/cron.philips_ct.out 2>&1
+00,30 * * * * sleep 20 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.philips_cv.lock  /usr/bin/docker compose run --rm -T app_tools node index.js hhm null Philips CV  >/opt/run-logs/data_acquisition/cron.philips_cv.out 2>&1
+00,30 * * * * sleep 25 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.philips_mri.lock /usr/bin/docker compose run --rm -T app_tools node index.js hhm null Philips MRI >/opt/run-logs/data_acquisition/cron.philips_mri.out 2>&1
+00,30 * * * * sleep 30 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.siemens_ct.lock  /usr/bin/docker compose run --rm -T app_tools node index.js hhm null Siemens CT  >/opt/run-logs/data_acquisition/cron.siemens_ct.out 2>&1
+00,30 * * * * sleep 35 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.siemens_mri.lock /usr/bin/docker compose run --rm -T app_tools node index.js hhm null Siemens MRI >/opt/run-logs/data_acquisition/cron.siemens_mri.out 2>&1
+
+# ---------------- DATA_ACQUISITION : MMB + althea_env ----------------
+16,46 * * * * sleep 30 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb1.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 1 >/opt/run-logs/data_acquisition/cron.mmb1.out 2>&1
+16,46 * * * * sleep 31 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb2.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 2 >/opt/run-logs/data_acquisition/cron.mmb2.out 2>&1
+16,46 * * * * sleep 32 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb3.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 3 >/opt/run-logs/data_acquisition/cron.mmb3.out 2>&1
+16,46 * * * * sleep 33 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb4.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 4 >/opt/run-logs/data_acquisition/cron.mmb4.out 2>&1
+16,46 * * * * sleep 34 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb5.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 5 >/opt/run-logs/data_acquisition/cron.mmb5.out 2>&1
+16,46 * * * * sleep 35 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb6.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 6 >/opt/run-logs/data_acquisition/cron.mmb6.out 2>&1
+16,46 * * * * sleep 36 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb7.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 7 >/opt/run-logs/data_acquisition/cron.mmb7.out 2>&1
+16,46 * * * * sleep 38 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.althea_env.lock /usr/bin/docker compose run --rm -T app_tools node index.js althea_env >/opt/run-logs/data_acquisition/cron.althea_env.out 2>&1
+# OFFSET — mmb group 0 keeps its own slot (carried over from the legacy schedule)
+19,49 * * * * sleep 30 && cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.mmb0.lock /usr/bin/docker compose run --rm -T app_tools node index.js mmb 0 >/opt/run-logs/data_acquisition/cron.mmb0.out 2>&1
+
+# ---------------- DATA_ACQUISITION : Philips MRI MMB rsync ----------------
+58,28 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.philips_mri_mmb.lock /usr/bin/docker compose run --rm -T app_tools node index.js philips >/opt/run-logs/data_acquisition/cron.philips_mri_mmb.out 2>&1
+
+# ---------------- DATA_ACQUISITION : VPN reset + offline alert ----------------
+# ip_reset keeps its three historical slots; ONE shared lock so resets never overlap.
+10,40 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ip_reset.lock /usr/bin/docker compose run --rm -T app_tools node index.js ip_reset >/opt/run-logs/data_acquisition/cron.ip_reset.1040.out 2>&1
+17,47 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ip_reset.lock /usr/bin/docker compose run --rm -T app_tools node index.js ip_reset >/opt/run-logs/data_acquisition/cron.ip_reset.1747.out 2>&1
+20,50 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ip_reset.lock /usr/bin/docker compose run --rm -T app_tools node index.js ip_reset >/opt/run-logs/data_acquisition/cron.ip_reset.2050.out 2>&1
+15,45 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.offline_alert.lock /usr/bin/docker compose run --rm -T app_tools node index.js offline_alert >/opt/run-logs/data_acquisition/cron.offline_alert.1545.out 2>&1
+22,52 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.offline_alert.lock /usr/bin/docker compose run --rm -T app_tools node index.js offline_alert >/opt/run-logs/data_acquisition/cron.offline_alert.2252.out 2>&1
