@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# Preflight for data_acquisition — validates the environment the NEXT run will
+# actually use. Fleet paradigm (docs/migration_CLAUDE.md); adapted from the
+# mmb-rpp reference. A clean run reports ZERO warnings: treat a persistent
+# warning as a bug in the check itself, or it trains people to ignore output.
+#
+# Exit codes: 0 = pass (or warnings only), 1 = critical errors found.
+set -u
+cd "$(dirname "$0")"
+
+ERRORS=0; WARNINGS=0; OKS=0
+ok()    { echo "  OK    $*"; OKS=$((OKS+1)); }
+warn()  { echo "  WARN  $*"; WARNINGS=$((WARNINGS+1)); }
+error() { echo "  ERROR $*"; ERRORS=$((ERRORS+1)); }
+info()  { echo "        $*"; }
+section(){ echo; echo "== $* =="; }
+
+# Read KEY= from .env, stripping dotenv-style inline comments and trailing
+# whitespace (a trailing "  # note" must never become part of a password).
+env_val() {
+    grep "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- \
+        | sed -e 's/[[:space:]]\+#.*$//' -e 's/[[:space:]]*$//'
+}
+
+# ---------------------------------------------------------------- 1. host dirs
+section "Host directories"
+LOG_DIR="$(env_val LOG_DIR)"; LOG_DIR="${LOG_DIR:-./utils/logger/logs}"
+if [ -d "$LOG_DIR" ] && [ -w "$LOG_DIR" ]; then
+    ok "LOG_DIR $LOG_DIR writable ($(stat -c '%U:%G %a' "$LOG_DIR"))"
+elif [ -d "$LOG_DIR" ]; then
+    error "LOG_DIR $LOG_DIR exists but is not writable by $(id -un) ($(stat -c '%U:%G %a' "$LOG_DIR"))"
+else
+    # entrypoint.sh repairs a MISSING dev dir on first containerized run, so
+    # missing-in-dev is only a warning; a missing release dir is a real error.
+    case "$LOG_DIR" in
+        /opt/run-logs/*) error "LOG_DIR $LOG_DIR does not exist — create it svc:docker 2775 before the first release run" ;;
+        *) warn "LOG_DIR $LOG_DIR does not exist yet (entrypoint.sh creates it on first docker run)" ;;
+    esac
+fi
+
+if [ -d ./logs ] && [ -w ./logs ]; then
+    ok "./logs (winston side-logger) writable"
+elif [ -d ./logs ]; then
+    error "./logs exists but is not writable — logger.js dies on first log()"
+else
+    warn "./logs missing (entrypoint.sh creates it on first docker run; build-release.sh creates it in a release)"
+fi
+
+DATA_STORE_DEV="$(env_val DATA_STORE_DEV)"
+if [ -n "$DATA_STORE_DEV" ] && [ -d "$DATA_STORE_DEV" ]; then
+    ok "DATA_STORE_DEV $DATA_STORE_DEV exists ($(find "$DATA_STORE_DEV" -maxdepth 1 -name '*.log' 2>/dev/null | wc -l) *.log files at top level)"
+else
+    error "DATA_STORE_DEV missing or not a directory: '${DATA_STORE_DEV:-<unset>}'"
+fi
+
+SSH_KEY="$(env_val SSH_KEY)"
+if [ -z "$SSH_KEY" ]; then
+    error "SSH_KEY empty in .env — rsync/mmb jobs cannot authenticate"
+elif [ -e "/opt/resources/ssh/$SSH_KEY" ]; then
+    ok "SSH key present: /opt/resources/ssh/$SSH_KEY"
+else
+    error "SSH key not found at /opt/resources/ssh/$SSH_KEY"
+fi
+
+PG_SSL_PATH="$(env_val PG_SSL_PATH)"
+if [ -n "$PG_SSL_PATH" ] && [ -r "$PG_SSL_PATH" ]; then
+    ok "PG_SSL_PATH readable: $PG_SSL_PATH"
+else
+    error "PG_SSL_PATH not readable: '${PG_SSL_PATH:-<unset>}'"
+fi
+
+# ------------------------------------------------------------------- 2. docker
+section "Docker"
+if docker ps >/dev/null 2>&1; then ok "docker daemon reachable"; else error "docker daemon not reachable as $(id -un)"; fi
+if id -nG | grep -qw docker; then ok "$(id -un) is in the docker group"; else error "$(id -un) not in docker group"; fi
+if docker compose version >/dev/null 2>&1; then ok "docker compose available"; else error "docker compose not available"; fi
+
+# ----------------------------------------------------------------- 3. networks
+section "Networks"
+for net in pg_net redis-admin_redis_net; do
+    if docker network inspect "$net" >/dev/null 2>&1; then ok "network $net exists"; else error "network $net missing"; fi
+done
+
+# --------------------------------------------------------------------- 4. .env
+section ".env"
+if [ ! -f .env ]; then
+    error ".env missing — copy .env.example and fill it in"
+else
+    REQUIRED="APP_NAME USER_ID LOGGER_MODE LOG_DIR PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PG_SSLMODE PG_SSL_PATH REDIS_HOST REDIS_PORT REDIS_PW APP_SECRET SSH_KEY DATA_STORE_DEV"
+    for key in $REQUIRED; do
+        v="$(env_val "$key")"
+        if [ -z "$v" ]; then
+            error ".env: $key is empty or missing"
+        else
+            case "$key" in
+                *PW*|*PASSWORD*|*SECRET*) ok ".env: $key set (masked)" ;;
+                *) ok ".env: $key=$v" ;;
+            esac
+        fi
+    done
+    LOGGER_MODE="$(env_val LOGGER_MODE)"
+    case "$LOGGER_MODE" in
+        log|log_and_console) : ;;
+        *) error ".env: LOGGER_MODE must be 'log' or 'log_and_console' (got '$LOGGER_MODE')" ;;
+    esac
+    # VNS3 is only needed by the ip_reset/tunnel jobs — presence-only check.
+    for key in VNS3_IP VNS3_PW; do
+        [ -n "$(env_val "$key")" ] || warn ".env: $key empty — ip_reset/tunnel jobs will fail (ignore if not scheduled here)"
+    done
+    for retired in IMAGE_TAG RUN_ENV RUN_LOGS_DIR NODE_MOD_CACHE_DEV LOGGER RUN_USER; do
+        grep -q "^$retired=" .env && warn ".env: retired key $retired still present — remove it (see .env.example)"
+    done
+fi
+
+# ---------------------------------------------------------------- 5. app files
+section "Application files"
+for f in index.js package.json logger.js docker/Dockerfile docker/entrypoint.sh docker-compose.yaml build.sh build-release.sh; do
+    if [ -f "$f" ]; then ok "$f present"; else error "$f missing"; fi
+done
+for d in utils/db utils/logger utils/sh; do
+    if [ -d "$d" ]; then ok "$d/ present"; else error "$d/ missing"; fi
+done
+if [ -e utils/.git ]; then error "utils/.git exists — utils must be app-owned, not a nested repo"; else ok "utils/ is app-owned (no nested .git)"; fi
+
+# --------------------------------------------------------------------- 6. deps
+section "Dependencies"
+if [ -d node_modules ] && [ -n "$(ls -A node_modules 2>/dev/null)" ]; then
+    ok "root node_modules present ($(ls node_modules | wc -l) entries)"
+else
+    error "root node_modules missing or empty — run: bash build.sh"
+fi
+[ -d utils/node_modules ] && warn "utils/node_modules exists — it shadows the root install; remove it"
+
+# ------------------------------------------------- 7. external services (AUTH)
+section "External services (authenticated checks)"
+REDIS_HOST="$(env_val REDIS_HOST)"; REDIS_PW="$(env_val REDIS_PW)"
+if [ -z "$REDIS_HOST" ]; then
+    error "REDIS_HOST empty — cannot check Redis"
+elif ! docker ps --format '{{.Names}}' | grep -qx "$REDIS_HOST"; then
+    error "Redis container '$REDIS_HOST' is not running"
+else
+    # Container presence proves nothing about auth. PING with the .env
+    # credential; env var so the password never appears in process args here.
+    PING_OUT=$(docker exec -e RPW="$REDIS_PW" "$REDIS_HOST" \
+        sh -c 'redis-cli ${RPW:+-a "$RPW"} --no-auth-warning PING' 2>&1)
+    if [ "$PING_OUT" = "PONG" ]; then
+        ok "Redis auth OK (PING -> PONG)"
+    elif echo "$PING_OUT" | grep -q "NOAUTH\|WRONGPASS\|invalid password"; then
+        error "Redis rejected REDIS_PW from .env: $PING_OUT"
+        info "Fix: sudo cat /opt/resources/secrets/redis_auth.conf and update REDIS_PW"
+    else
+        error "Redis PING failed: $PING_OUT"
+    fi
+fi
+
+# The Postgres auth test MUST run from a sibling container on pg_net, never
+# via `docker exec <pg_container> psql`: pg_hba trusts local and loopback, so
+# an exec'd psql succeeds with a deliberately WRONG password. A rotated PG_PW
+# once hid for three weeks behind exactly that. This mirrors how the app
+# connects (utils/db/pg-pool.js): PG_SSLMODE from .env, CA from PG_SSL_PATH.
+PGHOST_V="$(env_val PGHOST)"; PGPORT_V="$(env_val PGPORT)"; PGUSER_V="$(env_val PGUSER)"
+PGPASSWORD_V="$(env_val PGPASSWORD)"; PGDATABASE_V="$(env_val PGDATABASE)"
+PG_SSLMODE_V="$(env_val PG_SSLMODE)"; PG_SSLMODE_V="${PG_SSLMODE_V:-require}"
+if [ -z "$PGPASSWORD_V" ]; then
+    error "PGPASSWORD empty in .env — cannot verify PostgreSQL authentication"
+elif [ ! -r "$PG_SSL_PATH" ]; then
+    error "PG_SSL_PATH not readable — skipping PostgreSQL check"
+elif ! docker image inspect postgres:16 >/dev/null 2>&1; then
+    # An unverified check must never look like a passing one.
+    warn "postgres:16 image absent — PostgreSQL auth NOT verified"
+    info "Fix: docker pull postgres:16   (needed only for this check)"
+else
+    PG_OUT=$(docker run --rm --network pg_net \
+        -e PGPASSWORD="$PGPASSWORD_V" -e PGSSLMODE="$PG_SSLMODE_V" -e PGSSLROOTCERT=/ssl.crt \
+        -e PGCONNECT_TIMEOUT=10 \
+        -v "$PG_SSL_PATH":/ssl.crt:ro postgres:16 \
+        psql -h "$PGHOST_V" -p "$PGPORT_V" -U "$PGUSER_V" -d "$PGDATABASE_V" \
+             -tAc "SELECT 'ok'" 2>&1)
+    if [ "$(echo "$PG_OUT" | tail -1 | tr -d '[:space:]')" = "ok" ]; then
+        ok "PostgreSQL auth OK (sibling-container SSL connection as $PGUSER_V)"
+    elif echo "$PG_OUT" | grep -qi "password authentication failed\|no password supplied"; then
+        error "PostgreSQL rejected PGPASSWORD from .env — likely a rotated credential"
+        info "Fix: check /opt/resources/secrets/ with its owner; update BOTH copies' .env"
+    elif echo "$PG_OUT" | grep -qi "certificate\|SSL"; then
+        error "PostgreSQL SSL failure: $(echo "$PG_OUT" | head -2)"
+    else
+        error "PostgreSQL check failed: $(echo "$PG_OUT" | head -2)"
+    fi
+fi
+
+# ------------------------------------------------------------------ 8. summary
+section "Summary"
+echo "  $OKS ok, $WARNINGS warnings, $ERRORS errors"
+if [ "$ERRORS" -gt 0 ]; then
+    echo "  RESULT: FAIL"
+    exit 1
+fi
+[ "$WARNINGS" -gt 0 ] && echo "  RESULT: PASS (with warnings — a clean run should report zero)"
+[ "$WARNINGS" -eq 0 ] && echo "  RESULT: PASS"
+exit 0
