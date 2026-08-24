@@ -1,0 +1,126 @@
+# =============================================================================
+# svc CRONTAB — all scheduled app runs on this host
+#
+# Edit with:  sudo crontab -u svc -e     (never `crontab -u svc <file>` — that
+#                                         REPLACES the file and wipes other apps)
+# List with:  sudo crontab -u svc -l
+#
+# ORGANISATION
+#   Two sections by CADENCE, not by app:
+#     1. DAILY OR MORE FREQUENT  — the steady drumbeat of the host
+#     2. LESS THAN DAILY         — weekly / monthly / occasional maintenance
+#   Within each section, entries run in CHRONOLOGICAL order — sub-daily jobs by
+#   their minute within the hour, infrequent jobs by day and time. Reading top to
+#   bottom tells you what happens next. An app with jobs at two cadences appears in
+#   BOTH sections. Some jobs are prerequisites of others: keep ordering honest.
+#
+#   Entries carry ONLY their app header, in the form:
+#       # APP-NAME # — WHAT IT DOES, WHEN IT RUNS
+#   Anything that needs explaining is either a shared convention (LEGEND, below) or
+#   an entry-specific fact (NOTES, bottom). If you add an entry that needs a caveat,
+#   add it to NOTES — not above the line.
+#
+# LEGEND — syntax you will see in the entries below
+#   cd /opt/apps/<app>       run from the RELEASE copy, never a dev tree. RELEASE_SHA
+#                            'dev-tree' in util.app_run_logs means this was got wrong
+#   /usr/bin/docker          ABSOLUTE paths, always. There is no PATH= or SHELL= line
+#   /usr/bin/flock           in this crontab, so cron's built-in default applies
+#                            (typically /usr/bin:/bin). Bare names would happen to
+#                            work — absolute paths mean no entry depends on that, and
+#                            no app can break the others by adding a PATH= line later
+#   sleep N &&               sub-minute offset; cron granularity is only 1 minute
+#   flock -n /tmp/<x>.lock   SKIP this tick if the previous one still holds the lock
+#                            (-n = non-blocking; it does not queue). Used ONLY where
+#                            overlap can corrupt state — an app that advances a cursor
+#                            AFTER doing its work — or where a hang could pile up
+#   compose run --rm -T      one-shot container, removed on exit, no TTY
+#   >/opt/run-logs/<app>/    SINGLE > , never /dev/null, never >>. An app's real log
+#                            sinks only exist once node starts, so a failure before
+#                            that (bad image, missing network, dead daemon, wrong
+#                            path) leaves no trace anywhere else. Single > bounds the
+#                            file to the last invocation
+#   2>&1                     stderr follows stdout into the same .out file
+#   #<schedule>              a commented-out entry is DORMANT, not deleted — see NOTES
+#
+#   Not used here: RUN_USER (each entrypoint.sh defaults to svc), HOME= (svc's home
+#   is /nonexistent and that is fine).
+# =============================================================================
+
+
+# #############################################################################
+# 1. DAILY OR MORE FREQUENT
+# #############################################################################
+
+# MMB-RPP # — RUN GROUPS 1-7, EVERY 30 MIN AT :17 AND :47
+17,47 * * * * sleep 0  && cd /opt/apps/mmb-rpp && /usr/bin/flock -n /tmp/mmb-rpp.1.lock /usr/bin/docker compose run --rm -T mmb-rpp node index.js 1 >/opt/run-logs/mmb-rpp/cron.1.out 2>&1
+17,47 * * * * sleep 10 && cd /opt/apps/mmb-rpp && /usr/bin/flock -n /tmp/mmb-rpp.2.lock /usr/bin/docker compose run --rm -T mmb-rpp node index.js 2 >/opt/run-logs/mmb-rpp/cron.2.out 2>&1
+17,47 * * * * sleep 20 && cd /opt/apps/mmb-rpp && /usr/bin/flock -n /tmp/mmb-rpp.3.lock /usr/bin/docker compose run --rm -T mmb-rpp node index.js 3 >/opt/run-logs/mmb-rpp/cron.3.out 2>&1
+17,47 * * * * sleep 30 && cd /opt/apps/mmb-rpp && /usr/bin/flock -n /tmp/mmb-rpp.4.lock /usr/bin/docker compose run --rm -T mmb-rpp node index.js 4 >/opt/run-logs/mmb-rpp/cron.4.out 2>&1
+17,47 * * * * sleep 40 && cd /opt/apps/mmb-rpp && /usr/bin/flock -n /tmp/mmb-rpp.5.lock /usr/bin/docker compose run --rm -T mmb-rpp node index.js 5 >/opt/run-logs/mmb-rpp/cron.5.out 2>&1
+17,47 * * * * sleep 50 && cd /opt/apps/mmb-rpp && /usr/bin/flock -n /tmp/mmb-rpp.6.lock /usr/bin/docker compose run --rm -T mmb-rpp node index.js 6 >/opt/run-logs/mmb-rpp/cron.6.out 2>&1
+17,47 * * * * sleep 60 && cd /opt/apps/mmb-rpp && /usr/bin/flock -n /tmp/mmb-rpp.7.lock /usr/bin/docker compose run --rm -T mmb-rpp node index.js 7 >/opt/run-logs/mmb-rpp/cron.7.out 2>&1
+
+# MMB-RPP # — RUN GROUP 0, EVERY 30 MIN AT :20 AND :50
+20,50 * * * * sleep 30 && cd /opt/apps/mmb-rpp && /usr/bin/flock -n /tmp/mmb-rpp.0.lock /usr/bin/docker compose run --rm -T mmb-rpp node index.js 0 >/opt/run-logs/mmb-rpp/cron.0.out 2>&1
+
+# ALERT-PROCESSOR # — EVERY 30 MIN AT :24 AND :54
+24,54 * * * * cd /opt/apps/alert-processor && /usr/bin/docker compose run --rm -T alert-processor node index.js >/opt/run-logs/alert-processor/cron.out 2>&1
+
+
+# #############################################################################
+# 2. LESS THAN DAILY
+# #############################################################################
+
+# ODD-JOBS # — PARTITION MAINTENANCE, MONTHLY ON THE 1ST AT 14:00
+0 14 1 * * cd /opt/apps/odd-jobs && /usr/bin/docker compose run --rm -T pg-part-arch >/opt/run-logs/odd-jobs/cron.pg-part-arch.out 2>&1
+
+
+# =============================================================================
+# NOTES — entry-specific facts. Keyed to the app headers above.
+#
+# MMB-RPP (groups 1-7, :17/:47)
+#   Source captures land at :15 and :45; :17 picks them up ~2 min later while each
+#   delta stays roughly 7-15 KB, well under the 400_000-byte guard in runJob READ.
+#   The sleep prefixes stagger group starts across :17:00 to :18:00.
+#   flock: Redis filesize advances only AFTER a successful insert, so two overlapping
+#   runs of the SAME group would both read the same delta and double-insert. Locks
+#   are per group — different groups may overlap freely, and since a group takes ~13s
+#   expect 2-3 concurrent.
+#   The .out files exist to catch pre-node failures only. Switch to /dev/null once
+#   proven — but see the ODD-JOBS note before you do that anywhere else.
+#
+# MMB-RPP (group 0, :20/:50)
+#   Own minute slot, ~3 min after the rest, carried over from the legacy prod
+#   schedule. Keeps the largest / historically slowest group from contending with
+#   groups 1-7.
+#
+# ALERT-PROCESSOR
+#   :24 sits clear of both mmb-rpp windows (groups 1-7 end ~:18:13, group 0 ~:20:43),
+#   so no docker contention.
+#   No flock: short run relative to a 30-min cadence, and it advances no cursor. If
+#   that stops being true, add /usr/bin/flock -n /tmp/alert-processor.lock.
+#   /opt/run-logs/alert-processor/ must exist — cron will not create it, and if the
+#   redirect fails the shell exits before docker runs, leaving no .out file at all.
+#
+# ODD-JOBS (monthly)
+#   Creates NEXT month's partitions for all 24 partitioned tables, so a failed run
+#   leaves a full month to notice and fix before any insert is affected. That margin
+#   only helps if the failure is VISIBLE — the 2026-08-01 run created nothing and went
+#   unnoticed for three weeks behind /dev/null. This is why the single-> convention
+#   exists.
+#   No flock needed: the job self-gates. If next month is already complete AND no
+#   archive cohort is due, it halts with a SEQUENCE HALTED event rather than re-issuing
+#   DDL and reporting success it did not earn. Running it by hand off-schedule is
+#   therefore harmless and obvious in the run log.
+#   Every partitioned table on this host depends on this job, util.app_run_logs
+#   included. A "no partition of relation ... found for row" error in ANY app means
+#   this job failed or has not run.
+#
+# ODD-JOBS (test harness)
+#   Uncomment for a cycle or two, then re-comment. By cadence it belongs in section 1
+#   while active; it is parked in section 2 to stay beside the entry it exercises.
+#   flock only because an every-minute cadence can pile up if a run hangs.
+#   Writes to cron.pg-part-arch.TEST.out, NOT the monthly job's .out — with a single >
+#   sharing the path would erase the last monthly run's evidence, which is exactly what
+#   the 2026-08-01 incident says you want kept.
+# =============================================================================
