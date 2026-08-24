@@ -236,9 +236,16 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       with `RELEASE_SHA=dev-tree`, log in-tree, `/opt/run-logs` untouched; guard
       negative-test refused a dirty tree. package-lock reformatted by npm 10
       (content-identical, verified by normalized md5) and committed.
-- [ ] **6c. Remaining Phase C** — one smoke run of a winston-exercising job
-      (hhm/mmb; Matt picks which system tolerates an off-schedule pull) + SIGTERM
-      kill test on it.
+- [x] **6c. done 2026-08-24** — `mmb 7` smoke (smallest group, 21 configs): outcome
+      identical to production's own runs (same 4 stable-failing systems
+      SME16377/16380/18352/21824, warn/error count in the normal band), winston adp
+      log written with the USER_ID tag, DB row tagged `dev-tree`. SIGTERM mid-run:
+      flush exactly once (1 row), fatal `E_SIGNAL`, honest exit 1. Note: a TERM
+      landing in the entrypoint window (before node is PID 1) is silently dropped
+      by bash-as-PID1 — the run then completes normally; acceptable (docker's
+      stop-grace SIGKILL still bounds it; only the in-flight-flush guarantee needs
+      node running). Owner also flagged **logger.js (winston) as deprecated in
+      intent** — removal of it + its ~10 require sites folded into 6f.
 - [ ] **6d. Phase D cutover** — Matt's sudo steps per the runbook: crontab
       snapshot, comment out entries, `.env` backup, decide fate of 268 MB
       `logs/` history, `/opt/run-logs` chown, run `build-release.sh`, paste
@@ -251,7 +258,10 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       `logs/` adp files (retention TBD); `app` compose service is deprecated,
       deletion descoped; dead `RUN_ENV` switches in `read/` cleanup candidate;
       register the dev clone's `.env` with the rotation script alongside the
-      release copy's.
+      release copy's; **remove logger.js (winston — deprecated per owner
+      2026-08-24) and its ~10 require sites**, folding anything useful into
+      utils/logger — until then it stays functional (dirs auto-created,
+      USER_ID tag).
 
 ---
 
