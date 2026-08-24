@@ -20,17 +20,16 @@ x-common-mounts: &common_mounts
   volumes:
     # --- Bind mounts (host paths must exist) ---
 
-    # 1) Project source → live edit on host reflects in container
+    # 1) Project source → live edit on host reflects in container.
+    #    node_modules is IN-TREE (installed by build.sh as the host user), so
+    #    it rides along in this mount — no separate cache mount.
     - ./:/workspace
 
-    # 2) node_modules cache
-    - ${NODE_MOD_CACHE_DEV}:/workspace/node_modules
-
-    # 3) Run logs. Host destination is env-dependent; defaults to the DEV path
+    # 2) Run logs. Host destination is env-dependent; defaults to the DEV path
     #    so a missing LOG_DIR fails safe (never writes into /opt/run-logs).
     - ${LOG_DIR:-./utils/logger/logs}:/workspace/utils/logger/logs
 
-    # 4) ACQ files: host path -> container /workspace/files
+    # 3) ACQ files: host path -> container /workspace/files
     - ${DATA_STORE_DEV}:/workspace/files
 
 # ---------- Services ----------
@@ -70,7 +69,6 @@ services:
     working_dir: /workspace
     volumes:
       - ./:/workspace
-      - ${NODE_MOD_CACHE_DEV}:/workspace/node_modules
       - ${LOG_DIR:-./utils/logger/logs}:/workspace/utils/logger/logs
       - ${DATA_STORE_DEV}:/workspace/files
       # Shared SSH bundle (read-only). Entrypoint is now baked into the image,
