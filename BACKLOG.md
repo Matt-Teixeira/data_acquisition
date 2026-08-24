@@ -246,13 +246,29 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       stop-grace SIGKILL still bounds it; only the in-flight-flush guarantee needs
       node running). Owner also flagged **logger.js (winston) as deprecated in
       intent** — removal of it + its ~10 require sites folded into 6f.
-- [ ] **6d. Phase D cutover** — Matt's sudo steps per the runbook: crontab
-      snapshot, comment out entries, `.env` backup, decide fate of 268 MB
-      `logs/` history, `/opt/run-logs` chown, run `build-release.sh`, paste
-      hardened cron block.
-- [ ] **6e. Phase E verify** — 2 cron cycles all job families on the released
-      SHA, ops-dashboard/incident-engine unaffected; then remove CLAUDE.md
-      mid-migration banner.
+- [x] **6d. done 2026-08-24 (evening)** — cutover complete. Discoveries en route:
+      (1) the schedule never lived in svc's crontab — data_acquisition + hhm_rpp_* +
+      incident-engine run from **matt-teixeira's USER crontab** (suspended wholesale
+      via scripts/cron-suspend.sh; hardened restore file =
+      `cron-bk/crontab.restore-2026-08-24.cron`); (2) the svc **HOME trap bites
+      BuildKit**: first release died on `mkdir /nonexistent` — fixed with a private
+      persistent `HOME=/opt/apps/.svc-home` (better than the reference's `HOME=/tmp`
+      wart; mmb-rpp's own build-release.sh still carries that wart — tell Jonathan);
+      (3) release verified: RELEASE_SHA=b93b3c1, USER_ID=svc, zero tree drift,
+      release-copy preflight 0/0, svc smoke run logged `b93b3c1|svc` in the DB.
+- [x] **6e. done 2026-08-24 21:05** — two full cycles verified from the DB: every
+      family (hhm ×24, mmb 0–7 ×3 each, ip_reset ×9, offline_alert ×6, althea ×3,
+      philips ×3) on `b93b3c1`, zero `dev-tree`; warn/error volumes match the
+      pre-cutover baseline (hhm 263→295, ip_reset 483→505, mmb 352→354, philips
+      6→6); incident-engine running clean. **One miss caught by the baseline
+      diff:** `system_reset_totalizer` (18,48, old crontab line 84) was dropped
+      from the first restore install — hardened entry added to the restore file;
+      re-install pending (see 6g). CLAUDE.md banner removed; Scheduling section
+      corrected to the user-crontab reality.
+- [ ] **6g. Post-verify tail** — (1) Matt re-installs the updated restore
+      crontab (picks up system_reset_totalizer; expect 24 entries); (2) one more
+      `build-release.sh` when no data_acquisition container is running, to bring
+      /opt/apps to the doc-closeout HEAD.
 - [ ] **6f. Follow-ups** — dev VM `.env` needs `USER_ID` (+ retired keys removed)
       on next pull; prune-run-logs.sh covers neither `~/apps` dev logs nor
       `logs/` adp files (retention TBD); `app` compose service is deprecated,
@@ -261,7 +277,10 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       release copy's; **remove logger.js (winston — deprecated per owner
       2026-08-24) and its ~10 require sites**, folding anything useful into
       utils/logger — until then it stays functional (dirs auto-created,
-      USER_ID tag).
+      USER_ID tag); **consolidate the user-crontab schedules (this app,
+      hhm_rpp_*, incident-engine) into the shared svc crontab** per the
+      paradigm — coordinate with the boss, since his svc crontab has its own
+      cadence-section organization.
 
 ---
 

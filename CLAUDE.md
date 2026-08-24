@@ -1,19 +1,17 @@
 # CLAUDE.md — data_acquisition
 
-> **⚠️ MID-MIGRATION (started 2026-08-24).** This app is being aligned to the fleet
-> Docker/release paradigm. For conventions, `docs/migration_CLAUDE.md` (Parts 1 and 3) is
-> authoritative; the sections below are corrected as each migration step lands. Cutover
-> status and sequencing: `docs/MIGRATION-RUNBOOK-data_acquisition.md`. Older setup docs
-> (`setup.md`, `docs/docker_server_full_setup_2.1.md`) remain authoritative for
-> *server-wide* provisioning but are superseded by the paradigm docs for *app-level*
-> Docker/release conventions. This banner comes off when the cutover verifies.
+> Migrated to the fleet Docker/release paradigm **2026-08-24** (pilot app; cutover
+> verified over two full cron cycles). Conventions reference: `docs/migration_CLAUDE.md`
+> Parts 1+3. Older setup docs (`setup.md`, `docs/docker_server_full_setup_2.1.md`) remain
+> authoritative for *server-wide* provisioning but are superseded by the paradigm docs
+> for *app-level* Docker/release conventions.
 
 **data_acquisition** is a Node.js run-once pipeline fleet: HHM equipment data pulls
 (GE / Philips / Siemens over lftp/rsync/ssh), MMB log acquisition (run groups 0–7),
-Philips MRI rsync, althea env pulls, VPN/tunnel resets, and offline-alert heartbeats.
-Dispatch is `index.js <run_group> [schedule] [manufacturer] [modality]`, scheduled from
-the shared `svc` crontab. Run-once by design — triggered on a schedule, never a
-long-running service.
+Philips MRI rsync, althea env pulls, VPN/tunnel resets, offline-alert heartbeats, and
+the system-reset totalizer. Dispatch is `index.js <run_group> [schedule] [manufacturer]
+[modality]`, cron-scheduled (see *Scheduling*). Run-once by design — triggered on a
+schedule, never a long-running service.
 
 ---
 
@@ -90,11 +88,20 @@ run is a failed run, never exit 0.
 
 ## Scheduling
 
-Shared `svc` crontab: `sudo crontab -u svc -e` (NEVER `crontab -u svc <file>` — that
-wipes every other app's entries). Entries run from `/opt/apps/data_acquisition`, use
-absolute `/usr/bin/docker` + `/usr/bin/flock`, `-T` under cron, `flock -n` per job,
-output to bounded `>/opt/run-logs/data_acquisition/cron.<job>.out`. Verify a schedule
-from `util.app_run_logs`, not cron's own logs.
+**This app's schedule lives in matt-teixeira's USER crontab** (alongside hhm_rpp_ge,
+hhm_rpp_philips, and incident-engine) — NOT the shared `svc` crontab, which holds
+mmb-rpp/odd-jobs/etc. Consolidating into the svc crontab per the fleet paradigm is a
+pending follow-up (BACKLOG 6f). The installed entries are recorded in
+`cron-bk/crontab.restore-2026-08-24.cron`; since it is a personal crontab,
+`crontab <that-file>` is a safe install method (the never-install-from-file rule
+protects the SHARED svc crontab only — there, always `sudo crontab -u svc -e`).
+
+Entry conventions (all 24 entries follow them): run from `/opt/apps/data_acquisition`,
+absolute `/usr/bin/docker` + `/usr/bin/flock`, `-T` under cron, `flock -n` per job
+(skip, never queue), output to bounded `>/opt/run-logs/data_acquisition/cron.<job>.out`,
+no `RUN_USER`, no `HOME`. Verify a schedule from `util.app_run_logs`, not cron's own
+logs — and note a run's identity/commit: production rows read `svc | <sha>`; a
+`dev-tree` row on a schedule means cron is running the wrong copy.
 
 ## Secrets
 

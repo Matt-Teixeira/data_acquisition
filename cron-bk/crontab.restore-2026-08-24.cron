@@ -6,7 +6,7 @@
 #
 # Install (own crontab, so installing from a file is safe here):
 #   crontab /opt/apps/data_acquisition/cron-bk/crontab.restore-2026-08-24.cron
-# Verify:  crontab -l | grep -v '^ *#' | grep -c 'cd /opt/apps/data_acquisition'   -> expect 23
+# Verify:  crontab -l | grep -v '^ *#' | grep -c 'cd /opt/apps/data_acquisition'   -> expect 24
 #
 # NOTE: the fleet paradigm wants all app schedules in the shared svc crontab
 # (organized by cadence). data_acquisition (+ hhm_rpp_*, incident-engine) has
@@ -42,6 +42,13 @@
 
 # Philips MRI MMB rsync
 58,28 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.philips_mri_mmb.lock /usr/bin/docker compose run --rm -T app_tools node index.js philips >/opt/run-logs/data_acquisition/cron.philips_mri_mmb.out 2>&1
+
+# System reset totalizer
+# (Missed in the first restore install — caught 2026-08-24 21:05 by the baseline
+#  comparison: 24 legacy entries, 23 hardened. Re-install this file to pick it up.)
+18,48 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.totalizer.lock /usr/bin/docker compose run --rm -T app_tools node index.js system_reset_totalizer >/opt/run-logs/data_acquisition/cron.system_reset_totalizer.out 2>&1
+# ROLLED BACK 2026-07-13 — acquisition-v2 paused; totalizer runs from data_acquisition (line above). v2 line kept commented for re-cutover.
+# 18,48 * * * * cd /opt/apps/acquisition-v2 && docker compose run --rm app_tools bash -lc "npm run system_reset_totalizer"
 
 # VPN reset (three historical slots, ONE shared lock so resets never overlap) + offline alert
 10,40 * * * * cd /opt/apps/data_acquisition && /usr/bin/flock -n /tmp/data_acquisition.ip_reset.lock /usr/bin/docker compose run --rm -T app_tools node index.js ip_reset >/opt/run-logs/data_acquisition/cron.ip_reset.1040.out 2>&1
