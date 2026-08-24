@@ -146,9 +146,106 @@ const deriveOutcome = (run_log, fatal_error) => {
   };
 };
 
+// SHARED WITH THE SIGNAL HANDLERS: THE LIVE RUN LOG, AND A ONCE-GUARD SO THE
+// FINALIZE/PERSIST PATH CAN NEVER RUN TWICE (A SIGNAL DURING finally WOULD
+// OTHERWISE DOUBLE-INSERT INTO util.app_run_logs).
+let active_run_log = null;
+let finalize_started = false;
+
+// EVERYTHING THAT MUST HAPPEN EXACTLY ONCE AT END-OF-RUN, WHETHER THE RUN
+// COMPLETED, THREW, OR WAS KILLED. RETURNS false IF ANOTHER CALLER (finally
+// vs signal handler) ALREADY STARTED IT.
+const finalizeRun = async (run_log, fatal_error) => {
+  if (finalize_started) return false;
+  finalize_started = true;
+
+  // 1) DECIDE THE OUTCOME AND SET THE (HONEST) EXIT CODE. NEVER process.exit():
+  //    process.exitCode LETS PENDING I/O FLUSH AND THE LOOP DRAIN NATURALLY.
+  const outcome = deriveOutcome(run_log, fatal_error);
+  process.exitCode = outcome.exit_code;
+
+  // 2) APPEND SUMMARY + TERMINAL run_outcome EVENT (type INFO ON PURPOSE:
+  //    IT MUST NEVER LAND IN warn_error_logs -- ops-dashboard DERIVES STATUS
+  //    AND incident-engine MATERIALIZES INCIDENTS FROM THAT COLUMN).
+  await addRunSummary(run_log);
+  await addLogEvent(I, run_log, "run_outcome", det, outcome, null);
+
+  // 3) PERSIST THE SELF-LOG, DB FIRST THEN DISK (DISK CAPTURES ANY DB-INSERT
+  //    ERROR EVENT). BOTH NOW REPORT FAILURE INSTEAD OF SWALLOWING IT.
+  const db_insert_ok = await dbInsertLogEvents(pgp, run_log);
+  const disk_write_ok = await writeLogEvents(run_log);
+  if (!db_insert_ok || !disk_write_ok) {
+    // MONITORING IS BLIND FOR THIS RUN -- NEVER REPORT A CLEAN SUCCESS.
+    if (process.exitCode === EXIT.SUCCESS) process.exitCode = EXIT.PARTIAL;
+    console.error(
+      `[run_outcome] self-log persistence failed (db=${db_insert_ok} disk=${disk_write_ok})`
+    );
+  }
+
+  console.log(
+    `[run_outcome] ${outcome.outcome} exit=${process.exitCode}` +
+      ` errors=${outcome.error_events} warns=${outcome.warn_events}` +
+      ` failed_systems=${outcome.systems.failed_count}`
+  );
+
+  // 4) RELEASE SHARED CLIENTS SO THE EVENT LOOP CAN DRAIN. BOTH POOLS ARE
+  //    ALREADY INSTANTIATED TRANSITIVELY BY THE REQUIRES ABOVE.
+  try {
+    await db.$pool.end();
+  } catch (e) {
+    console.error(`[run_outcome] utils/db/pg-pool close: ${e.message}`);
+  }
+  try {
+    await job_db.$pool.end();
+  } catch (e) {
+    console.error(`[run_outcome] db/pgPool close: ${e.message}`);
+  }
+  pgp.end();
+
+  // 5) FAILSAFE: IF A LEAKED HANDLE (REDIS CLIENT, CHILD PROCESS) KEEPS THE
+  //    LOOP ALIVE, FORCE-EXIT WITH THE SAME HONEST CODE INSTEAD OF HANGING
+  //    UNDER CRON. unref() SO THE TIMER ITSELF NEVER HOLDS THE LOOP OPEN.
+  //    (SET ONLY HERE, AFTER PERSISTENCE -- SO IT CAN NEVER PREEMPT A FLUSH.)
+  const failsafe = setTimeout(() => {
+    console.error(
+      "[run_outcome] event loop did not drain within 30s; forcing exit"
+    );
+    process.exit(process.exitCode);
+  }, 30_000);
+  failsafe.unref();
+
+  return true;
+};
+
+// KILLED RUNS MUST STILL PERSIST BOTH LOG SINKS. gosu EXECS node AS PID 1,
+// AND PID 1 IGNORES SIGNALS WITH DEFAULT DISPOSITION -- SO WITHOUT THESE
+// HANDLERS A `docker stop` WOULD HANG UNTIL SIGKILL AND LEAVE NO RECORD AT
+// ALL. A SIGNALED RUN IS A FAILED RUN (run_outcome/v1) -- NEVER EXIT 0 HERE.
+const gracefulShutdown = (signal) => {
+  (async () => {
+    const err = new Error(`Received ${signal} — run terminated`);
+    err.code = "E_SIGNAL";
+    if (active_run_log) {
+      const ran = await finalizeRun(active_run_log, err);
+      // false = finally (OR THE OTHER SIGNAL) IS ALREADY FLUSHING; LET IT
+      // FINISH -- ITS OWN FAILSAFE BOUNDS THE WAIT.
+      if (!ran) return;
+    } else {
+      process.exitCode = EXIT.FAILED;
+    }
+    process.exit(process.exitCode ?? EXIT.FAILED);
+  })().catch((e) => {
+    console.error(`[run_outcome] shutdown flush failed: ${e.message || e}`);
+    process.exit(EXIT.FAILED);
+  });
+};
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
 const onBoot = async () => {
   console.time("App Run Time");
   const run_log = await makeAppRunLog();
+  active_run_log = run_log;
 
   let note = {
     LOGGER: process.env.LOGGER,
@@ -180,61 +277,13 @@ const onBoot = async () => {
     console.error(error);
     await addLogEvent(E, run_log, "onBoot", cat, null, error);
   } finally {
-    // 1) DECIDE THE OUTCOME AND SET THE (HONEST) EXIT CODE. NEVER process.exit():
-    //    process.exitCode LETS PENDING I/O FLUSH AND THE LOOP DRAIN NATURALLY.
-    const outcome = deriveOutcome(run_log, fatal_error);
-    process.exitCode = outcome.exit_code;
-
-    // 2) APPEND SUMMARY + TERMINAL run_outcome EVENT (type INFO ON PURPOSE:
-    //    IT MUST NEVER LAND IN warn_error_logs -- ops-dashboard DERIVES STATUS
-    //    AND incident-engine MATERIALIZES INCIDENTS FROM THAT COLUMN).
-    await addRunSummary(run_log);
-    await addLogEvent(I, run_log, "run_outcome", det, outcome, null);
-
-    // 3) PERSIST THE SELF-LOG, DB FIRST THEN DISK (DISK CAPTURES ANY DB-INSERT
-    //    ERROR EVENT). BOTH NOW REPORT FAILURE INSTEAD OF SWALLOWING IT.
-    const db_insert_ok = await dbInsertLogEvents(pgp, run_log);
-    const disk_write_ok = await writeLogEvents(run_log);
-    if (!db_insert_ok || !disk_write_ok) {
-      // MONITORING IS BLIND FOR THIS RUN -- NEVER REPORT A CLEAN SUCCESS.
-      if (process.exitCode === EXIT.SUCCESS) process.exitCode = EXIT.PARTIAL;
-      console.error(
-        `[run_outcome] self-log persistence failed (db=${db_insert_ok} disk=${disk_write_ok})`
-      );
+    const ran = await finalizeRun(run_log, fatal_error);
+    if (ran) {
+      console.log("\n********** END **********");
+      console.timeEnd("App Run Time");
     }
-
-    console.log(
-      `[run_outcome] ${outcome.outcome} exit=${process.exitCode}` +
-        ` errors=${outcome.error_events} warns=${outcome.warn_events}` +
-        ` failed_systems=${outcome.systems.failed_count}`
-    );
-    console.log("\n********** END **********");
-    console.timeEnd("App Run Time");
-
-    // 4) RELEASE SHARED CLIENTS SO THE EVENT LOOP CAN DRAIN. BOTH POOLS ARE
-    //    ALREADY INSTANTIATED TRANSITIVELY BY THE REQUIRES ABOVE.
-    try {
-      await db.$pool.end();
-    } catch (e) {
-      console.error(`[run_outcome] utils/db/pg-pool close: ${e.message}`);
-    }
-    try {
-      await job_db.$pool.end();
-    } catch (e) {
-      console.error(`[run_outcome] db/pgPool close: ${e.message}`);
-    }
-    pgp.end();
-
-    // 5) FAILSAFE: IF A LEAKED HANDLE (REDIS CLIENT, CHILD PROCESS) KEEPS THE
-    //    LOOP ALIVE, FORCE-EXIT WITH THE SAME HONEST CODE INSTEAD OF HANGING
-    //    UNDER CRON. unref() SO THE TIMER ITSELF NEVER HOLDS THE LOOP OPEN.
-    const failsafe = setTimeout(() => {
-      console.error(
-        "[run_outcome] event loop did not drain within 30s; forcing exit"
-      );
-      process.exit(process.exitCode);
-    }, 30_000);
-    failsafe.unref();
+    // ran === false: A SIGNAL HANDLER GOT THERE FIRST AND IS EXITING; DO NOT
+    // FLUSH OR LOG A SECOND TIME.
   }
 };
 
