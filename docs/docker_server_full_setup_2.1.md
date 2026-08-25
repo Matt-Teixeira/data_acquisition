@@ -19,7 +19,7 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > carries `RELEASE_SHA` provenance. This doc stays authoritative for **server-wide**
 > provisioning (users, groups, Postgres/Redis, secrets, networks, backups).
 > Migrated so far: **data_acquisition (2026-08-24)**, **monday (2026-08-25)**,
-> **part-source-pipeline (2026-08-25)** —
+> **part-source-pipeline (2026-08-25)**, **acumatica_sync (2026-08-25)** —
 > their sections below are updated; other apps' sections still describe their live
 > pre-paradigm state and get corrected as each one migrates.
 
@@ -1107,7 +1107,7 @@ instructions are dead):
 | monday | `entrypoint.sh` (root, baked; repairs `files/`+`data_outputs/`) | `monday:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | reports | `docker/entrypoint.sh` | `aux:${IMAGE_TAG}` (legacy tag name) | `docker compose build` |
 | part-source-pipeline (**migrated**) | `entrypoint.sh` (root, baked; repairs `files/` + the log mount) | `psp:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
-| acumatica_sync | `entrypoint.sh` (root) | `acu-sync:${IMAGE_TAG}` | `docker compose build` (adopted — no longer stock node:lts) |
+| acumatica_sync | `entrypoint.sh` (root) | `acu-sync:${USER_ID}` (migrated 2026-08-25) | `bash build.sh` / release via `build-release.sh` |
 | incident-engine | n/a | stock `node:lts`, `user: "105:987"` | by design (declarative drop, no gosu) |
 | ops-dashboard | n/a | stock `node:lts`, `user: "105:987"` | by design |
 | imprivata-poc | `docker/entrypoint.sh` (conditional gosu) | `imprivata-poc:local` | `docker compose build app_tools` |
@@ -1215,19 +1215,37 @@ docker compose run --rm app_tools bash -lc "npm ci --omit=dev --no-audit --no-fu
 
 # ACUMATICA SYNC APP
 
-```bash
-git clone git@github.com:Matt-Teixeira/acumatica_table_pull.git /opt/apps/acumatica_sync
-cd /opt/apps/acumatica_sync
-git switch -c STAGING_docker --track origin/STAGING_docker
+**MIGRATED to the fleet paradigm 2026-08-25** (fourth, after part-source-pipeline).
+Its own CLAUDE.md is authoritative for day-to-day operation; summary:
 
-docker compose build        # -> acu-sync:${IMAGE_TAG} (adopted 2026-08: baked entrypoint,
-                            #    replaces the old stock-node:lts + hardcoded user: pattern)
-docker compose run --rm app npm install     # warm cache (this app's pattern)
+```bash
+# Dev clone (the ONLY editable tree; repo name differs from the app dir):
+git clone git@github.com:Matt-Teixeira/acumatica_table_pull.git ~/apps/acumatica_sync
+cd ~/apps/acumatica_sync    # branch STAGING_docker
+cp .env.example .env        # fill in; USER_ID=<your username>, #RELEASE:USER_ID=svc
+bash build.sh               # in-tree npm install (as you) + image acu-sync:<username>
+bash preflight-check.sh     # zero warnings expected (authed sibling-container PG check)
+
+# Release (wipes and replaces /opt/apps/acumatica_sync; clean-tree guarded):
+bash build-release.sh       # -> acu-sync:svc, RELEASE_SHA stamped into deployed .env
 ```
+
+App shape (simplest in the fleet): one job (`node index.js`, no arguments), **no
+file writers at all** — console output only, run record one row per run in
+`stats.job_runs` (`app_name=acumatica_sync`, `job_name=sync`; monday pattern,
+shared table untouched). Boot line `[acumatica_sync] job=sync
+release_sha=<sha|dev-tree>` is the console provenance. SIGTERM/SIGINT write an
+honest `error` row and exit 1. **No schedule — deliberate** (see
+`docs/schedules.md`); a dev run is a real run (same staging table, same prod
+Acumatica endpoint), so snapshot `acumatica_systems` before exploratory runs.
 
 The app loads `.env` itself via dotenv (compose deliberately has no `env_file`, so
 `$expand`/`$format` in Acumatica URIs survive Compose's `$`-interpolation — REL-02
-class; verify values arrive byte-for-byte from inside a container when touching this).
+class; A21-07 interpolation warnings from `docker compose config` remain the
+accepted exception). `.env` was cleaned 2026-08-25 (dead keys + commented Azure
+passwords removed, owner-approved; pre-cleanup copy in `~/env-backups/`). Known
+kept wart: `PG_SSLMODE=require` skips cert verification — the verify-full flip
+belongs to the DB-roles rollout, not to casual cleanup.
 
 ------------------------------------------------------------------------
 

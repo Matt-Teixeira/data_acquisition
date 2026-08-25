@@ -325,6 +325,33 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       inv_feed_sync can only run with SKIP_SFTP=1. Rotation script already
       covers both `.env` copies (verified in-list + value-matched).
       **Next app in the queue: acumatica_sync** (per doc 2.1 rollout order).
+- [x] **6j. Fleet rollout #4: acumatica_sync — migrated 2026-08-25.** Same
+      sequence, one session: `.env` + pre-migration `acumatica_systems` dump
+      backed up to `~/env-backups/` → live tree frozen (all branches verified
+      pushed) → dev clone `~/apps/acumatica_sync` → 6 commits on
+      STAGING_docker (CLAUDE.md banner-first — app had none, only a README +
+      a markdown-in-.sh run doc, both rivals resolved; `acu-sync:${USER_ID}`
+      tags, IMAGE_TAG + `.env` RUN_USER retired; in-tree deps, shared
+      node_mod_cache mount retired; pointless `/opt/run-logs` container mount
+      dropped — the app has NO file writers, so deps #1/#2 (log-dir repair /
+      LOG_DIR flip) were N/A; deny-by-default .dockerignore; build-release.sh
+      + boot line + **first-ever run record**: `stats.job_runs` rows, monday
+      pattern, + SIGTERM/SIGINT kill-row handlers; preflight with authed
+      sibling-container PG check, Acumatica presence-only per standing
+      decision). Verified: preflight 36 OK/0 warn both copies; dev smoke
+      `dev-tree` (5 real updates, table-dump diff exact); kill test wrote the
+      error row, exit 1; dirty-tree refusal; tar-listing == git ls-files +
+      .env; release smoke as svc (105:987) on `RELEASE_SHA=0e2a704`.
+      **Stays UNSCHEDULED** (owner decision 2026-08-25, schedules.md already
+      listed it as intentionally schedule-free). `.env` cleaned (dead keys +
+      commented Azure passwords removed, owner-approved). Root-owned
+      node_modules husk removed pre-release (the monday trap, dodged).
+      Rotation script covers both copies (in-list + value-matched; dev clone
+      picked up automatically by its ~/apps path glob).
+      **Next app in the queue: hhm_rpp_siemens** (per doc 2.1 rollout order —
+      NOTE: it consumes hhm_rpp_ge's shared `hhm_rpp:` image and has no
+      Dockerfile of its own; per the shared-image caveat, decide the tag
+      strategy with the ge/philips set before changing anything).
 
 ---
 
