@@ -281,6 +281,27 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       hhm_rpp_*, incident-engine) into the shared svc crontab** per the
       paradigm — coordinate with the boss, since his svc crontab has its own
       cadence-section organization.
+- [x] **6h. Fleet rollout #2: monday — migrated 2026-08-25.** Same sequence as the
+      pilot, one session: live tree frozen (CLAUDE.md banner) → dev clone
+      `~/apps/monday` → 7 commits (entrypoint repairs `files/`+`data_outputs/`
+      instead of log dirs — monday has NO file logger; `monday:${USER_ID}` tags,
+      IMAGE_TAG + `.env` RUN_USER pin retired; build.sh in-tree deps, shared
+      node_mod_cache mount retired; build-release.sh with guard-above-wipe +
+      RELEASE_SHA stamp read by a boot console line, NOT a stats.job_runs column
+      — shared-table schema deliberately left alone; SIGTERM/SIGINT → honest
+      error row + exit 1, verified by kill test; preflight with authed
+      sibling-container PG + read-only Monday.com `me` query, 46/0/0 both
+      copies) → release 277df1d (zero drift, no gitignored bulk shipped) → svc
+      smoke → **5 hardened entries installed in the shared svc crontab** (first
+      paradigm app scheduled there; monday's old schedule had been deliberately
+      stopped 2026-08-19, cadences reconstructed from stats.job_runs). Two-cycle
+      verify green: all families on 277df1d, zero dev-tree, backlog drained
+      (he_data caught up 144 items). Dead job new_avconn_tickets (since
+      2026-04-21) not scheduled. PENDING: overnight verify of the two dailies
+      (04:20/07:25 UTC, 2026-08-26) then banner-off + final doc re-release;
+      register both monday `.env` copies with the rotation script (PGPASSWORD).
+      **Next app in the queue: part-source-pipeline** (per doc 2.1 rollout
+      order; monday was the blast-radius-lowest and is done).
 
 ---
 

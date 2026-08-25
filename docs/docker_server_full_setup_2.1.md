@@ -18,9 +18,9 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > `/opt/resources/node_mod_cache` → in-tree per-copy `node_modules`, and every run
 > carries `RELEASE_SHA` provenance. This doc stays authoritative for **server-wide**
 > provisioning (users, groups, Postgres/Redis, secrets, networks, backups).
-> Migrated so far: **data_acquisition (2026-08-24)** — its sections below are
-> updated; other apps' sections still describe their live pre-paradigm state and
-> get corrected as each one migrates.
+> Migrated so far: **data_acquisition (2026-08-24)**, **monday (2026-08-25)** —
+> their sections below are updated; other apps' sections still describe their live
+> pre-paradigm state and get corrected as each one migrates.
 
 **Read this first — per-server identity.** The document is one recipe for all three
 server types. Wherever a command says `<DB_NAME>` (or another `<...>` placeholder),
@@ -1102,7 +1102,7 @@ instructions are dead):
 | data_acquisition (**migrated**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `data-acqu:${USER_ID}` (dev = username, release = `svc`) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
 | hhm_rpp_ge | `docker/entrypoint.sh` | `hhm_rpp:${IMAGE_TAG}` | `docker compose build` in **GE** (owns the shared image) |
 | hhm_rpp_philips / siemens | — (no Dockerfile, on purpose) | `hhm_rpp:${IMAGE_TAG}` (GE's image) | by reuse |
-| monday | `entrypoint.sh` (root) | `monday:${IMAGE_TAG}` | `docker compose build` |
+| monday | `entrypoint.sh` (root, baked; repairs `files/`+`data_outputs/`) | `monday:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | reports | `docker/entrypoint.sh` | `aux:${IMAGE_TAG}` (legacy tag name) | `docker compose build` |
 | part-source-pipeline | `entrypoint.sh` (root) | `psp:${IMAGE_TAG}` | `docker compose build` |
 | acumatica_sync | `entrypoint.sh` (root) | `acu-sync:${IMAGE_TAG}` | `docker compose build` (adopted — no longer stock node:lts) |
@@ -1251,20 +1251,40 @@ docker compose run --rm app bash -lc "npm ci --omit=dev --no-audit --no-fund"   
 
 # MONDAY APP
 
-```bash
-git clone git@github.com:Matt-Teixeira/monday.git /opt/apps/monday
-cd /opt/apps/monday
-git switch -c STAGING_docker --track origin/STAGING_docker
-chmod -R g+rwX utils/logger && chgrp -R docker utils/logger
+**MIGRATED to the fleet paradigm 2026-08-25** (second after the pilot). Its own
+CLAUDE.md is authoritative for day-to-day operation; summary:
 
-docker compose build          # -> monday:${IMAGE_TAG} (Dockerfile, root entrypoint.sh,
-                              #    SVC_UID/DOCKER_GID args from .env)
-docker compose run --rm app bash -lc "npm ci --omit=dev --no-audit --no-fund"
+```bash
+# Dev clone (the ONLY editable tree):
+git clone git@github.com:Matt-Teixeira/monday.git ~/apps/monday
+cd ~/apps/monday        # branch STAGING_docker
+cp .env.example .env    # fill in; USER_ID=<your username>, #RELEASE:USER_ID=svc
+bash build.sh           # in-tree npm install (as you) + image monday:<username>
+bash preflight-check.sh # zero warnings expected (authed PG + Monday.com checks)
+
+# Release (wipes and replaces /opt/apps/monday; clean-tree guarded):
+bash build-release.sh   # -> monday:svc, RELEASE_SHA stamped into deployed .env
 ```
+
+App shape (differs from the pilot): **no file logger** — the run record is one
+row per run in `stats.job_runs` (shared with data_acquisition), plus the boot
+console line `[monday] job=<name> release_sha=<sha|dev-tree>` captured by the
+cron `.out` files in `/opt/run-logs/monday/`. Provenance is the stamped `.env`
++ boot line, NOT a DB column (2026-08-25 decision: shared table left alone).
+SIGTERM/SIGINT write an honest `error` row and exit 1.
+
+Schedule: **5 entries in the shared svc crontab** (the first app there under the
+paradigm; block recorded in monday's CLAUDE.md). Historical cadences restored
+2026-08-25 after a deliberate stop on 2026-08-19: process_new_additions every
+10 min, update_mmb_he_data :20/:50, update_hhm_status hourly :50, dailies
+04:20/07:25 UTC. `new_avconn_tickets` is dead (2026-04-21) — never schedule it.
 
 `.env` points at the real **`staging`** database (the pre-August `dev` value was a
 standing failure — REL-02). The app reads `PGUSER` (`utils/db/pg-pool.js`); compose
 forces `PG_SSLMODE=require` for now (switch to verify-full during its role migration).
+Known kept warts (per monday/CLAUDE.md): an active Azure-PROD `PG_*` fallback block
+in `.env` and an unused `db/pgPool.js` hardwired to prod — do not "clean" without
+Matt's sign-off, and never remove the `PGHOST` lines.
 
 ------------------------------------------------------------------------
 
