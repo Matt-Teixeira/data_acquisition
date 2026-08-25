@@ -19,7 +19,8 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > carries `RELEASE_SHA` provenance. This doc stays authoritative for **server-wide**
 > provisioning (users, groups, Postgres/Redis, secrets, networks, backups).
 > Migrated so far: **data_acquisition (2026-08-24)**, **monday (2026-08-25)**,
-> **part-source-pipeline (2026-08-25)**, **acumatica_sync (2026-08-25)** —
+> **part-source-pipeline (2026-08-25)**, **acumatica_sync (2026-08-25)**,
+> **hhm_rpp_siemens (2026-08-25)** —
 > their sections below are updated; other apps' sections still describe their live
 > pre-paradigm state and get corrected as each one migrates.
 
@@ -1077,9 +1078,12 @@ Per-app migration checklist (repeat for each remaining app):
    schema; roles survive) and re-run it BEFORE deploying code needing new grants.
 
 Rollout order suggestion (blast radius, low → high): ~~monday~~ →
-~~part-source-pipeline~~ (both done 2026-08-25) → **acumatica_sync (next)** →
-hhm_rpp_siemens → hhm_rpp_ge → hhm_rpp_philips. (data_acquisition, originally
-saved for last as the busiest app, ended up going first as the pilot.)
+~~part-source-pipeline~~ → ~~acumatica_sync~~ → ~~hhm_rpp_siemens~~ (all four
+done 2026-08-25) → **hhm_rpp_ge (next — owns the shared `hhm_rpp` image; its
+migration builds `hhm_rpp:svc` + a `staging` alias so un-migrated philips keeps
+running, and siemens flips its reference in the same cutover)** →
+hhm_rpp_philips. (data_acquisition, originally saved for last as the busiest
+app, ended up going first as the pilot.)
 
 ------------------------------------------------------------------------
 
@@ -1103,7 +1107,8 @@ instructions are dead):
 |---|---|---|---|
 | data_acquisition (**migrated**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `data-acqu:${USER_ID}` (dev = username, release = `svc`) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
 | hhm_rpp_ge | `docker/entrypoint.sh` | `hhm_rpp:${IMAGE_TAG}` | `docker compose build` in **GE** (owns the shared image) |
-| hhm_rpp_philips / siemens | — (no Dockerfile, on purpose) | `hhm_rpp:${IMAGE_TAG}` (GE's image) | by reuse |
+| hhm_rpp_siemens (**migrated 2026-08-25**) | — (no Dockerfile, on purpose; GE's baked gosu entrypoint, NO log-dir repair — build.sh/preflight create the dev log dir host-side) | `hhm_rpp:${IMAGE_TAG}` (GE's image; transitional tag until ge migrates, then `hhm_rpp:svc`) | no image build — `build.sh` (deps only) / `build-release.sh` (release, as svc) |
+| hhm_rpp_philips | — (no Dockerfile, on purpose) | `hhm_rpp:${IMAGE_TAG}` (GE's image) | by reuse |
 | monday | `entrypoint.sh` (root, baked; repairs `files/`+`data_outputs/`) | `monday:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | reports | `docker/entrypoint.sh` | `aux:${IMAGE_TAG}` (legacy tag name) | `docker compose build` |
 | part-source-pipeline (**migrated**) | `entrypoint.sh` (root, baked; repairs `files/` + the log mount) | `psp:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
@@ -1190,6 +1195,21 @@ All three run the **same image, `hhm_rpp:${IMAGE_TAG}`**, built from
 as data_acquisition). Philips/Siemens have no Dockerfile on purpose. **The GE repo
 owns the image and its compose has the `build:` block** — build there once, before
 first run of any RPP app:
+
+> **hhm_rpp_siemens is MIGRATED (2026-08-25)** — the clone/warm-cache
+> instructions below no longer apply to it. Dev clone `~/apps/hhm_rpp_siemens`;
+> `/opt/apps/hhm_rpp_siemens` is build output of its `build-release.sh` (no
+> image build — deps only); logger flipped to the `LOG_DIR` mount pattern with
+> `USER_ID`/`LOGGER_MODE` (RUN_ENV/LOGGER retired); shared `node_mod_cache`
+> mount retired; runs record `RELEASE_SHA` in `util.app_run_logs`. It keeps
+> `image: hhm_rpp:${IMAGE_TAG}` **deliberately** (documented transitional wart
+> in its CLAUDE.md): the tag flips to `hhm_rpp:svc` when ge migrates, ge's
+> release also tags a `staging` alias so un-migrated philips needs zero edits,
+> and philips retires the alias in its own migration. Per-consumer identity
+> tags were rejected — the image carries no app code. Schedule: **shared svc
+> crontab**, `15,45` (CT `:15:55`, MRI `:16:05`); SIEMENS_CV is dead by config
+> (0 systems) and stays unscheduled. Before 2026-08-25 this app had NEVER run
+> on this box — the section text below describing it pre-paradigm is historical.
 
 ```bash
 cd /opt/apps/hhm_rpp_ge

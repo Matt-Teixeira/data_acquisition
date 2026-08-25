@@ -352,6 +352,44 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       NOTE: it consumes hhm_rpp_ge's shared `hhm_rpp:` image and has no
       Dockerfile of its own; per the shared-image caveat, decide the tag
       strategy with the ge/philips set before changing anything).
+- [x] **6k. Fleet rollout #5: hhm_rpp_siemens — migrated 2026-08-25.** Same
+      sequence, one session. Headline discovery: the app had **NEVER run on
+      this box** — zero `util.app_run_logs` rows ever, `log.siemens_*` tables
+      empty, no cron entry in ANY crontab — while data_acquisition fetched its
+      source files every 30 min since June; so no freeze/suspend window and no
+      DB baseline existed (verification was forward-predicted from config: 11
+      CT + 1 MRI systems, SIEMENS_CV dead at 0 systems and kept dead by owner
+      decision). Shared-image tag question resolved per the prior session's
+      plan: compose keeps `hhm_rpp:${IMAGE_TAG}` byte-identical (documented
+      transitional wart); ge's migration builds `hhm_rpp:svc` + `staging`
+      alias, siemens flips in that cutover, philips retires the alias in its
+      own. Consequence: **no entrypoint log-dir repair possible** (gosu
+      entrypoint is baked in ge's image) — dep #1 landed host-side instead
+      (build.sh + preflight create the dev log dir; missing dev LOG_DIR is a
+      preflight ERROR here, not a warning). 9 commits on STAGING_docker
+      (82c9f00..99d1230): CLAUDE.md banner-first (app had none; stale
+      docs/run+setup.md deleted as rivals); build.sh deps-only + image
+      presence check (no image build — deliberate deviation); one-commit
+      LOG_DIR flip (variant-B logger's RUN_ENV switch removed — it wrote
+      /opt/run-logs from ANY non-dev env, LOGGER→USER_ID, .json tag; dead
+      `app` service deleted with owner sign-off: not on pg_net, could never
+      reach PG); boot env_note fix (was logging 3 undefined legacy keys;
+      note.argv untouched — ops-dashboard reads argv->>2); gracefulShutdown
+      (kill-tested ×5: E_SIGNAL, exit 1, once-guard held); build-release.sh;
+      preflight (44/0/0 both copies). Release `1bd5828`: zero drift, first
+      `log.siemens_mri`/`log.siemens_ct` rows EVER (5,156 + 230,378 — the
+      "backlog" was one day only; Application.log rotates daily). **2 hardened
+      entries in the shared svc crontab** (`15,45`, CT `:15:55` / MRI `:16:05`,
+      clear of the ge/philips user-crontab pileup at `:15:00`). Two-cycle
+      verify green: both families ×2 on `1bd5828` as svc, zero dev-tree,
+      steady-state warns = per-system "End of new data". Root-owned
+      node_modules husk removed pre-release (monday trap, dodged again);
+      rotation script already covers both `.env` copies. Post-cutover museum
+      pile noted in its CLAUDE.md (utils/vpn etc., pm2, jobs/win_7, raw
+      console.log dumps in job files reaching the bounded .out files).
+      **Next app in the queue: hhm_rpp_ge** (shared-image OWNER: its
+      build-release must produce `hhm_rpp:svc` AND tag the `staging` alias;
+      siemens' reference flip + re-release belongs in that same cutover).
 
 ---
 
