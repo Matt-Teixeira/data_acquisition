@@ -302,6 +302,29 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       register both monday `.env` copies with the rotation script (PGPASSWORD).
       **Next app in the queue: part-source-pipeline** (per doc 2.1 rollout
       order; monday was the blast-radius-lowest and is done).
+- [x] **6i. Fleet rollout #3: part-source-pipeline — migrated 2026-08-25.** Same
+      sequence, one session: `.env` backed up outside /opt/apps → live tree
+      frozen (CLAUDE.md created WITH banner — the app had none) → dev clone
+      `~/apps/part-source-pipeline` → 11 commits (entrypoint repairs `files/` +
+      the log mount; `psp:${USER_ID}` tags, IMAGE_TAG + compose `RUN_USER: svc`
+      pin retired; build.sh in-tree deps, shared node_mod_cache mount retired;
+      build-release.sh with DEST hardcoded to the hyphen repo name — APP_NAME
+      is the underscore container path, deriving would mis-release; LOG_DIR
+      flip with fixed logger path + USER_ID filename tag, RUN_ENV retired;
+      SKIP_SFTP=1 switch incl. compose passthrough — first smoke attempt showed
+      compose drops undeclared vars; SIGTERM/SIGINT flush-once handlers,
+      verified by kill test; preflight with authed sibling-container PG + HCA
+      OData `$top=1` probe at 90s — Acumatica computes the inquiry before
+      applying `$top`, 30s falsely failed; allowlist .dockerignore) → release
+      68876cb (zero drift, tar excludes verified by listing, 51/0/0 preflight
+      both copies) → svc smoke runs recorded in util.app_run_logs (the app's
+      FIRST-EVER rows there — OPS-03's self-log had never run in production)
+      with RELEASE_SHA=68876cb. **Schedule deliberately DORMANT** (owner
+      decision 2026-08-25): no cron entries installed; pre-migration hourly
+      hca_sync (stopped 2026-08-19) stays stopped; vendor SFTP keyless, so
+      inv_feed_sync can only run with SKIP_SFTP=1. Rotation script already
+      covers both `.env` copies (verified in-list + value-matched).
+      **Next app in the queue: acumatica_sync** (per doc 2.1 rollout order).
 
 ---
 

@@ -18,7 +18,8 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > `/opt/resources/node_mod_cache` → in-tree per-copy `node_modules`, and every run
 > carries `RELEASE_SHA` provenance. This doc stays authoritative for **server-wide**
 > provisioning (users, groups, Postgres/Redis, secrets, networks, backups).
-> Migrated so far: **data_acquisition (2026-08-24)**, **monday (2026-08-25)** —
+> Migrated so far: **data_acquisition (2026-08-24)**, **monday (2026-08-25)**,
+> **part-source-pipeline (2026-08-25)** —
 > their sections below are updated; other apps' sections still describe their live
 > pre-paradigm state and get corrected as each one migrates.
 
@@ -89,8 +90,8 @@ exists. The `main` repos are the same branch on every server.
 
 | Repo | Branch on acq-vm-0 (staging) |
 |---|---|
-| acumatica_sync, hhm_rpp_ge, hhm_rpp_philips, hhm_rpp_siemens, monday, reports, part-source-pipeline | `STAGING_docker` |
-| data_acquisition (**migrated**) | `STAGING_docker` — but the checkout lives at `~/apps/data_acquisition`; `/opt/apps/data_acquisition` is `build-release.sh` output, NOT a repo |
+| acumatica_sync, hhm_rpp_ge, hhm_rpp_philips, hhm_rpp_siemens, reports | `STAGING_docker` |
+| data_acquisition, monday, part-source-pipeline (**migrated**) | `STAGING_docker` — but the checkout lives at `~/apps/<app>`; `/opt/apps/<app>` is `build-release.sh` output, NOT a repo |
 | redis-admin, pg_manage_v2 | `STAGING` |
 | incident-engine, ops-dashboard, acquisition-v2, imprivata-poc | `main` (no env branches) |
 | odd-jobs | **not a git checkout on this box** — Jonathan deploys it; see PARTITION MAINTENANCE |
@@ -1075,9 +1076,10 @@ Per-app migration checklist (repeat for each remaining app):
 6. **Re-run each setup-role script after any app-database reset** (grants die with the
    schema; roles survive) and re-run it BEFORE deploying code needing new grants.
 
-Rollout order suggestion (blast radius, low → high): monday → part-source-pipeline →
-acumatica_sync → hhm_rpp_siemens → hhm_rpp_ge → hhm_rpp_philips → data_acquisition
-(save for last: most jobs, busiest schedule).
+Rollout order suggestion (blast radius, low → high): ~~monday~~ →
+~~part-source-pipeline~~ (both done 2026-08-25) → **acumatica_sync (next)** →
+hhm_rpp_siemens → hhm_rpp_ge → hhm_rpp_philips. (data_acquisition, originally
+saved for last as the busiest app, ended up going first as the pilot.)
 
 ------------------------------------------------------------------------
 
@@ -1104,7 +1106,7 @@ instructions are dead):
 | hhm_rpp_philips / siemens | — (no Dockerfile, on purpose) | `hhm_rpp:${IMAGE_TAG}` (GE's image) | by reuse |
 | monday | `entrypoint.sh` (root, baked; repairs `files/`+`data_outputs/`) | `monday:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | reports | `docker/entrypoint.sh` | `aux:${IMAGE_TAG}` (legacy tag name) | `docker compose build` |
-| part-source-pipeline | `entrypoint.sh` (root) | `psp:${IMAGE_TAG}` | `docker compose build` |
+| part-source-pipeline (**migrated**) | `entrypoint.sh` (root, baked; repairs `files/` + the log mount) | `psp:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | acumatica_sync | `entrypoint.sh` (root) | `acu-sync:${IMAGE_TAG}` | `docker compose build` (adopted — no longer stock node:lts) |
 | incident-engine | n/a | stock `node:lts`, `user: "105:987"` | by design (declarative drop, no gosu) |
 | ops-dashboard | n/a | stock `node:lts`, `user: "105:987"` | by design |
@@ -1290,19 +1292,36 @@ Matt's sign-off, and never remove the `PGHOST` lines.
 
 # PART SOURCE PIPELINE APP
 
-```bash
-git clone git@github.com:Matt-Teixeira/part-source-pipeline.git /opt/apps/part-source-pipeline
-cd /opt/apps/part-source-pipeline
-git switch -c STAGING_docker --track origin/STAGING_docker
-mkdir -p files && chmod -R g+rwX files && chgrp -R docker files    # REQUIRED — first run fails without it
-chmod -R g+rwX utils/logger && chgrp -R docker utils/logger
+**MIGRATED to the fleet paradigm 2026-08-25** (third, after monday). Its own
+CLAUDE.md is authoritative for day-to-day operation; summary:
 
-docker compose build          # -> psp:${IMAGE_TAG} (root entrypoint.sh, args from .env)
-docker compose run --rm app bash -lc "npm ci --omit=dev --no-audit --no-fund"
+```bash
+# Dev clone (the ONLY editable tree):
+git clone git@github.com:Matt-Teixeira/part-source-pipeline.git ~/apps/part-source-pipeline
+cd ~/apps/part-source-pipeline   # branch STAGING_docker
+cp .env.example .env             # fill in; USER_ID=<your username>, #RELEASE:USER_ID=svc
+bash build.sh                    # in-tree npm install (as you) + image psp:<username>
+bash preflight-check.sh          # zero warnings expected (authed PG + HCA OData checks)
+
+# Release (wipes and replaces /opt/apps/part-source-pipeline; clean-tree guarded):
+bash build-release.sh            # -> psp:svc, RELEASE_SHA stamped into deployed .env
 ```
 
-Run-logs mapping is intentionally hyphen(host)/underscore(container) — the container
-path must match `APP_NAME=part_source_pipeline` (the logger's write path).
+App shape: vendored variant-B file logger + `util.app_run_logs` self-log
+(paradigm form: fixed container log path, `${LOG_DIR:-./utils/logger/logs}`
+mount, `#RELEASE:LOG_DIR=/opt/run-logs/part-source-pipeline`; the hyphen-host /
+underscore-container mapping is intentional — the container path must match
+`APP_NAME=part_source_pipeline`). Jobs: `hca_sync` (Acumatica OData →
+`api.hca_odata`), `inv_feed_sync` (feeds → `files/*.csv` → vendor SFTP;
+`SKIP_SFTP=1` skips the upload), `send_csv_sftp` (dead test scaffolding).
+
+**Schedule: deliberately DORMANT** (owner decision 2026-08-25) — the app is
+released and verified but has NO cron entries anywhere; its pre-migration
+hourly `hca_sync` was stopped 2026-08-19 and stays stopped. Known kept warts
+(per psp/CLAUDE.md): SFTP credential in git history (accepted exception
+2026-08-18), vendor SFTP currently keyless (uploads cannot work), commented
+Azure PROD block in `.env` (compose pins `PGHOST=pg_db`), `PGUSER=postgres`
+pending the role migration (Phase 4a).
 
 ------------------------------------------------------------------------
 
