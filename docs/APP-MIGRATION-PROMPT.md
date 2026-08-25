@@ -213,6 +213,11 @@ diff over two cron cycles). I pick the order before you start.
 - Run migrations one at a time; let each soak a couple of cron cycles before
   starting the next.
 - The hhm_rpp trio is really ONE migration in three repos — budget it that way.
+- **Save the first round-trip: paste the schedule state WITH the prompt.** The
+  session cannot read other users' crontabs, and both migrations so far stalled
+  the audit on exactly that. Append to your first message the output of:
+  `crontab -l`, `sudo crontab -u svc -l`, and (if the app's last run looks stale)
+  `sudo crontab -u jonathan-pope -l` / `sudo crontab -u root -l`.
 - **Your fixed touchpoints per app** (monday needed exactly these; everything else
   the session does itself):
   1. Answer the audit's sudo forensics if asked (other users' crontabs, journal).
