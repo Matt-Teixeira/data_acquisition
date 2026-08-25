@@ -1,4 +1,4 @@
-# Docker Server Full Setup 2.1 (reconciled 2026-08-18)
+# Docker Server Full Setup 2.1 (reconciled 2026-08-18; paradigm notes 2026-08-25)
 
 This guide builds an acquisition server — **dev, staging, or (future) prod** — from
 scratch. The **staging server (acq-vm-0) is the reference copy**: every command,
@@ -7,6 +7,20 @@ server on 2026-08-18, at the end of the August hardening plan
 (`PLAN_OF_ATTACK_2026-08.md`; finding IDs like SEC-05 or DB-01 refer to
 `AUDIT_RECONCILIATION_FINDINGS_2026-08-14.md`). When this document and a server
 disagree, one of them is wrong — fix the drift, then fix the document.
+
+> **⚠️ PARADIGM MIGRATION IN PROGRESS (since 2026-08-24).** The fleet is adopting the
+> dev/release paradigm (`data_acquisition/docs/migration_CLAUDE.md` Parts 1+3): the
+> editable git clone lives in `~/apps/<app>`, and `/opt/apps/<app>` becomes
+> **build output produced only by `build-release.sh`** — not a checkout. For a
+> MIGRATED app, this document's app-level instructions are superseded: `IMAGE_TAG`
+> → `<app>:${USER_ID}` tags (dev = username, release = `svc`), `RUN_ENV` log routing
+> → a `LOG_DIR` compose mount with `#RELEASE:` overrides, the shared
+> `/opt/resources/node_mod_cache` → in-tree per-copy `node_modules`, and every run
+> carries `RELEASE_SHA` provenance. This doc stays authoritative for **server-wide**
+> provisioning (users, groups, Postgres/Redis, secrets, networks, backups).
+> Migrated so far: **data_acquisition (2026-08-24)** — its sections below are
+> updated; other apps' sections still describe their live pre-paradigm state and
+> get corrected as each one migrates.
 
 **Read this first — per-server identity.** The document is one recipe for all three
 server types. Wherever a command says `<DB_NAME>` (or another `<...>` placeholder),
@@ -18,8 +32,8 @@ which server it belongs to. The identity table:
 | App database `<DB_NAME>` | `dev` | `staging` | `prod` |
 | App-repo branch | `DEV_docker` | `STAGING_docker` | `PROD_docker` (doesn't exist yet) |
 | Admin-repo branch (redis-admin, pg_manage_v2) | `DEV` | `STAGING` | TBD |
-| `RUN_ENV` (logger routing only) | `dev`* | `staging` | `prod` |
-| `IMAGE_TAG` | operator's choice, e.g. `dev` | `staging` | TBD |
+| `RUN_ENV` (logger routing only; **legacy apps** — migrated apps use `LOG_DIR`) | `dev`* | `staging` | `prod` |
+| `IMAGE_TAG` (**legacy apps** — migrated apps tag by `USER_ID`: dev = username, release = `svc`) | operator's choice, e.g. `dev` | `staging` | TBD |
 | `PG_DB` for maintenance scripts | `dev` | `staging` (default) | `prod` |
 
 \* `RUN_ENV=dev` routes per-run logs into each repo instead of `/opt/run-logs/` —
@@ -50,9 +64,9 @@ set each one explicitly and don't assume they match:
 | Axis | Value on acq-vm-0 | Controls |
 |---|---|---|
 | Git branch (per repo, table below) | `STAGING_docker` / `STAGING` / `main` | which code runs |
-| Image tags | `:staging` everywhere (`IMAGE_TAG` in each `.env`) | which image compose runs |
-| Compose volume vars | `_DEV`-suffixed names (`NODE_MOD_CACHE_DEV`, `DATA_STORE_DEV`) | where caches/files live — the *names* are fixed in compose; point their *values* wherever this server stores data |
-| `RUN_ENV` in `.env` | `staging` | **logger file routing only** — not deployment |
+| Image tags | `:staging` on legacy apps (`IMAGE_TAG` in each `.env`); **migrated apps: `<app>:${USER_ID}`** (`data-acqu:svc` in production) | which image compose runs |
+| Compose volume vars | `_DEV`-suffixed names (`NODE_MOD_CACHE_DEV`, `DATA_STORE_DEV`) — migrated apps drop `NODE_MOD_CACHE_DEV` (in-tree deps) | where caches/files live — the *names* are fixed in compose; point their *values* wherever this server stores data |
+| `RUN_ENV` in `.env` | `staging` on legacy apps; **retired in migrated apps** (the `LOG_DIR` mount routes logs; fails safe to the dev path) | **logger file routing only** — not deployment |
 
 Database: the single local Postgres serves **one app database, `<DB_NAME>`** (from
 the identity table: `dev`/`staging`/`prod`), for every app (`PGDATABASE=<DB_NAME>`).
@@ -75,7 +89,8 @@ exists. The `main` repos are the same branch on every server.
 
 | Repo | Branch on acq-vm-0 (staging) |
 |---|---|
-| data_acquisition, acumatica_sync, hhm_rpp_ge, hhm_rpp_philips, hhm_rpp_siemens, monday, reports, part-source-pipeline | `STAGING_docker` |
+| acumatica_sync, hhm_rpp_ge, hhm_rpp_philips, hhm_rpp_siemens, monday, reports, part-source-pipeline | `STAGING_docker` |
+| data_acquisition (**migrated**) | `STAGING_docker` — but the checkout lives at `~/apps/data_acquisition`; `/opt/apps/data_acquisition` is `build-release.sh` output, NOT a repo |
 | redis-admin, pg_manage_v2 | `STAGING` |
 | incident-engine, ops-dashboard, acquisition-v2, imprivata-poc | `main` (no env branches) |
 | odd-jobs | **not a git checkout on this box** — Jonathan deploys it; see PARTITION MAINTENANCE |
@@ -87,17 +102,23 @@ Other standing conventions:
   acumatica_sync's `utils/` holds only its own `queries.js`.)
 - **Per-app entrypoint.** The gosu user-drop entrypoint is baked into each app image
   from a tracked `docker/entrypoint.sh` or root `entrypoint.sh` (matrix below).
-- **Run logs.** The vendored logger (`utils/logger/log.js`) switches on `RUN_ENV`:
+- **Run logs — legacy apps.** The vendored logger (`utils/logger/log.js`) switches on
+  `RUN_ENV`:
   - `dev` → per-run JSON into **`<repo>/utils/logger/`** (gitignored)
   - `staging`/anything else (including unset) → **`/opt/run-logs/<APP_NAME>/`**
-  Staging runs `RUN_ENV=staging`, so the central dirs are the hot path; they are
-  pruned nightly. Every job also self-logs a row into `util.app_run_logs` regardless
-  of `RUN_ENV` (that's what ops-dashboard and incident-engine read). Nit: psp leaves
-  `RUN_ENV` unset and lands centrally via the else-branch — same outcome, but set it
-  explicitly on a new build.
-- **`RUN_LOGS_DIR` format.** Where an app's `.env` defines it (data_acquisition,
-  incident-engine), it is a **full `host:container` bind spec** consumed verbatim by a
-  compose volume entry: `RUN_LOGS_DIR=/opt/run-logs/<app>:/opt/run-logs/<app>`.
+  Note the else-branch **fails unsafe** (missing var → production path); the paradigm
+  inverts this. Every job also self-logs a row into `util.app_run_logs` regardless
+  (that's what ops-dashboard and incident-engine read). Nit: psp leaves `RUN_ENV`
+  unset and lands centrally via the else-branch — same outcome, but set it explicitly
+  on a new build.
+- **Run logs — migrated apps** (data_acquisition): the logger always writes the fixed
+  container path `./utils/logger/logs/`, and the compose mount
+  `${LOG_DIR:-./utils/logger/logs}` decides the host destination — dev path by
+  default (**fails safe**), `/opt/run-logs/<app>` in a release via `#RELEASE:LOG_DIR`.
+- **`RUN_LOGS_DIR` format (legacy).** Where an app's `.env` still defines it
+  (incident-engine), it is a **full `host:container` bind spec** consumed verbatim by
+  a compose volume entry: `RUN_LOGS_DIR=/opt/run-logs/<app>:/opt/run-logs/<app>`.
+  Retired in migrated apps in favor of `LOG_DIR` above.
 - **Maintenance scripts live in the repo that owns their subject** (2026-08-18):
   database scripts in `pg_manage_v2/scripts/`, Redis scripts and host-setup files in
   `redis-admin/`, the cross-app run-log prune in `data_acquisition/scripts/`.
@@ -733,58 +754,70 @@ role.
 
 ------------------------------------------------------------------------
 
-# STEP 6: DATA ACQUISITION APP SETUP
+# STEP 6: DATA ACQUISITION APP SETUP (paradigm — migrated 2026-08-24)
+
+data_acquisition follows the dev/release paradigm: the checkout goes in the
+operator's home, and `/opt/apps/data_acquisition` is produced by `build-release.sh`,
+never cloned. Full conventions: the repo's own `CLAUDE.md` +
+`docs/migration_CLAUDE.md` Parts 1+3.
 
 ```bash
-git clone git@github.com:Matt-Teixeira/data_acquisition.git /opt/apps/data_acquisition
-cd /opt/apps/data_acquisition
+mkdir -p ~/apps
+git clone git@github.com:Matt-Teixeira/data_acquisition.git ~/apps/data_acquisition
+cd ~/apps/data_acquisition
 git switch -c STAGING_docker --track origin/STAGING_docker
 ```
 
 ### 6.1 `.env`
 
-Copy from the previous server / secret store. Full key list (names; values come from
-the secret store):
+Copy from the previous server / secret store into the CLONE; `build-release.sh`
+transforms a copy of it for the release. Full key list (names; values from the
+secret store; template with `#RELEASE:` markers = tracked `.env.example`):
 
 ```
-APP_NAME LOGGER RUN_ENV APP_SECRET
+APP_NAME USER_ID LOGGER_MODE LOG_DIR APP_SECRET      # identity keys carry #RELEASE: overrides
 PGHOST PGPORT PGDATABASE PGUSER PGPASSWORD PG_SSLMODE PG_SSL_PATH
 REDIS_HOST REDIS_PORT REDIS_PW
-NODE_MOD_CACHE_DEV DATA_STORE_DEV RUN_LOGS_DIR
-UID_0 UID_1 UID_2 DOCKER_GID RUN_USER SSH_KEY IMAGE_TAG
+DATA_STORE_DEV SSH_KEY
+UID_0 UID_1 UID_2 DOCKER_GID
 SRC_* DST_* (migration passthrough)  VNS3_IP VNS3_PW  PHILIPS_MRI_SHELL_TIMEOUT_S
 ```
 
-Key values on acq-vm-0: `RUN_ENV=staging`, `PGDATABASE=staging` (this server's <DB_NAME>), `PGHOST=pg_db`,
-`REDIS_HOST=redis_dev-0-4`, `REDIS_PW` mirrors `/opt/resources/secrets/redis_auth.conf`
-(set by `activate_redis_auth.sh`, STEP 3),
-`RUN_LOGS_DIR=/opt/run-logs/data_acquisition:/opt/run-logs/data_acquisition`,
-`NODE_MOD_CACHE_DEV=/opt/resources/node_mod_cache/data_acquisition`,
+Retired keys — do not reintroduce: `IMAGE_TAG`, `RUN_ENV`, `RUN_LOGS_DIR`,
+`NODE_MOD_CACHE_DEV`, `LOGGER`, pinned `RUN_USER`. Key values on acq-vm-0:
+`USER_ID=<your-username>` (+ `#RELEASE:USER_ID=svc`), `LOG_DIR=./utils/logger/logs`
+(+ `#RELEASE:LOG_DIR=/opt/run-logs/data_acquisition`), `PGDATABASE=staging` (this
+server's <DB_NAME>), `PGHOST=pg_db`, `REDIS_HOST=redis_dev-0-4`, `REDIS_PW` mirrors
+`/opt/resources/secrets/redis_auth.conf` (set by `activate_redis_auth.sh`, STEP 3),
 `DATA_STORE_DEV=/opt/resources/acqu_files`, `UID_0/1/2` + `DOCKER_GID` from STEP 1.1.
 
-### 6.2 Build and warm the cache
+### 6.2 Build (dev) and release
 
-The repo carries an allowlist `.dockerignore` (SEC-10) — build context is ~16 KB, and
-`.env`, `.git`, and logs can never land in an image. `hhm_rpp_ge` has the same;
-keep the pattern in any repo that gains a Dockerfile.
+The repo carries an allowlist `.dockerignore` (SEC-10) — the build context admits
+only the Dockerfile + entrypoint, and `.env`, `.git`, and logs can never land in an
+image. No shared cache to warm: `build.sh` installs `node_modules` **in-tree, per
+copy**.
 
 ```bash
-docker compose build app_tools        # -> data-acqu:staging (docker/Dockerfile, baked gosu entrypoint)
-chmod -R g+rwX utils/logger && chgrp -R docker utils/logger   # dev-mode fallback path
-
-# Warm the node_modules cache ONCE (and again only after dependency changes):
-docker compose run --rm app_tools bash -lc "npm ci --omit=dev --no-audit --no-fund"
+bash preflight-check.sh    # authenticated Redis + sibling-container Postgres checks; expect 0 warnings
+bash build.sh              # in-tree npm install + docker compose build -> data-acqu:<username>
+bash build-release.sh      # guard -> mirror to /opt/apps -> #RELEASE flips -> RELEASE_SHA stamp
+                           #   -> builds data-acqu:svc (refuses a dirty tree; that is the point)
 ```
 
 ### 6.3 Run a job
 
 ```bash
-docker compose run --rm app_tools bash -lc "npm run <job_name>"
+# dev, from the clone, as yourself:
+RUN_USER=<you> docker compose run --rm app_tools node index.js offline_alert
+# production shape (what cron runs), from the release copy:
+cd /opt/apps/data_acquisition && docker compose run --rm -T app_tools node index.js <group> [args]
 ```
 
-This is exactly what cron runs — **no `npm ci` per invocation** (see
-`docs/schedules.md`). Don't run `npm ci` while scheduled jobs are active; it rebuilds
-the shared cache under them.
+Cron entries use direct `node index.js` argv with `flock -n` and bounded `.out`
+files — recorded in `cron-bk/crontab.restore-2026-08-24.cron`. Verify any run from
+`util.app_run_logs`: production rows read `svc | <RELEASE_SHA>`; `dev-tree` on a
+schedule means cron is running the wrong copy.
 
 ------------------------------------------------------------------------
 
@@ -838,10 +871,12 @@ chgrp -R docker /opt/resources/node_mod_cache /opt/run-logs
 chmod -R g+rwXs /opt/resources/node_mod_cache /opt/run-logs
 ```
 
-The `/opt/run-logs/<app>` dirs are the logger's hot path (`RUN_ENV=staging`) — they
+The `/opt/run-logs/<app>` dirs are the logger's hot path (legacy `RUN_ENV=staging`
+routing; migrated apps reach the same dirs via their release `LOG_DIR` mount) — they
 **must be writable by the container run user** (svc uid via group docker). The
 group-write + setgid bits above are what OPS-05 was about; verify with a real run,
-not `ls`.
+not `ls`. **Migrated apps no longer use `/opt/resources/node_mod_cache/<app>`**
+(in-tree deps) — keep creating it only for the legacy apps still in the list.
 
 App status notes:
 - **acquisition-v2** — strangler-fig replacement for data_acquisition; **paused**
@@ -1064,7 +1099,7 @@ instructions are dead):
 
 | App | Entrypoint | Image compose runs | Built by |
 |---|---|---|---|
-| data_acquisition | `docker/entrypoint.sh` | `data-acqu:${IMAGE_TAG}` | `docker compose build app_tools` |
+| data_acquisition (**migrated**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `data-acqu:${USER_ID}` (dev = username, release = `svc`) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
 | hhm_rpp_ge | `docker/entrypoint.sh` | `hhm_rpp:${IMAGE_TAG}` | `docker compose build` in **GE** (owns the shared image) |
 | hhm_rpp_philips / siemens | — (no Dockerfile, on purpose) | `hhm_rpp:${IMAGE_TAG}` (GE's image) | by reuse |
 | monday | `entrypoint.sh` (root) | `monday:${IMAGE_TAG}` | `docker compose build` |
@@ -1354,7 +1389,15 @@ The complete, live crontab (owner: `matt-teixeira`) with the stagger design, the
 incident-engine deploy-worktree requirement, the acquisition-v2 pause note, and
 install/rollback commands lives in **`docs/schedules.md`** — treat that file as the
 manifest: **a schedule that is not in it does not exist**, and it must be kept in
-sync with `crontab -l`. The maintenance schedule at a glance:
+sync with `crontab -l`.
+
+> **2026-08-24:** data_acquisition's 24 entries were replaced with hardened ones
+> (direct `node index.js` argv, `flock -n`, `-T`, absolute paths, bounded
+> `cron.<job>.out` files) at the paradigm cutover — the installed set is
+> `data_acquisition/cron-bk/crontab.restore-2026-08-24.cron`. `schedules.md`
+> still shows the legacy npm-run entries for this app: sync it on next touch.
+
+The maintenance schedule at a glance:
 
 | When | What |
 |---|---|
@@ -1494,7 +1537,9 @@ Build a blank dev/staging VM from this document alone, then demonstrate **all** 
 - [ ] Each container runs as its intended uid:gid and can write its mounts (run a
       real job per app — a directory existing is not the test).
 - [ ] `/opt/run-logs/<app>/` receives fresh files from a scheduled run of each family
-      (`RUN_ENV=staging` routing).
+      (legacy apps: `RUN_ENV=staging` routing; migrated apps: release `LOG_DIR`
+      mount — files named `<app>-log.svc.<run_id>.json` and rows in
+      `util.app_run_logs` carrying the release's `RELEASE_SHA`).
 
 **Database**
 - [ ] Non-SSL connection rejected; `verify-full` passes; `docker inspect pg_db` shows
