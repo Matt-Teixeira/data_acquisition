@@ -553,8 +553,12 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       it. Skipped, documented: fleet Docker/entrypoint/logger, svc-crontab
       move, run_outcome. Dead code kept-and-documented (broken copy_schema.js
       chain, pg-pool_old.js, commands.sh). Release 03b1a1a: zero drift, watchdog
-      release run logged `sha=03b1a1a`; dev backup smoke ran the real nightly
-      path. REMAINING: two nightly backup.log lines on `03b1a1a` (expect clean
+      release run logged `sha=03b1a1a`. The dev backup smoke was TERM-killed
+      mid-pg_dump by session teardown — which field-proved the new trap (one
+      honest `FAILED rc=143 ... partial dump removed sha=dev-tree` line, no
+      partial left); the full-path smoke was re-run from the RELEASE copy
+      instead (expect an `OK ... sha=03b1a1a` line, ~19:5x). REMAINING: that
+      smoke's OK line, two nightly backup.log lines on `03b1a1a` (expect clean
       2026-08-28 am), then banner off + one closeout re-release; watchdog's
       Sep 3 tick reports on its own clock.
       **Next app in the queue: hhm_rpp_philips** (unchanged since 6l).
