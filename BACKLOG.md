@@ -390,6 +390,40 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       **Next app in the queue: hhm_rpp_ge** (shared-image OWNER: its
       build-release must produce `hhm_rpp:svc` AND tag the `staging` alias;
       siemens' reference flip + re-release belongs in that same cutover).
+- [x] **6l. Fleet rollout #6: hhm_rpp_ge — migrated 2026-08-26.** Same sequence,
+      siemens as the primary copy source (same codebase family) with the image
+      ownership reversed: ge's `build.sh` BUILDS `hhm_rpp:<USER_ID>` (dev) and
+      its `build-release.sh` builds `hhm_rpp:svc` + re-points the `staging`
+      alias for un-migrated philips (rollback tag `hhm_rpp:pre-ge-migration`).
+      Unlike siemens this app was LIVE (user-crontab `15,45`, 95 runs/family
+      per 48h baseline) — freeze/suspend window used, entries hardened IN the
+      user crontab at unchanged cadence (standing decision: consolidation to
+      svc crontab is 6f's follow-up), 92-line crontab verified line-identical
+      outside the 3 GE entries. 8 commits on STAGING_docker (10f3b5a..a241f9f):
+      banner-first CLAUDE.md (app had none; docs/run+setup.md deleted as
+      rivals); build.sh (in-tree deps + image build); one-commit LOG_DIR flip
+      (variant-B logger RUN_ENV switch removed — its default: case fell to the
+      PRODUCTION path, and compose hardcoded the /opt/run-logs mount, so every
+      dev run wrote the production record; node_mod_cache mount + legacy `app`
+      service retired; RUN_USER unpinned); boot env_note fix (REDIS_IP/PG_USER/
+      PG_DB logged undefined every run; argv untouched); gracefulShutdown
+      (kill-tested: E_SIGNAL, exit 1, once-guard held, 1 DB row);
+      build-release.sh (+ step 6 staging retag — REMOVE when philips migrates);
+      preflight (52/0/0 both copies). Release `a957a59`: zero drift, svc smoke
+      green. Two-cycle verify green (13:15+13:45 UTC): 2×3 families on
+      `a957a59`, zero dev-tree, warns in band (CT 45/~52, CV 2/2, MRI 14/~16.5),
+      philips green on the re-pointed alias (42 runs), siemens green. Root-owned
+      node_modules husk removed pre-release (third time this trap has been
+      live). Known warts documented in its CLAUDE.md instead of fixed (owner
+      default): redisHelpers undeclared `note` in catch, cursor re-measurement
+      skip window, GE_CT `LIKE '%CT'` vs exact-match dispatcher, museum pile
+      (utils/vpn cannot even load; pm2 unused; NOTE pg-helpers_hhm.js is LIVE
+      here unlike mmb-rpp). **Siemens flip (IMAGE_TAG=svc in both .env copies +
+      re-release) was PENDING at ge's banner-off** — harmless meanwhile (the
+      `staging` alias already points at the new image) but must land before
+      philips' migration retires the alias. **Next app in the queue:
+      hhm_rpp_philips** (last hhm_rpp consumer; retires the `staging` alias and
+      ge's build-release step 6 with it).
 
 ---
 

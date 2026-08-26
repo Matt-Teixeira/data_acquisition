@@ -20,7 +20,7 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > provisioning (users, groups, Postgres/Redis, secrets, networks, backups).
 > Migrated so far: **data_acquisition (2026-08-24)**, **monday (2026-08-25)**,
 > **part-source-pipeline (2026-08-25)**, **acumatica_sync (2026-08-25)**,
-> **hhm_rpp_siemens (2026-08-25)** —
+> **hhm_rpp_siemens (2026-08-25)**, **hhm_rpp_ge (2026-08-26)** —
 > their sections below are updated; other apps' sections still describe their live
 > pre-paradigm state and get corrected as each one migrates.
 
@@ -1079,11 +1079,11 @@ Per-app migration checklist (repeat for each remaining app):
 
 Rollout order suggestion (blast radius, low → high): ~~monday~~ →
 ~~part-source-pipeline~~ → ~~acumatica_sync~~ → ~~hhm_rpp_siemens~~ (all four
-done 2026-08-25) → **hhm_rpp_ge (next — owns the shared `hhm_rpp` image; its
-migration builds `hhm_rpp:svc` + a `staging` alias so un-migrated philips keeps
-running, and siemens flips its reference in the same cutover)** →
-hhm_rpp_philips. (data_acquisition, originally saved for last as the busiest
-app, ended up going first as the pilot.)
+done 2026-08-25) → ~~hhm_rpp_ge~~ (done 2026-08-26 — built `hhm_rpp:svc` and
+re-pointed the `staging` alias so un-migrated philips kept running; siemens
+flipped its reference in the same cutover) → **hhm_rpp_philips (next — retires
+the `staging` alias in its own migration)**. (data_acquisition, originally
+saved for last as the busiest app, ended up going first as the pilot.)
 
 ------------------------------------------------------------------------
 
@@ -1106,9 +1106,9 @@ instructions are dead):
 | App | Entrypoint | Image compose runs | Built by |
 |---|---|---|---|
 | data_acquisition (**migrated**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `data-acqu:${USER_ID}` (dev = username, release = `svc`) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
-| hhm_rpp_ge | `docker/entrypoint.sh` | `hhm_rpp:${IMAGE_TAG}` | `docker compose build` in **GE** (owns the shared image) |
-| hhm_rpp_siemens (**migrated 2026-08-25**) | — (no Dockerfile, on purpose; GE's baked gosu entrypoint, NO log-dir repair — build.sh/preflight create the dev log dir host-side) | `hhm_rpp:${IMAGE_TAG}` (GE's image; transitional tag until ge migrates, then `hhm_rpp:svc`) | no image build — `build.sh` (deps only) / `build-release.sh` (release, as svc) |
-| hhm_rpp_philips | — (no Dockerfile, on purpose) | `hhm_rpp:${IMAGE_TAG}` (GE's image) | by reuse |
+| hhm_rpp_ge (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked, gosu drop only — NO log-dir repair; build.sh/preflight create the dev log dir host-side, `/opt/run-logs` pre-created) | `hhm_rpp:${IMAGE_TAG}` (dev = username, release = `svc`; **owns the shared image**) | `bash build.sh` (dev) / `build-release.sh` (release, as svc — also re-points the `staging` alias for philips) |
+| hhm_rpp_siemens (**migrated 2026-08-25**) | — (no Dockerfile, on purpose; GE's baked gosu entrypoint, NO log-dir repair — build.sh/preflight create the dev log dir host-side) | `hhm_rpp:${IMAGE_TAG}` = `hhm_rpp:svc` since ge migrated (2026-08-26) | no image build — `build.sh` (deps only) / `build-release.sh` (release, as svc) |
+| hhm_rpp_philips | — (no Dockerfile, on purpose) | `hhm_rpp:${IMAGE_TAG}` (GE's image via the transitional `staging` alias) | by reuse |
 | monday | `entrypoint.sh` (root, baked; repairs `files/`+`data_outputs/`) | `monday:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | reports | `docker/entrypoint.sh` | `aux:${IMAGE_TAG}` (legacy tag name) | `docker compose build` |
 | part-source-pipeline (**migrated**) | `entrypoint.sh` (root, baked; repairs `files/` + the log mount) | `psp:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
@@ -1202,25 +1202,43 @@ first run of any RPP app:
 > image build — deps only); logger flipped to the `LOG_DIR` mount pattern with
 > `USER_ID`/`LOGGER_MODE` (RUN_ENV/LOGGER retired); shared `node_mod_cache`
 > mount retired; runs record `RELEASE_SHA` in `util.app_run_logs`. It keeps
-> `image: hhm_rpp:${IMAGE_TAG}` **deliberately** (documented transitional wart
-> in its CLAUDE.md): the tag flips to `hhm_rpp:svc` when ge migrates, ge's
-> release also tags a `staging` alias so un-migrated philips needs zero edits,
+> `image: hhm_rpp:${IMAGE_TAG}` **deliberately**: since ge's migration
+> (2026-08-26) that resolves to `hhm_rpp:svc`; ge's release also re-points the
+> `staging` alias so un-migrated philips needs zero edits,
 > and philips retires the alias in its own migration. Per-consumer identity
 > tags were rejected — the image carries no app code. Schedule: **shared svc
 > crontab**, `15,45` (CT `:15:55`, MRI `:16:05`); SIEMENS_CV is dead by config
 > (0 systems) and stays unscheduled. Before 2026-08-25 this app had NEVER run
 > on this box — the section text below describing it pre-paradigm is historical.
 
+> **hhm_rpp_ge is MIGRATED (2026-08-26)** — the clone/warm-cache instructions
+> below no longer apply to it (philips only now). Dev clone `~/apps/hhm_rpp_ge`;
+> `/opt/apps/hhm_rpp_ge` is build output of its `build-release.sh`. As the
+> image owner its `build.sh` BUILDS `hhm_rpp:<USER_ID>` (dev) and the release
+> builds `hhm_rpp:svc` + re-points the `staging` alias (rollback tag
+> `hhm_rpp:pre-ge-migration` = the last pre-migration image). Logger flipped to
+> the `LOG_DIR` mount pattern with `USER_ID`/`LOGGER_MODE` (RUN_ENV/LOGGER
+> retired); `node_mod_cache` mount and legacy `app` service retired;
+> SIGTERM/SIGINT once-guarded flush added; runs record `RELEASE_SHA` in
+> `util.app_run_logs`. Schedule: **matt-teixeira's user crontab** (stays there
+> until the BACKLOG 6f consolidation), `15,45 * * * *`, hardened 2026-08-26
+> (flock, `-T`, absolute paths, direct `node index.js GE_*` argv, bounded
+> `.out` files, 0/20/40s stagger). Its CLAUDE.md is authoritative for
+> day-to-day operation.
+
 ```bash
-cd /opt/apps/hhm_rpp_ge
-docker compose build        # -> hhm_rpp:${IMAGE_TAG}; args from .env (fails loudly if unset)
+# Image build now happens in ge's DEV CLONE (bash build.sh -> hhm_rpp:<USER_ID>)
+# or via ge's build-release.sh (-> hhm_rpp:svc + staging alias). Never build by
+# hand in /opt/apps — that tree is build output.
+cd ~/apps/hhm_rpp_ge && bash build.sh
 ```
 
-Per app (GE shown; philips/siemens identical with their names):
+Per app — **philips only** (ge and siemens are migrated; their own CLAUDE.md
+and build-release.sh replace all of this):
 
 ```bash
-git clone git@github.com:Matt-Teixeira/hhm_rpp_ge.git /opt/apps/hhm_rpp_ge
-cd /opt/apps/hhm_rpp_ge
+git clone git@github.com:Matt-Teixeira/hhm_rpp_philips.git /opt/apps/hhm_rpp_philips
+cd /opt/apps/hhm_rpp_philips
 git switch -c STAGING_docker --track origin/STAGING_docker
 chmod -R g+rwX utils/logger && chgrp -R docker utils/logger
 # .env: PG*/REDIS_* vars (incl. REDIS_PW), RUN_USER=svc, RUN_ENV=staging,
