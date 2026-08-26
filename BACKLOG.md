@@ -462,6 +462,37 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       `~/env-backups/reports.env.bak-2026-08-26` — it is the ONLY copy of
       OUTLOOK_PW and MONDAY_API_TOKEN on this host. **Next app in the queue:
       hhm_rpp_philips** (unchanged from 6l — reports jumped the queue).
+- [x] **6n. Fleet rollout #8: incident-engine — migrated 2026-08-26** (jumped the
+      queue past philips by owner decision). Distinct shape going in: the app had
+      NO image at all (stock `node:lts`, `user: "105:987"` declarative drop, doc
+      2.1 called it "by design") and `/opt/apps/incident-engine` was the PRIMARY
+      git repo, with cron running a git worktree `/opt/apps/incident-engine-deploy`
+      pinned to a reviewed SHA (its own Phase-5-era deploy boundary — reconciled,
+      not layered over: build-release.sh replaces it, same guarantee + guard +
+      provenance). 8 commits on main (b63bf3e..602ba4a): banner-first;
+      `incident-engine:${USER_ID}` image + gosu entrypoint (log-dir repair) +
+      in-tree deps (node_mod_cache mount + `/tmp` container HOME retired);
+      build-release.sh + RELEASE_SHA boot note/console line one-commit;
+      one-commit LOG_DIR flip (variant-B logger RUN_ENV switch removed — its
+      default: case fell to the PRODUCTION path, same trap as ge/reports;
+      LOGGER→USER_ID tag, LOGGER_MODE; kept this copy's write_stream_error
+      hardening the reference lacks); SIGTERM/SIGINT flush-once handlers
+      (kill test: ERROR event, both sinks, exit 1, we=1 row); preflight 38/0/0
+      both copies (sibling-container verify-full PG as incident_engine_rw with
+      the CA mounted; no Redis/APIs); docs conform + PHASE_LOG migration entry.
+      Release `0309687`: zero drift, tar listing verified (94 entries), svc
+      smoke green. Cron hardened IN PLACE in the user crontab (standing
+      decision), cadence :25/:55 unchanged, 50 entries before+after, worktree
+      + node_mod_cache dir removed post-verify. Two-cycle verify green vs the
+      8-day baseline (48 runs/day, zero warn/err): 16:55:02 + 17:25:03 UTC on
+      `0309687`, we=0, events=7, zero dev-tree. Root-owned node_modules husk
+      removed pre-release (fifth occurrence). PENDING: doc-only re-release for
+      banner-off CLAUDE.md; register BOTH `.env` copies with the rotation
+      script (PGPASSWORD — the app was never listed; doc 2.1's own postmortem
+      records a 2-day silent failure from exactly this gap). **Next app in the
+      queue: hhm_rpp_philips** (unchanged from 6l/6m — incident-engine also
+      jumped; philips retires the `staging` alias and ge's build-release
+      step 6 with it).
 
 ---
 

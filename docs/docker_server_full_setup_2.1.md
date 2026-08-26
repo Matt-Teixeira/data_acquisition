@@ -21,7 +21,7 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > Migrated so far: **data_acquisition (2026-08-24)**, **monday (2026-08-25)**,
 > **part-source-pipeline (2026-08-25)**, **acumatica_sync (2026-08-25)**,
 > **hhm_rpp_siemens (2026-08-25)**, **hhm_rpp_ge (2026-08-26)**,
-> **reports (2026-08-26)** —
+> **reports (2026-08-26)**, **incident-engine (2026-08-26)** —
 > their sections below are updated; other apps' sections still describe their live
 > pre-paradigm state and get corrected as each one migrates.
 
@@ -118,10 +118,11 @@ Other standing conventions:
   container path `./utils/logger/logs/`, and the compose mount
   `${LOG_DIR:-./utils/logger/logs}` decides the host destination — dev path by
   default (**fails safe**), `/opt/run-logs/<app>` in a release via `#RELEASE:LOG_DIR`.
-- **`RUN_LOGS_DIR` format (legacy).** Where an app's `.env` still defines it
-  (incident-engine), it is a **full `host:container` bind spec** consumed verbatim by
-  a compose volume entry: `RUN_LOGS_DIR=/opt/run-logs/<app>:/opt/run-logs/<app>`.
-  Retired in migrated apps in favor of `LOG_DIR` above.
+- **`RUN_LOGS_DIR` format (RETIRED fleet-wide since 2026-08-26).** It was a **full
+  `host:container` bind spec** consumed verbatim by a compose volume entry
+  (`RUN_LOGS_DIR=/opt/run-logs/<app>:/opt/run-logs/<app>`); incident-engine, its last
+  user, migrated to `LOG_DIR` above. If it reappears in an `.env`, that app's
+  preflight warns.
 - **Maintenance scripts live in the repo that owns their subject** (2026-08-18):
   database scripts in `pg_manage_v2/scripts/`, Redis scripts and host-setup files in
   `redis-admin/`, the cross-app run-log prune in `data_acquisition/scripts/`.
@@ -1114,7 +1115,7 @@ instructions are dead):
 | reports (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `reports:${USER_ID}` (dev = username, release = `svc`; the legacy `aux:` tag is retired — follow-up 10 closed) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
 | part-source-pipeline (**migrated**) | `entrypoint.sh` (root, baked; repairs `files/` + the log mount) | `psp:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | acumatica_sync | `entrypoint.sh` (root) | `acu-sync:${USER_ID}` (migrated 2026-08-25) | `bash build.sh` / release via `build-release.sh` |
-| incident-engine | n/a | stock `node:lts`, `user: "105:987"` | by design (declarative drop, no gosu) |
+| incident-engine (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair, gosu drop) | `incident-engine:${USER_ID}` (dev = username, release = `svc`; replaced stock `node:lts` + `user: "105:987"` pin) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
 | ops-dashboard | n/a | stock `node:lts`, `user: "105:987"` | by design |
 | imprivata-poc | `docker/entrypoint.sh` (conditional gosu) | `imprivata-poc:local` | `docker compose build app_tools` |
 
@@ -1393,40 +1394,47 @@ pending the role migration (Phase 4a).
 
 # INCIDENT-ENGINE APP
 
-Cron-batch error→incident pipeline (stock `node:lts`, `user: "105:987"`, no Dockerfile).
-Owns schema `incidents`; reads `util.app_run_logs` + `stats.acquisition_history`;
-self-logs through a DB-enforced check-option view. Deploy **before ops-dashboard**
-(its role script grants SELECT on `incidents.*`).
+**Migrated to the paradigm 2026-08-26** (fleet rollout #8 — see BACKLOG 6n). Cron-batch
+error→incident pipeline with its own image `incident-engine:${USER_ID}` (gosu
+entrypoint; the pre-paradigm stock `node:lts` + `user: "105:987"` pin and the
+`/opt/apps/incident-engine-deploy` git worktree are retired). Owns schema `incidents`;
+reads `util.app_run_logs` + `stats.acquisition_history`; self-logs through a
+DB-enforced check-option view, boot note carries `RELEASE_SHA`. Deploy **before
+ops-dashboard** (its role script grants SELECT on `incidents.*`).
 
 ```bash
-git clone git@github.com:Matt-Teixeira/incident-engine.git /opt/apps/incident-engine
-cd /opt/apps/incident-engine          # tracks main
-mkdir -p /opt/resources/node_mod_cache/incident-engine /opt/run-logs/incident-engine
+# Dev clone (the editable tree; /opt/apps/incident-engine is release output ONLY)
+git clone git@github.com:Matt-Teixeira/incident-engine.git ~/apps/incident-engine
+cd ~/apps/incident-engine             # tracks main
+sudo mkdir -p /opt/run-logs/incident-engine
+sudo chown svc:docker /opt/run-logs/incident-engine && sudo chmod 2775 /opt/run-logs/incident-engine
 cp .env.example .env
 # PGUSER=incident_engine_rw, PG_SSLMODE=verify-full, PG_SSL_PATH=/opt/resources/ssl/pg_ssl.crt,
-# RUN_LOGS_DIR=/opt/run-logs/incident-engine:/opt/run-logs/incident-engine
+# USER_ID=<your username>, DOCKER_GID/UID_0/UID_1/UID_2 from THIS host (see .env.example)
 
 # Provision DB (superuser, IN THIS ORDER; re-run both after any app-database reset;
 # password-file pattern per DATABASE ROLES):
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -f - < db/schema.sql
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v pw="$(sudo cat /root/incident_engine_rw_pw)" -f - < db/setup-owner-role.sql
 
-docker compose run --rm app npm install
-docker compose run --rm app node index.js materialize
-docker compose run --rm app node index.js assess
-docker compose run --rm app node index.js assess     # second pass proves idempotency
+bash build.sh                          # in-tree deps + image incident-engine:<you>
+bash preflight-check.sh                # expect zero warnings
+RUN_USER=$(id -un) docker compose run --rm app node index.js noop        # lifecycle smoke
+RUN_USER=$(id -un) docker compose run --rm app node index.js materialize
+RUN_USER=$(id -un) docker compose run --rm app node index.js assess
+RUN_USER=$(id -un) docker compose run --rm app node index.js assess      # second pass proves idempotency
+
+# Release (wipes/mirrors /opt/apps/incident-engine, stamps RELEASE_SHA, builds :svc)
+bash build-release.sh
+(cd /opt/apps/incident-engine && bash preflight-check.sh && docker compose run --rm app node index.js noop)
 ```
 
-### Deploy worktree (the production run path — REQUIRED before installing its cron line)
+Cron (see `docs/schedules.md`) — hardened entry in the operating user's crontab,
+release copy, svc via the entrypoint default:
 
-```bash
-git -C /opt/apps/incident-engine worktree add /opt/apps/incident-engine-deploy <reviewed-sha>
-cp /opt/apps/incident-engine/.env /opt/apps/incident-engine-deploy/.env   # copied, NOT symlinked — rotate creds in both
-# Update later: git -C /opt/apps/incident-engine-deploy fetch origin && git -C /opt/apps/incident-engine-deploy checkout <new-sha>
-# Rollback = checkout a previous SHA.
+```cron
+25,55 * * * * cd /opt/apps/incident-engine && /usr/bin/flock -n /tmp/incident-engine.run.lock /usr/bin/docker compose run --rm -T app node index.js run >/opt/run-logs/incident-engine/cron.run.out 2>&1
 ```
-
-Cron (see `docs/schedules.md`): `25,55 * * * * cd /opt/apps/incident-engine-deploy && docker compose run --rm app node index.js run`
 
 ------------------------------------------------------------------------
 

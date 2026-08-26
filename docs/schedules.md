@@ -49,16 +49,14 @@ Minute offsets keep job families off each other's DB/Redis load peaks:
 `system_reset_totalizer` cron line was **rolled back 2026-07-13** (paused); the line is
 kept commented in the crontab for re-cutover. Until then data_acquisition owns that job.
 
-## incident-engine runs from its deploy worktree
+## incident-engine runs from its release copy (worktree retired 2026-08-26)
 
-The incident-engine entry runs from `/opt/apps/incident-engine-deploy` — a git worktree
-pinned to a reviewed SHA, so a `git checkout` in the dev tree can never change what cron
-executes. Create it once per server:
-
-```bash
-git -C /opt/apps/incident-engine worktree add /opt/apps/incident-engine-deploy <reviewed-sha>
-cp /opt/apps/incident-engine/.env /opt/apps/incident-engine-deploy/.env   # copied, not symlinked
-```
+The incident-engine entry runs from `/opt/apps/incident-engine`, which is release
+output produced only by `build-release.sh` in `~/apps/incident-engine` — same guarantee
+the old `/opt/apps/incident-engine-deploy` worktree gave (a `git checkout` in the dev
+tree can never change what cron executes), plus the clean-tree guard and `RELEASE_SHA`
+provenance. The entry is hardened (absolute paths, `flock -n`, `-T`, bounded
+`cron.run.out`) at the unchanged :25/:55 cadence.
 
 ## Overlap protection (optional hardening — not installed)
 
