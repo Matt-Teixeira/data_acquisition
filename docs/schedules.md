@@ -183,7 +183,10 @@ crontab /opt/resources/backups/crontab-<date>.txt                     # rollback
 25,55 * * * * cd /opt/apps/incident-engine-deploy && docker compose run --rm app node index.js run
 
 # --- maintenance jobs (installed 2026-08-17, plan-of-attack steps 1+3) ---
-15 2 * * * /opt/apps/pg_manage_v2/scripts/backup.sh >/dev/null 2>&1
+# backup entry hardened 2026-08-26 (pg_manage_v2 migration): bounded .out
+# instead of /dev/null. The watchdog entry's MISSING redirect is deliberate —
+# its stdout ALERT becomes cron mail, which is the alert channel.
+15 2 * * * /opt/apps/pg_manage_v2/scripts/backup.sh >/opt/run-logs/pg_manage_v2/cron.backup.out 2>&1
 30 3 * * * /opt/apps/data_acquisition/scripts/prune-run-logs.sh >/dev/null 2>&1
 0 9 3,25 * * /opt/apps/pg_manage_v2/scripts/check-partition-horizon.sh
 ```

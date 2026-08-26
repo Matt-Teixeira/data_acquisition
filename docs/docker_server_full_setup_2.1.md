@@ -22,7 +22,8 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > **part-source-pipeline (2026-08-25)**, **acumatica_sync (2026-08-25)**,
 > **hhm_rpp_siemens (2026-08-25)**, **hhm_rpp_ge (2026-08-26)**,
 > **reports (2026-08-26)**, **incident-engine (2026-08-26)**,
-> **ops-dashboard (2026-08-26)** —
+> **ops-dashboard (2026-08-26)**, **pg_manage_v2 (2026-08-26, admin-repo subset:
+> release flow + provenance + preflight; no image/entrypoint/logger parts)** —
 > their sections below are updated; other apps' sections still describe their live
 > pre-paradigm state and get corrected as each one migrates.
 
@@ -266,8 +267,12 @@ from inside them, before the app-repo steps:
 ```bash
 git clone git@github.com:Matt-Teixeira/redis-admin.git /opt/apps/redis-admin
 git -C /opt/apps/redis-admin switch <branch per the identity table>     # STAGING on acq-vm-0
-git clone git@github.com:Matt-Teixeira/pg_manage_v2.git /opt/apps/pg_manage_v2
-git -C /opt/apps/pg_manage_v2 switch <branch per the identity table>    # STAGING on acq-vm-0
+
+# pg_manage_v2 is paradigm-migrated (2026-08-26): the editable clone lives in
+# ~/apps and /opt/apps/pg_manage_v2 is BUILD OUTPUT — never a git checkout.
+git clone -b <branch per the identity table> git@github.com:Matt-Teixeira/pg_manage_v2.git ~/apps/pg_manage_v2
+# create ~/apps/pg_manage_v2/.env from .env.example, then produce the release copy:
+cd ~/apps/pg_manage_v2 && bash build-release.sh     # STEP 2 runs compose from the release copy
 ```
 
 ------------------------------------------------------------------------
@@ -504,9 +509,10 @@ done
 # STEP 5: DATABASE SCHEMA & DATA SEEDING (pg_manage_v2)
 
 ```bash
-cd /opt/apps/pg_manage_v2        # cloned + branch-switched in STEP 1.4
-# Create .env with SRC_* (Azure source) and DST_* (local pg_db) connection vars.
-docker build -t pg_manage .
+cd /opt/apps/pg_manage_v2        # release copy, produced by build-release.sh in STEP 1.4
+# .env (with SRC_* Azure source and DST_* local pg_db vars) arrived from the dev
+# clone's copy, transformed + RELEASE_SHA-stamped by build-release.sh.
+docker build -t pg_manage .      # operator-built; deliberately NOT identity-tagged
 ```
 
 This repo also owns the pg_db runtime definition (`infra/pg_db/` — STEP 2) and the
@@ -1119,6 +1125,7 @@ instructions are dead):
 | incident-engine (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair, gosu drop) | `incident-engine:${USER_ID}` (dev = username, release = `svc`; replaced stock `node:lts` + `user: "105:987"` pin) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
 | ops-dashboard (**migrated 2026-08-26**) | `entrypoint.sh` (root, baked; NO dir repair — the app writes no files) | `ops-dashboard:${USER_ID}` (dev = username, release = `svc`; replaced stock `node:lts` + `user: "105:987"` pin) | `bash build.sh` (dev) / `build-release.sh` (release, as svc + service restart step 6) |
 | imprivata-poc | `docker/entrypoint.sh` (conditional gosu) | `imprivata-poc:local` | `docker compose build app_tools` |
+| pg_manage_v2 (**migrated 2026-08-26**, admin-repo subset) | n/a — scheduled jobs are HOST bash scripts (user crontab), no containerized runs | `pg_manage:latest` (dormant seeding tooling only, operator-run; deliberately not identity-tagged) | `docker build -t pg_manage .` (operator, STEP 5) / releases via `build-release.sh` (no image step; provenance = `sha=` in backup.log / partition-watchdog.log) |
 
 Host identity (uid/gid build args, image tags) comes exclusively from each repo's
 untracked `.env` — builds fail loudly if unset. That is the convention working, not
@@ -1552,7 +1559,13 @@ All scripts are **tracked in their owning repos** and already scheduled (STEP 9)
   even when refused — the script checks for a literal `OK`; all four instances
   authenticate via their mounted auth.conf). Local retention: 7 days pg /
   14 days Redis under `/opt/resources/backups/`. Logs one line per night to
-  `backup.log` — "newest backup < 25 h old" is a standing health check.
+  `backup.log` — "newest backup < 25 h old" is a standing health check. Since the
+  2026-08-26 migration every line ends `sha=<RELEASE_SHA|dev-tree>` (release
+  provenance), every exit path logs exactly one line (EXIT-trap catch-all), an
+  unverified/partial dump is removed rather than left looking like a backup, and
+  the cron entry captures to `/opt/run-logs/pg_manage_v2/cron.backup.out` instead
+  of `/dev/null`. `pg_manage_v2/preflight-check.sh` checks the whole chain
+  (including backup.log freshness) with zero-warning standard.
   **Local-only until decision D4 picks an off-host target** (Azure storage is the
   natural fit) — then enable the sync stub at the bottom of the script (Phase 4g).
 - **`data_acquisition/scripts/prune-run-logs.sh`** — nightly 03:30: prunes

@@ -532,6 +532,32 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       **Next app in the queue: hhm_rpp_philips** (unchanged — third jump;
       philips retires the `staging` alias and ge's build-release step 6 with
       it).
+- [ ] **6p. Fleet rollout #10: pg_manage_v2 — cutover 2026-08-26, verifying**
+      (fourth queue jump, owner decision). First ADMIN REPO: the two scheduled
+      jobs are HOST bash scripts in the user crontab, so only the paradigm
+      subset applies — dev clone `~/apps/pg_manage_v2` (branch `STAGING`, was
+      the repo's ONLY checkout, living IN /opt/apps and 1 commit unpushed),
+      build-release.sh with NO image step (the `pg_manage` seeding image stays
+      operator-built, not identity-tagged), provenance as `sha=<sha|dev-tree>`
+      appended to the run records the app actually writes (backup.log /
+      partition-watchdog.log — the monday boot-line pattern in bash), preflight
+      35/0/0 both copies (sibling-container auth of DST_PASSWORD, the
+      rotation-registered SUPERUSER value — known wart, kept; reply-checked
+      authenticated PINGs on all four Redis; backup.log freshness). backup.sh
+      gained one-line-per-exit-path + partial-dump removal (EXIT-trap; all five
+      paths proven in a stubbed harness, which also caught the sha-reader grep
+      killing every dev run under set -e/pipefail BEFORE it shipped). Cron:
+      entries stay in the user crontab (standing decision); backup entry's
+      /dev/null → bounded .out in place (50 entries before/after); the
+      watchdog's missing redirect is its MAIL ALERT channel — never "harden"
+      it. Skipped, documented: fleet Docker/entrypoint/logger, svc-crontab
+      move, run_outcome. Dead code kept-and-documented (broken copy_schema.js
+      chain, pg-pool_old.js, commands.sh). Release 03b1a1a: zero drift, watchdog
+      release run logged `sha=03b1a1a`; dev backup smoke ran the real nightly
+      path. REMAINING: two nightly backup.log lines on `03b1a1a` (expect clean
+      2026-08-28 am), then banner off + one closeout re-release; watchdog's
+      Sep 3 tick reports on its own clock.
+      **Next app in the queue: hhm_rpp_philips** (unchanged since 6l).
 
 ---
 
