@@ -20,7 +20,8 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > provisioning (users, groups, Postgres/Redis, secrets, networks, backups).
 > Migrated so far: **data_acquisition (2026-08-24)**, **monday (2026-08-25)**,
 > **part-source-pipeline (2026-08-25)**, **acumatica_sync (2026-08-25)**,
-> **hhm_rpp_siemens (2026-08-25)**, **hhm_rpp_ge (2026-08-26)** —
+> **hhm_rpp_siemens (2026-08-25)**, **hhm_rpp_ge (2026-08-26)**,
+> **reports (2026-08-26)** —
 > their sections below are updated; other apps' sections still describe their live
 > pre-paradigm state and get corrected as each one migrates.
 
@@ -1110,7 +1111,7 @@ instructions are dead):
 | hhm_rpp_siemens (**migrated 2026-08-25**) | — (no Dockerfile, on purpose; GE's baked gosu entrypoint, NO log-dir repair — build.sh/preflight create the dev log dir host-side) | `hhm_rpp:${IMAGE_TAG}` = `hhm_rpp:svc` since ge migrated (2026-08-26) | no image build — `build.sh` (deps only) / `build-release.sh` (release, as svc) |
 | hhm_rpp_philips | — (no Dockerfile, on purpose) | `hhm_rpp:${IMAGE_TAG}` (GE's image via the transitional `staging` alias) | by reuse |
 | monday | `entrypoint.sh` (root, baked; repairs `files/`+`data_outputs/`) | `monday:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
-| reports | `docker/entrypoint.sh` | `aux:${IMAGE_TAG}` (legacy tag name) | `docker compose build` |
+| reports (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `reports:${USER_ID}` (dev = username, release = `svc`; the legacy `aux:` tag is retired — follow-up 10 closed) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
 | part-source-pipeline (**migrated**) | `entrypoint.sh` (root, baked; repairs `files/` + the log mount) | `psp:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | acumatica_sync | `entrypoint.sh` (root) | `acu-sync:${USER_ID}` (migrated 2026-08-25) | `bash build.sh` / release via `build-release.sh` |
 | incident-engine | n/a | stock `node:lts`, `user: "105:987"` | by design (declarative drop, no gosu) |
@@ -1289,21 +1290,30 @@ belongs to the DB-roles rollout, not to casual cleanup.
 
 # REPORTS APP
 
-```bash
-git clone git@github.com:Matt-Teixeira/reports.git /opt/apps/reports
-cd /opt/apps/reports
-git switch -c STAGING_docker --track origin/STAGING_docker
-chmod -R g+rwX utils/logger && chgrp -R docker utils/logger
+**MIGRATED to the fleet paradigm 2026-08-26** (#7). Its own CLAUDE.md is
+authoritative for day-to-day operation; summary:
 
-docker compose build        # -> aux:${IMAGE_TAG} (historical shared-aux tag; rename is tracked debt)
+```bash
+# Dev clone is the editable tree; /opt/apps/reports is build-release.sh output.
+git clone git@github.com:Matt-Teixeira/reports.git ~/apps/reports
+cd ~/apps/reports && git switch STAGING_docker
+# .env from .env.example: PGUSER=reports_rw, PG_SSLMODE=verify-full,
+# PG_SSL_PATH=/opt/resources/ssl/pg_ssl.crt, USER_ID=<you>, host identity args.
 
 # DB role (pilot pattern — see DATABASE ROLES; use the password-file pattern):
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v pw="$(sudo cat /root/reports_rw_pw)" -f - < db/setup-role.sql
-# .env: PGUSER=reports_rw, PG_SSLMODE=verify-full, PG_SSL_PATH=/opt/resources/ssl/pg_ssl.crt
-# Compose already forces verify-full + mounts /opt/resources/ssl:ro.
 
-docker compose run --rm app bash -lc "npm ci --omit=dev --no-audit --no-fund"   # warm cache
+bash preflight-check.sh     # authed verify-full PG as reports_rw + Monday.com me query
+bash build.sh               # in-tree deps + reports:<you>
+bash build-release.sh       # -> /opt/apps/reports as reports:svc, RELEASE_SHA stamped
 ```
+
+Two standing hazards (see its CLAUDE.md): **no schedule is installed, by
+decision** — this app had never run on this host, and running a report family
+at a `:00`/`:30` minute emails real customers from `alert.reports`
+subscriptions; smoke-test at non-matching minutes only. The retired
+`aux:staging` image and the orphaned `/opt/resources/node_mod_cache/reports`
+dir await post-cutover cleanup.
 
 ------------------------------------------------------------------------
 
@@ -1602,9 +1612,13 @@ plain `VACUUM` does not return the disk space.
    must authenticate to reach it; until Jonathan confirms/ships that, odd-jobs'
    Redis access fails fast with NOAUTH — coordinate before the next `pg-part-arch`
    run (1st of the month) if that job touches Redis.
-10. **reports image tag** — rename `aux:` → `reports:` once nothing else consumes it.
-11. **incident-engine / ops-dashboard / reports hardcoded ids** — migrate the
-    remaining `105:987` literals to the `.env` convention.
+10. ~~**reports image tag**~~ — DONE 2026-08-26 with reports' migration: the image
+    is `reports:${USER_ID}`; verified nothing consumed `aux:` (no compose file,
+    container, or script). The orphaned `aux:staging` image itself is
+    post-cutover cleanup.
+11. **incident-engine / ops-dashboard hardcoded ids** — migrate the remaining
+    `105:987` literals to the `.env` convention. (reports' literals were already
+    parameterized pre-migration, REL-07.)
 12. **systems-inventory sync policy (B0a)** — named decision + owner (see 5.5).
 13. **git-history scrub of the old DB password** (D3) — value is dead; cleanup only.
 14. **PROD** (4j) — branches, cutover runbook, data governance: unblocked once this

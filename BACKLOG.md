@@ -424,6 +424,44 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       philips' migration retires the alias. **Next app in the queue:
       hhm_rpp_philips** (last hhm_rpp consumer; retires the `staging` alias and
       ge's build-release step 6 with it).
+- [x] **6m. Fleet rollout #7: reports — migrated 2026-08-26** (pulled forward
+      past philips by owner decision). Unusual start: app had NEVER run on this
+      host (zero `util.app_run_logs` rows ever, empty /opt/run-logs/reports, no
+      crontab entries; doc 2.1's "reports_rw broken-but-latent" confirmed) and
+      was already half-hardened by the Aug 18-19 server audit (run_outcome/v1
+      incl. the DB self-log insert, fail-closed verify-full pg-pool, reports_rw
+      role, no-default ARGs, baked entrypoint — all kept). So: structure-only
+      migration, **NO schedule installed, by decision** — staging's
+      alert.reports holds 107 live customer subscriptions keyed by half-hour dt
+      slots, and a family run at :00/:30 sends real email; DB-baseline verify is
+      N/A (nothing to baseline), replaced by deliberate-run verification.
+      10 commits on STAGING_docker (a7e628a..06c2ea7): banner-first CLAUDE.md
+      (app had none; docs/run.sh rewritten as pointer); uuid declared (was an
+      undeclared transitive required by index.js AND log.js); entrypoint
+      log-dir repair; **aux:${IMAGE_TAG} → reports:${USER_ID}** (verified zero
+      aux: consumers — doc 2.1 follow-up 10 closed; aux:staging left for
+      cleanup); build.sh + in-tree deps (cache mount retired); build-release.sh
+      (guard above wipe; excludes verified vs git ls-files — dev logs are
+      *-log.*.json, a *.log exclude would miss them) + boot env_note/console
+      line one-commit; one-commit LOG_DIR flip (variant-B logger's RUN_ENV
+      default: case fell to the PRODUCTION path — same trap as ge — plus
+      hardcoded /opt/run-logs mount; LOGGER/RUN_ENV/IMAGE_TAG/RUN_USER retired);
+      gracefulShutdown (kill-tested: E_SIGNAL, exit 1, once-guard, both sinks);
+      preflight 39/0/0 both copies (sibling-container verify-full PG as
+      reports_rw with the real CA mounted, Monday.com me query, Outlook
+      presence-only per Acumatica precedent). Release `282a60d`: zero drift,
+      svc smoke skipped/0, log svc-owned, DB row `282a60d|svc|skipped` — the
+      app's first-ever run rows are this migration's smokes. Root-owned (empty)
+      node_modules husk removed pre-release (fourth occurrence of this trap).
+      Kept warts in its CLAUDE.md: dead TWILIO_* keys, commented Azure-PROD
+      block (pg-pool falls back PGHOST→PG_HOST — preflight guards it),
+      rotation-script listing inert by design (reports_rw ≠ superuser
+      reference; rotation path is /root/reports_rw_pw + setup-role.sql),
+      utils/ museum (NOTE: live queries under BOTH sql/reports/ AND
+      sql/alert-notify/ — don't prune the latter). `.env` backed up at
+      `~/env-backups/reports.env.bak-2026-08-26` — it is the ONLY copy of
+      OUTLOOK_PW and MONDAY_API_TOKEN on this host. **Next app in the queue:
+      hhm_rpp_philips** (unchanged from 6l — reports jumped the queue).
 
 ---
 
