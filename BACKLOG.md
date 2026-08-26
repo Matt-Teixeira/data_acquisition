@@ -486,10 +486,14 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       + node_mod_cache dir removed post-verify. Two-cycle verify green vs the
       8-day baseline (48 runs/day, zero warn/err): 16:55:02 + 17:25:03 UTC on
       `0309687`, we=0, events=7, zero dev-tree. Root-owned node_modules husk
-      removed pre-release (fifth occurrence). PENDING: doc-only re-release for
-      banner-off CLAUDE.md; register BOTH `.env` copies with the rotation
-      script (PGPASSWORD — the app was never listed; doc 2.1's own postmortem
-      records a 2-day silent failure from exactly this gap). **Next app in the
+      removed pre-release (fifth occurrence). Doc-only re-release done
+      (RELEASE_SHA=602ba4a). Rotation follow-up RESOLVED 2026-08-26 as
+      inert-by-design (the reports finding generalizes): the script rotates
+      the SUPERUSER password by value-match; incident_engine_rw's own password
+      can never match, so the app stays deliberately absent — absence now
+      commented in the script itself, and the real path
+      (/root/incident_engine_rw_pw + setup-owner-role.sql + both .env copies)
+      documented in the app's ENVIRONMENT.md. **Next app in the
       queue: hhm_rpp_philips** (unchanged from 6l/6m — incident-engine also
       jumped; philips retires the `staging` alias and ge's build-release
       step 6 with it).
