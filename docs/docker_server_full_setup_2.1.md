@@ -21,7 +21,8 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > Migrated so far: **data_acquisition (2026-08-24)**, **monday (2026-08-25)**,
 > **part-source-pipeline (2026-08-25)**, **acumatica_sync (2026-08-25)**,
 > **hhm_rpp_siemens (2026-08-25)**, **hhm_rpp_ge (2026-08-26)**,
-> **reports (2026-08-26)**, **incident-engine (2026-08-26)** —
+> **reports (2026-08-26)**, **incident-engine (2026-08-26)**,
+> **ops-dashboard (2026-08-26)** —
 > their sections below are updated; other apps' sections still describe their live
 > pre-paradigm state and get corrected as each one migrates.
 
@@ -1116,7 +1117,7 @@ instructions are dead):
 | part-source-pipeline (**migrated**) | `entrypoint.sh` (root, baked; repairs `files/` + the log mount) | `psp:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | acumatica_sync | `entrypoint.sh` (root) | `acu-sync:${USER_ID}` (migrated 2026-08-25) | `bash build.sh` / release via `build-release.sh` |
 | incident-engine (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair, gosu drop) | `incident-engine:${USER_ID}` (dev = username, release = `svc`; replaced stock `node:lts` + `user: "105:987"` pin) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
-| ops-dashboard | n/a | stock `node:lts`, `user: "105:987"` | by design |
+| ops-dashboard (**migrated 2026-08-26**) | `entrypoint.sh` (root, baked; NO dir repair — the app writes no files) | `ops-dashboard:${USER_ID}` (dev = username, release = `svc`; replaced stock `node:lts` + `user: "105:987"` pin) | `bash build.sh` (dev) / `build-release.sh` (release, as svc + service restart step 6) |
 | imprivata-poc | `docker/entrypoint.sh` (conditional gosu) | `imprivata-poc:local` | `docker compose build app_tools` |
 
 Host identity (uid/gid build args, image tags) comes exclusively from each repo's
@@ -1440,15 +1441,23 @@ release copy, svc via the entrypoint default:
 
 # OPS-DASHBOARD APP
 
-**Long-running HTTP service** (the only one): `docker compose up -d`, not `run --rm`.
-Read-only Express dashboard over `util.app_run_logs` on `:8080`, `restart:
-unless-stopped`, stock `node:lts` as `user: "105:987"`, log cap in compose.
+**Migrated 2026-08-26.** **Long-running HTTP service** (the only one):
+`docker compose up -d`, not `run --rm`. Read-only Express dashboard over
+`util.app_run_logs`, `restart: unless-stopped`, log cap in compose. On the
+paradigm: own image `ops-dashboard:${USER_ID}` (dev = username, release =
+`svc` via gosu entrypoint — the stock `node:lts` + `user: "105:987"` pin is
+retired), in-tree `node_modules` (the `node_mod_cache` and `/opt/run-logs`
+mounts are retired — the app writes NO files; its run record is the self-log
+heartbeat in `util.app_run_logs`, which carries `RELEASE_SHA`/`USER_ID` in
+its boot note, plus a boot console line). Service-specific split: dev clone
+runs compose project `ops-dashboard-dev` on `:8081`, the release runs
+`ops-dashboard` on `:8080` — `COMPOSE_PROJECT_NAME`/`HOST_PORT` fail safe to
+the dev values so a dev `up -d` can never recreate the production container.
 
 ```bash
-git clone git@github.com:Matt-Teixeira/ops-dashboard.git /opt/apps/ops-dashboard
-cd /opt/apps/ops-dashboard           # tracks main
-mkdir -p /opt/resources/node_mod_cache/ops-dashboard /opt/run-logs/ops-dashboard
-cp .env.example .env                 # PGHOST=pg_db, SSL cert path, self-monitoring toggle
+git clone git@github.com:Matt-Teixeira/ops-dashboard.git ~/apps/ops-dashboard
+cd ~/apps/ops-dashboard              # tracks main; /opt/apps copy is build output
+cp .env.example .env                 # identity keys + PG creds (role password files below)
 
 # Roles (superuser, once; incident-engine must already be deployed or the fail-closed
 # script errors on the missing incidents.* grant targets; password-file pattern):
@@ -1456,15 +1465,20 @@ docker exec -i pg_db psql -U postgres -d <DB_NAME> -v ro_pw="$(sudo cat /root/op
 # Only if SELF_LOG_ENABLED=true:
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v rw_pw="$(sudo cat /root/ops_dashboard_rw_pw)" < db/setup-writer-role.sql
 
-docker compose run --rm app npm install
-docker compose up -d
+bash build.sh && bash preflight-check.sh    # expect ZERO warnings
+bash build-release.sh                        # release + RESTARTS the service (step 6)
 curl -s localhost:8080/healthz              # {"ok":true}
 curl -s localhost:8080/api/jobs/latest      # 503 "warming" briefly, then 200
 ```
 
-Re-run `setup-readonly-role.sql` after DB resets or before deploying endpoints needing
-new grants (else 500 permission-denied). Port 8080 is published on all interfaces —
-the NSG is the boundary; hardening (pinned image, auth proxy) is a follow-up.
+`build-release.sh` carries a service-specific step 6 (`docker compose up -d`
+from the release copy as svc) — a service release is not live until the
+container is recreated; batch apps have no such step. Re-run
+`setup-readonly-role.sql` after DB resets or before deploying endpoints needing
+new grants (else 500 permission-denied) — then re-release rather than
+restarting by hand. Port 8080 is published on all interfaces — the NSG is the
+boundary; the auth-proxy hardening remains a follow-up (the pinned-image half
+is done by the migration).
 
 ------------------------------------------------------------------------
 

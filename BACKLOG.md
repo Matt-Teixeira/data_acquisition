@@ -497,6 +497,41 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       queue: hhm_rpp_philips** (unchanged from 6l/6m — incident-engine also
       jumped; philips retires the `staging` alias and ge's build-release
       step 6 with it).
+- [x] **6o. Fleet rollout #9: ops-dashboard — migrated 2026-08-26** (jumped the
+      queue past philips by owner decision). The fleet's only LONG-RUNNING
+      SERVICE, so the cron-hardening half of the playbook was N/A and two
+      service-specific pieces were new: (1) build-release.sh gained a step 6 —
+      `docker compose up -d` from the release copy as svc — because a service
+      release is not live until the container is recreated (batch apps get
+      this for free from the next cron tick); (2) dev clone and release share
+      a dir basename ⇒ the same default compose project, so a dev `up -d`
+      would have RECREATED the production container — split via
+      COMPOSE_PROJECT_NAME (`ops-dashboard-dev`/`ops-dashboard`) + HOST_PORT
+      (8081/8080) with #RELEASE: overrides, compose failing safe to the DEV
+      values. 9 commits on main (b2aef71..55e14ba): banner-first;
+      `ops-dashboard:${USER_ID}` image + gosu entrypoint (NO dir-repair loop —
+      the app writes no files; node_mod_cache + vestigial /opt/run-logs mounts
+      + `user: "105:987"` pin + container HOME=/tmp all retired); provenance
+      into the run record it actually has (self-log heartbeat boot note gains
+      RELEASE_SHA/USER_ID — util.app_run_logs, app-owned JSON, no shared-table
+      change — plus a boot console line); SIGTERM/SIGINT once-guarded graceful
+      shutdown (clean docker stop in 0.7s, exit 0; deliberately NO final
+      heartbeat — a stopped dashboard ages to STALE by design); preflight
+      39/0/0 both copies (sibling-container PG auth for BOTH dedicated roles,
+      writer AUTH-ONLY via SELECT 1 — executing the log function would insert
+      a production row; identity-vs-location check; monday's missing `exit 0`
+      bug fixed in the adapted copy); DEPLOYMENT.md's edit-in-place deploy +
+      in-tree rollback (the rival runbook) replaced by the release flow.
+      Release 55e14ba: zero drift, tar listing == git ls-files + .env exactly,
+      root-owned node_modules husk removed pre-release (sixth occurrence),
+      .env backed up to ~. Cutover verified same-day: boot line + heartbeat
+      rows `55e14ba|svc`, grid warm 200, the one deliberate dev-tree smoke row
+      distinguishable in the record; 288/day cadence check next morning.
+      Rotation: deliberately absent by design (dedicated ro/rw roles,
+      already commented in the script — the incident-engine finding).
+      **Next app in the queue: hhm_rpp_philips** (unchanged — third jump;
+      philips retires the `staging` alias and ge's build-release step 6 with
+      it).
 
 ---
 
