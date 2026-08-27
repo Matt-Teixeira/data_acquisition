@@ -37,29 +37,42 @@ An item that needs a *decision* says so — don't fix those unilaterally.
         actually read `/opt/run-logs/pg_manage_v2/` + partition-watchdog.log.
       - Diagnostic to remember: `no partition of relation ... found for row`
         in ANY app = this job failed or hasn't run.
+- [ ] **1d. Release queue — make the 2a pool standard (and this week's
+      preflight/build.sh commits) live**: `bash ~/apps/<app>/build-release.sh`
+      for data_acquisition, monday, part-source-pipeline, acumatica_sync,
+      hhm_rpp_ge, hhm_rpp_siemens, hhm_rpp_philips, reports,
+      incident-engine, ops-dashboard (service — its release restarts the
+      container). No urgency order; each app's "Release currency" preflight
+      warning clears as its release lands. pg_manage_v2 and redis-admin
+      release with their 1a/1b closeouts.
 
-## 2 — Fleet decisions (need a DECISION with the other fleet's owner — do not
-##     fix unilaterally; FLEET-FINDINGS §6 holds these open on purpose)
+## 2 — Fleet decisions — ALL DECIDED 2026-08-27 (Matt): our fleet decides on
+##     its own needs; alignment with the other fleet is their choice.
 
-- [ ] **2a. `connectionTimeoutMillis` (+ pool sizing)** — **Matt ↔ boss**.
-      Our state (verified 2026-08-27): NO pg-pool in our fleet sets
-      `connectionTimeoutMillis`, `max`, or `idleTimeoutMillis` — an
-      unreachable DB hangs a cron run instead of erroring. Their two-app
-      converged standard: `max: 15, idleTimeoutMillis: 60000`. Propose
-      adopting all three fleet-wide; roll out as a vendored pg-pool touch
-      per app (can ride with the 4a role rollout, item 5).
-- [ ] **2b. `stamp_compress.sh` retire-vs-fix** — **Matt ↔ boss**. Dead in 7
-      of our vendored trees; "retire fleet-wide or fix fleet-wide, don't
-      diverge one app at a time" (FLEET-FINDINGS §6 / HANDOFF:598).
-- [ ] **2c. `build.sh` durable fix** — **Matt ↔ boss**. Our fleet's `env_val`
-      grep pattern is shipped in every app since 2026-08-27 (pilot straggler
-      fixed in data_acquisition cb890f3) — propose it as the fleet answer.
-- [ ] **2d. Get read access to `MIGRATION-HANDOFF.md`** — **Matt**. Grep it
-      for `ACTION FOR` (their §7 convention) — there may be unread requests
-      aimed at our apps. While there, append our delta per the append-only
-      convention: their §2 `.env` survey is stale (our 14 release copies are
-      640 svc:docker; only mmb-rpp/odd-jobs + two legacy checkouts remain
-      664), and we adopted their §1 #3/#5 fixes 2026-08-27.
+- [x] **2a. Pool standard: `connectionTimeoutMillis: 10000`, `max: 15`,
+      `idleTimeoutMillis: 60000`** — DECIDED + IMPLEMENTED 2026-08-27, as
+      its own pass (deliberately NOT tied to the roles arc). 11 pool files
+      across 10 repos (8 vendored pg-pool.js + ops-dashboard's ro/writer
+      pair + acumatica's pg_pool.js), byte-identical block after
+      `ssl: buildSsl(),`. Safety pre-checked: every run-once app ends its
+      pool or exits explicitly, so 60s idle cannot extend run tails.
+      Verified through the real file: unreachable host errors at ~10.5s
+      (was infinite hang); real pg_db connect 150ms.
+      **REMAINING: each app's next release makes it live** — see the
+      release queue note at the bottom of §1.
+- [ ] **2b. `stamp_compress.sh` — REFRAMED (Matt): do not retire; consider
+      a fleet-wide refactor** as a log-organization tool. Scoping step
+      first: what the script did (stamp + compress aged logs, pre-Docker
+      paths), what "organized logs" should mean now that release logs live
+      in `/opt/run-logs/<app>` with nightly prune-run-logs.sh — then a
+      modern rewrite propagated byte-identical, or fold compression into
+      the prune script. Design before code; session drafts a proposal.
+- [x] **2c. `build.sh`: `env_val` is our standard** — SETTLED 2026-08-27
+      (already shipped in all 12 repos; pilot straggler fixed cb890f3).
+      Whether the other fleet adopts it is their call.
+- [x] **2d. `MIGRATION-HANDOFF.md` access — DROPPED** (Matt, 2026-08-27):
+      not pursuing access or their evaluations. FLEET-FINDINGS.md stays as
+      the only artifact from their effort we consult.
 
 ## 3 — Quick wins (session can do; no decision needed)
 
