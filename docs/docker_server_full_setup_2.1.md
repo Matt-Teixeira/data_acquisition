@@ -1127,7 +1127,7 @@ instructions are dead):
 | App | Entrypoint | Image compose runs | Built by |
 |---|---|---|---|
 | data_acquisition (**migrated**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `data-acqu:${USER_ID}` (dev = username, release = `svc`) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
-| hhm_rpp_ge (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked, gosu drop only — NO log-dir repair; build.sh/preflight create the dev log dir host-side, `/opt/run-logs` pre-created) | `hhm_rpp:${IMAGE_TAG}` (dev = username, release = `svc`; **owns the shared image**) | `bash build.sh` (dev) / `build-release.sh` (release, as svc — still refreshes the now-unconsumed `staging` alias; retiring that step is follow-up 15) |
+| hhm_rpp_ge (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked, gosu drop only — NO log-dir repair; build.sh/preflight create the dev log dir host-side, `/opt/run-logs` pre-created) | `hhm_rpp:${IMAGE_TAG}` (dev = username, release = `svc`; **owns the shared image**) | `bash build.sh` (dev) / `build-release.sh` (release, as svc; the transitional `staging`-alias re-tag step was removed 2026-08-27) |
 | hhm_rpp_siemens (**migrated 2026-08-25**) | — (no Dockerfile, on purpose; GE's baked gosu entrypoint, NO log-dir repair — build.sh/preflight create the dev log dir host-side) | `hhm_rpp:${IMAGE_TAG}` = `hhm_rpp:svc` since ge migrated (2026-08-26) | no image build — `build.sh` (deps only) / `build-release.sh` (release, as svc) |
 | hhm_rpp_philips (**migrated 2026-08-26**) | — (no Dockerfile, on purpose; GE's baked gosu entrypoint, NO log-dir repair — build.sh/preflight create the dev log dir host-side) | `hhm_rpp:${IMAGE_TAG}` = `hhm_rpp:svc` (`IMAGE_TAG=svc` in its release `.env` — the transitional `staging` alias is no longer consumed) | no image build — `build.sh` (deps only) / `build-release.sh` (release, as svc) |
 | monday (**migrated 2026-08-25**) | `entrypoint.sh` (root, baked; repairs `files/`+`data_outputs/`) | `monday:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
@@ -1229,7 +1229,7 @@ and each repo's own CLAUDE.md is authoritative for day-to-day operation.
 > `image: hhm_rpp:${IMAGE_TAG}` **deliberately**: since ge's migration
 > (2026-08-26) that resolves to `hhm_rpp:svc` (all three consumers carry
 > `IMAGE_TAG=svc` in their release `.env`s since philips migrated the same
-> day; the transitional `staging` alias is no longer consumed — follow-up 15).
+> day; the transitional `staging` alias was retired 2026-08-27).
 > Per-consumer identity tags were rejected — the image carries no app code.
 > Schedule: **shared svc crontab**, `15,45` (CT `:15:55`, MRI `:16:05`);
 > SIEMENS_CV is dead by config (0 systems) and stays unscheduled. Before
@@ -1239,9 +1239,9 @@ and each repo's own CLAUDE.md is authoritative for day-to-day operation.
 > `/opt/apps/hhm_rpp_ge` is build output of its `build-release.sh`. As the
 > image owner its `build.sh` BUILDS `hhm_rpp:<USER_ID>` (dev) and the release
 > builds `hhm_rpp:svc` (rollback tag `hhm_rpp:pre-ge-migration` = the last
-> pre-migration image). The release also still re-points the `staging` alias —
-> a transitional step for then-un-migrated philips that no longer has a
-> consumer; removing it from `build-release.sh` is follow-up 15. Logger flipped
+> pre-migration image). The transitional `staging`-alias re-tag (for
+> then-un-migrated philips) was removed from `build-release.sh` and the tag
+> deleted on 2026-08-27, once the alias had zero consumers. Logger flipped
 > to the `LOG_DIR` mount pattern with `USER_ID`/`LOGGER_MODE` (RUN_ENV/LOGGER
 > retired); `node_mod_cache` mount and legacy `app` service retired;
 > SIGTERM/SIGINT once-guarded flush added; runs record `RELEASE_SHA` in
@@ -1678,10 +1678,10 @@ plain `VACUUM` does not return the disk space.
 13. **git-history scrub of the old DB password** (D3) — value is dead; cleanup only.
 14. **PROD** (4j) — branches, cutover runbook, data governance: unblocked once this
     document passes acceptance.
-15. **Post-migration orphan cleanup** (verified present 2026-08-27) — the
-    `hhm_rpp:staging` alias: no consumer since philips' cutover, but ge's
-    `build-release.sh` still re-tags it every release (remove the tag step, then
-    `docker rmi hhm_rpp:staging`); the orphaned `/opt/resources/node_mod_cache/*`
+15. **Post-migration orphan cleanup** — ~~the `hhm_rpp:staging` alias~~ (DONE
+    2026-08-27: re-tag step removed from ge's `build-release.sh` — commit
+    `fabd749` — and the tag deleted; `hhm_rpp:pre-ge-migration` kept as the
+    rollback handle). Still open: the orphaned `/opt/resources/node_mod_cache/*`
     per-app dirs (no compose file references the cache anymore); the `aux:staging`
     image (from #10). Also close out the two migration tails: hhm_rpp_philips'
     CLAUDE.md banner-off + closeout release, and pg_manage_v2's verification
