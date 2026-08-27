@@ -38,14 +38,6 @@ else
     esac
 fi
 
-if [ -d ./logs ] && [ -w ./logs ]; then
-    ok "./logs (winston side-logger) writable"
-elif [ -d ./logs ]; then
-    error "./logs exists but is not writable — logger.js dies on first log()"
-else
-    warn "./logs missing (entrypoint.sh creates it on first docker run; build-release.sh creates it in a release)"
-fi
-
 DATA_STORE_DEV="$(env_val DATA_STORE_DEV)"
 if [ -n "$DATA_STORE_DEV" ] && [ -d "$DATA_STORE_DEV" ]; then
     ok "DATA_STORE_DEV $DATA_STORE_DEV exists ($(find "$DATA_STORE_DEV" -maxdepth 1 -name '*.log' 2>/dev/null | wc -l) *.log files at top level)"

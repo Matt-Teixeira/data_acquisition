@@ -1,32 +1,14 @@
-const { createLogger, format, transports } = require('winston');
-const { combine, timestamp, printf } = format;
-
-const customFormat = printf(({ level, timestamp, message }) => {
-   const { text, jobId } = message;
-   let msg = `[${level.toUpperCase()} - ${jobId}]\n[${timestamp}]\n${text}\n[/${level.toUpperCase()} - ${jobId}]\n`;
-   return msg;
-});
-
-let now = new Date();
-now = now.toISOString();
-
-const logger = createLogger({
-  level: "info",
-  format: combine(timestamp(), customFormat),
-  transports: [
-    new transports.File({
-      filename: `./logs/adp.${process.env.USER_ID}_${now}.log`,
-    }),
-  ],
-});
-
-if (process.env.LOGGER_MODE === 'log_and_console') {
-   logger.add(
-      new transports.Console({
-         format: combine(timestamp(), customFormat),
-      })
-   );
-}
+// logger.js — free-text breadcrumb logger (console-only).
+//
+// History: this was a winston side-logger writing per-run files to ./logs/
+// (adp.<USER_ID>_<ISO>.log). Retired 2026-08-27 (FLEET-TODO 2b decision 7):
+// ~70% of the files it created were empty, none were operationally read, and
+// the structured logger (utils/logger/log.js -> util.app_run_logs + per-run
+// JSON) is the run record. The ~43 call sites across jobs/read/redis/sql
+// keep their signature; only the sink changed:
+//   error/warn -> console.error ALWAYS (lands in the bounded cron .out)
+//   info/debug -> console.log only when LOGGER_MODE=log_and_console (dev)
+// No file writes, no ./logs directory, no winston dependency.
 
 const getConstructorType = async (value) => {
    switch (value.constructor) {
@@ -71,11 +53,8 @@ const log = async (level, jobId, sme, fn, note, args) => {
          }
 
          // CHECK FOR error.stack FOR MORE INFORMATIVE LOGGING
-         // TODO: MABYE CONVERT IF/ELSE TO IF->BREAK LOOP, THIS BECASUE
-         // args DOESN'T NEED LOOPING IF Error IS DETECTED, I THINK???
          if (argType === 'error') {
             // IF ERROR HAS STACKTRACE PRINT THAT, OTHERWISE STANDARD PRINT
-            // IF FN THROWS args WILL ONLY CONTAIN 1 ITEM, AN error OBJECT
             argInfo = `\n[${key}] - [${argType}] - [${
                value.stack ? value.stack : value
             }]`;
@@ -96,30 +75,18 @@ const log = async (level, jobId, sme, fn, note, args) => {
       message = message + argInfo;
    }
 
-   // THE LOGGER API IS PARTICULAR ABOUT VALUES PASSED, IT ONLY ACCEPTS ARG NAMED message
-   // BUT WE WANT CUSTOM FORMATTING IN customFormat, SO MESSAGE IS OVERWRITTEN WITH THE MESSAGE OBJ
-   message = { text: message, jobId: jobId };
+   const lvl = level === 'error' || level === 'warn' ? level : 'info';
+   const stamp = new Date().toISOString();
+   const text = `[${lvl.toUpperCase()} - ${jobId}]\n[${stamp}]\n${message}\n[/${lvl.toUpperCase()} - ${jobId}]\n`;
 
-   switch (level) {
-      case 'error':
-         logger.error(message);
-         break;
-      case 'warn':
-         logger.warn(message);
-         break;
-      default:
-         logger.info(message);
-         break;
+   if (lvl === 'error' || lvl === 'warn') {
+      console.error(text);
+   } else if (process.env.LOGGER_MODE === 'log_and_console') {
+      console.log(text);
    }
 };
 
-const loudPrint = (text) => {
-   console.log('###################################################');
-   console.log(text);
-   console.log('###################################################');
-};
-
-module.exports = { log, loudPrint };
+module.exports = { log };
 
 // EXAMPLE
 // let someUndefVar;

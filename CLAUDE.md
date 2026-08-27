@@ -31,10 +31,10 @@ schedule, never a long-running service.
 | File | This app's specifics |
 | ---- | -------------------- |
 | `docker/Dockerfile` | node:lts + gosu + job tooling (lftp/rsync/sshpass/mdbtools/expect). Build args `USER_ID, DOCKER_GID, UID_0 (svc), UID_1, UID_2` — **no defaults on purpose**: a missing value fails the build instead of baking a wrong uid. `LABEL version="${USER_ID}"`. **Delta from reference:** the entrypoint is COPY'd into the image (self-contained), paired with a deny-by-default `.dockerignore`. |
-| `docker/entrypoint.sh` | `RUN_USER` (default `svc`) → gosu. While still root, repairs BOTH log dirs (`utils/logger/logs` and `logs/`) — but only when root-owned, so a deliberately-chowned production dir is left alone. |
+| `docker/entrypoint.sh` | `RUN_USER` (default `svc`) → gosu. While still root, repairs the structured log dir (`utils/logger/logs`; `logs/` repair removed with winston 2026-08-27) — but only when root-owned, so a deliberately-chowned production dir is left alone. |
 | `docker-compose.yaml` | Service to use is **`app_tools`** (`data-acqu:${USER_ID}`). The `app` service is deprecated. Mounts: `./:/workspace` (node_modules rides along in-tree), `${LOG_DIR:-./utils/logger/logs}` (fails SAFE to the dev path), `${DATA_STORE_DEV}:/workspace/files`, `/opt/resources/ssh:ro`. Networks: `pg_net` + `redis-admin_redis_net` (external). |
 | `build.sh` | One root `npm install` inside a throwaway node:lts container as the host user (in-tree `node_modules`, per-copy), then `docker compose build app_tools`. |
-| `build-release.sh` | Mirrors the WORKING TREE to `/opt/apps/data_acquisition`. Clean-tree guard (untracked files count) sits above the wipe; `--allow-dirty` is the emergency override — never habit. Applies `#RELEASE:` overrides, stamps `RELEASE_SHA`, recreates `logs/`, builds as svc. |
+| `build-release.sh` | Mirrors the WORKING TREE to `/opt/apps/data_acquisition`. Clean-tree guard (untracked files count) sits above the wipe; `--allow-dirty` is the emergency override — never habit. Applies `#RELEASE:` overrides, stamps `RELEASE_SHA`, builds as svc. (No longer recreates `logs/` — winston retired 2026-08-27.) |
 
 ## Running
 
@@ -70,21 +70,25 @@ App-specific keys: `PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE/PG_SSLMODE/PG_SSL
 `SSH_KEY` (file under `/opt/resources/ssh/`), `DATA_STORE_DEV`, `VNS3_IP/VNS3_PW`
 (ip_reset/tunnel jobs only), `PHILIPS_MRI_SHELL_TIMEOUT_S`.
 
-## Logging — TWO loggers, know which one you're reading
+## Logging — ONE logger writes files (winston side-logger retired 2026-08-27)
 
-1. **Structured run log** (`utils/logger/log.js`): events in memory →
-   `LOG_DIR/data_acquisition-log.${USER_ID}.<run_id>.json` + `util.app_run_logs` (verbose
-   + warn/error subset). The boot `env_note` records `USER_ID`, `LOGGER_MODE`,
-   `RELEASE_SHA`. The terminal `run_outcome` event and graded exit codes
+1. **Structured run log** (`utils/logger/log.js`) — THE run record: events in
+   memory → `LOG_DIR/data_acquisition-log.${USER_ID}.<run_id>.json` +
+   `util.app_run_logs` (verbose + warn/error subset). The boot `env_note`
+   records `USER_ID`, `LOGGER_MODE`, `RELEASE_SHA`. The terminal `run_outcome`
+   event and graded exit codes
    (**run_outcome/v1**: 0 success/skipped, 1 failed, 2 partial/self-log-failure, 3 usage)
    are consumed by ops-dashboard and incident-engine — do not change their shape.
-2. **Winston side-logger** (`logger.js` at repo root): free-text job detail →
-   `./logs/adp.${USER_ID}_<ISO>.log`. Required at module scope by ~10 job files, so
-   `logs/` must exist or jobs die on first `log()` call (entrypoint/build-release
-   guarantee it).
+2. **Breadcrumb logger** (`logger.js` at repo root) — console-only since
+   2026-08-27 (was the winston side-logger writing `./logs/adp.*` files, ~70%
+   of them empty and none operationally read). Same `log(level, jobId, …)`
+   signature at its ~43 call sites; error/warn always print to console (→ the
+   bounded cron `.out` in production), info/debug only under
+   `LOGGER_MODE=log_and_console`. It writes NO files: `./logs` is gone from
+   entrypoint repair, build-release recreation, and preflight.
 
-SIGTERM/SIGINT flush both sinks exactly once and exit non-zero (`E_SIGNAL`) — a killed
-run is a failed run, never exit 0.
+SIGTERM/SIGINT flush the structured log's both sinks (file + DB) exactly once
+and exit non-zero (`E_SIGNAL`) — a killed run is a failed run, never exit 0.
 
 ## Scheduling
 

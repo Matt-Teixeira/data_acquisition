@@ -96,11 +96,10 @@ sudo tar -C "$SRC" \
     --exclude='*-log.*.json' \
     -cf - . | sudo tar -C "$DEST" -xf -
 
-# The winston side-logger (logger.js) writes ./logs and dies without it; the
-# dir is excluded from the mirror above, so recreate it deliberately owned.
-sudo mkdir -p "$DEST/logs"
-sudo chown "${RELEASE_USER}:docker" "$DEST/logs"
-sudo chmod 2775 "$DEST/logs"
+# ./logs is no longer recreated: the winston side-logger was retired
+# 2026-08-27 (logger.js is console-only, writes no files). The tar exclude
+# above stays so a legacy ./logs in the dev tree never ships; the wipe
+# removes any old release-copy ./logs on this release.
 
 # --- 3. Apply #RELEASE: overrides to the DEPLOYED .env ------------------------
 # Two passes over the same file: collect overrides, then rewrite active lines

@@ -13,8 +13,9 @@ export HOME="/home/$RUN_USER"
 # Only a root-owned directory is repaired: one somebody deliberately chowned
 # (e.g. /opt/run-logs/data_acquisition as svc:docker) is left alone.
 #   /workspace/utils/logger/logs -- structured run logs (utils/logger/log.js)
-#   /workspace/logs              -- winston side-logs (logger.js)
-for dir in /workspace/utils/logger/logs /workspace/logs; do
+# (./logs is gone: the winston side-logger was retired 2026-08-27 — logger.js
+#  is console-only now and writes no files.)
+for dir in /workspace/utils/logger/logs; do
     mkdir -p "$dir"
     if [ "$(stat -c %u "$dir")" = "0" ]; then
         echo "entrypoint: $dir is root-owned (Docker created it) — chowning to $RUN_USER:docker"
