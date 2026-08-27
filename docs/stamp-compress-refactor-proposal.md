@@ -62,6 +62,44 @@ central (`/opt/run-logs`), the cross-app sweep owner already exists, and one
 script + one cron entry beats 12 vendored copies + 12 cron entries that must
 be kept byte-identical (the fleet's own hand-copy lesson).
 
+## Uniform layout standard (naming + compartmentalization — Matt, 2026-08-27)
+
+One shape for every app's dir; the bundler ENFORCES it by only ever touching
+files that conform:
+
+```
+/opt/run-logs/<app>/                      # exactly one dir per app, named as /opt/apps/<app>
+  <APP_NAME>-log.<USER_ID>.<run_id>.json  # per-run structured log — loose for ≤2 days
+  cron.<job>.out                          # bounded per-job cron capture — overwritten, NEVER bundled
+  <name>.log                              # append-mode script log (e.g. cron.backup's) — NEVER bundled
+  archive/YYYY-MM-DD.tar.gz               # the daily bundles
+```
+
+Rules, and the deviations found 2026-08-27 that each one corrects:
+
+1. **Nothing loose at `/opt/run-logs` root.** Today: `prune.log`
+   (data_acquisition's) and `partition-watchdog.log` (pg_manage_v2's) sit at
+   root. Move each into its owner's app dir — two one-line path edits in the
+   owning scripts, shipped with this refactor.
+2. **Every file log an app writes lives under its ONE dir.** Today:
+   data_acquisition's winston side-logger writes `adp.<USER_ID>_<ISO>.log`
+   into the release tree (`/opt/apps/data_acquisition/logs/`, 7 MB and
+   growing — inside build output, invisible to the prune). Fix with the
+   established mount pattern: `${SIDE_LOG_DIR:-./logs}` compose mount,
+   `#RELEASE:SIDE_LOG_DIR=/opt/run-logs/data_acquisition`. Optional rename
+   of the `adp.` prefix to `data_acquisition-side.` (a logger.js touch) —
+   decision 7.
+3. **Structured per-run logs**: `<APP_NAME>-log.<USER_ID>.<run_id>.json`.
+   Ours all conform. Accepted deviations, documented not fought:
+   part-source-pipeline's prefix is `part_source_pipeline` (APP_NAME is a DB
+   identity — the underscore/hyphen split stays); legacy `-log.dev.*` /
+   `-log.staging.*` tags (retired-era files) age out via bundling+retention;
+   the other fleet's `.js` extension on JSON logs is theirs to keep or fix.
+4. **Bundle stage matches ONLY `<APP_NAME>-log.*` per-run files** — never
+   `cron.*.out`, never `*.log` append files, never subdirs (acquisition-v2's
+   `shadow-windows/` is left alone). Naming discipline and the bundler's
+   file-selection are the same rule, which is what keeps both honest.
+
 ## Cross-fleet note (flag to the other fleet, don't block on it)
 
 `/opt/run-logs` also holds mmb-rpp / alert-processor / odd-jobs /
@@ -77,11 +115,19 @@ repo (their function lives centrally). Until then they stay as-is.
 
 ## Decisions requested (Matt)
 
+Settled 2026-08-27: naming conventions uniform to the extent reasonable;
+uniform compartmentalization of logs (the layout standard above).
+
 1. Ship it? (implementation ~60 lines in prune-run-logs.sh + tests)
 2. Bundle-after threshold: **2 days** proposed.
 3. Bundle retention: **180 days** proposed (vs 30 today — near-free).
 4. Other fleet's dirs: include (default) or EXCLUDE list from day one?
 5. After it lands: delete the 7 vendored copies as described?
+6. Root-file moves (rule 1): `prune.log` → `data_acquisition/`,
+   `partition-watchdog.log` → `pg_manage_v2/` — ship with the refactor?
+7. Winston side-logger (rule 2): mount move ships with the refactor
+   (data_acquisition release required); also rename the `adp.` prefix to
+   `data_acquisition-side.`, or keep `adp.`?
 
 Verification plan (when approved): dry-run mode printing the per-day file
 sets first; one manual run; verify a bundle restores (`tar -xzf` + spot-open
