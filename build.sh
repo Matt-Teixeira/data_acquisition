@@ -11,11 +11,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Load .env so the USER_ID guard below sees what compose will interpolate.
-set -a
-[ -f .env ] && . ./.env
-set +a
+# Read one key from .env WITHOUT sourcing it (values may contain characters
+# bash would expand — a $ in a rotated PGPASSWORD would be silently mangled;
+# compose reads .env itself — we only need one key).
+env_val() {
+    grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- \
+        | sed -e 's/[[:space:]]\+#.*$//' -e 's/[[:space:]]*$//' | tr -d "'\""
+}
 
+USER_ID="$(env_val USER_ID)"
 : "${USER_ID:?USER_ID is not set — add it to .env (drives the image tag data-acqu:\$USER_ID)}"
 
 echo "==> npm install (in-tree, as $(id -un))"
