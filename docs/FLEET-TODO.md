@@ -60,13 +60,14 @@ An item that needs a *decision* says so — don't fix those unilaterally.
       (was infinite hang); real pg_db connect 150ms.
       **REMAINING: each app's next release makes it live** — see the
       release queue note at the bottom of §1.
-- [ ] **2b. `stamp_compress.sh` — REFRAMED (Matt): do not retire; consider
-      a fleet-wide refactor** as a log-organization tool. Scoping step
-      first: what the script did (stamp + compress aged logs, pre-Docker
-      paths), what "organized logs" should mean now that release logs live
-      in `/opt/run-logs/<app>` with nightly prune-run-logs.sh — then a
-      modern rewrite propagated byte-identical, or fold compression into
-      the prune script. Design before code; session drafts a proposal.
+- [ ] **2b. `stamp_compress.sh` — REFRAMED (Matt): refactor, not retire.
+      Proposal DRAFTED 2026-08-27** —
+      `docs/stamp-compress-refactor-proposal.md`: extend prune-run-logs.sh
+      with a daily bundle stage (per-day tar.gz in
+      `/opt/run-logs/<app>/archive/`, ~15× compression measured, 2.7 GB /
+      20k loose files today), 180-day bundle retention, flock, idempotent;
+      no per-app copies. **Awaiting Matt's call on the 5 decision points
+      at the bottom of the proposal**, then ~60 lines + dry-run verify.
 - [x] **2c. `build.sh`: `env_val` is our standard** — SETTLED 2026-08-27
       (already shipped in all 12 repos; pilot straggler fixed cb890f3).
       Whether the other fleet adopts it is their call.
@@ -94,10 +95,12 @@ An item that needs a *decision* says so — don't fix those unilaterally.
       only comments.
 - [ ] **4b. `aux:staging` image** — retired by reports' migration (doc 2.1
       follow-up 10); `docker rmi aux:staging`.
-- [ ] **4c. `schedules.md` sync** — still shows legacy entries for
-      data_acquisition, hhm_rpp_ge, hhm_rpp_philips (all hardened at
-      cutover). Doc 2.1 STEP 9: "a schedule that is not in it does not
-      exist" — sync it to `crontab -l` reality.
+- [x] **4c. `schedules.md` sync** — DONE 2026-08-27: rewritten from live
+      `crontab -l` (50 entries, count verified block-vs-crontab). Now
+      records the hardened invocation pattern, flock-installed overlap
+      protection, the corrected no-schedule list (monday/siemens are in the
+      svc crontab; reports/psp/acumatica dormant by decision), and the svc
+      crontab pointer.
 
 ## 5 — Next big arc: DB roles rollout (doc 2.1 Phase 4a + 4b)
 
