@@ -1,4 +1,4 @@
-# Docker Server Full Setup 2.1 (reconciled 2026-08-18; paradigm notes 2026-08-25)
+# Docker Server Full Setup 2.1 (reconciled 2026-08-18; paradigm notes 2026-08-27)
 
 This guide builds an acquisition server — **dev, staging, or (future) prod** — from
 scratch. The **staging server (acq-vm-0) is the reference copy**: every command,
@@ -8,24 +8,31 @@ server on 2026-08-18, at the end of the August hardening plan
 `AUDIT_RECONCILIATION_FINDINGS_2026-08-14.md`). When this document and a server
 disagree, one of them is wrong — fix the drift, then fix the document.
 
-> **⚠️ PARADIGM MIGRATION IN PROGRESS (since 2026-08-24).** The fleet is adopting the
-> dev/release paradigm (`data_acquisition/docs/migration_CLAUDE.md` Parts 1+3): the
-> editable git clone lives in `~/apps/<app>`, and `/opt/apps/<app>` becomes
-> **build output produced only by `build-release.sh`** — not a checkout. For a
-> MIGRATED app, this document's app-level instructions are superseded: `IMAGE_TAG`
-> → `<app>:${USER_ID}` tags (dev = username, release = `svc`), `RUN_ENV` log routing
-> → a `LOG_DIR` compose mount with `#RELEASE:` overrides, the shared
-> `/opt/resources/node_mod_cache` → in-tree per-copy `node_modules`, and every run
-> carries `RELEASE_SHA` provenance. This doc stays authoritative for **server-wide**
-> provisioning (users, groups, Postgres/Redis, secrets, networks, backups).
-> Migrated so far: **data_acquisition (2026-08-24)**, **monday (2026-08-25)**,
+> **PARADIGM MIGRATION COMPLETE for the app fleet (2026-08-24 → 2026-08-26).**
+> Every app follows the dev/release paradigm
+> (`data_acquisition/docs/migration_CLAUDE.md` Parts 1+3): the editable git clone
+> lives in `~/apps/<app>`, and `/opt/apps/<app>` is **build output produced only
+> by `build-release.sh`** — not a checkout. App-level: identity image tags
+> (`<app>:${USER_ID}` — dev = username, release = `svc`; retired `RUN_ENV` log
+> routing became a `LOG_DIR` compose mount with `#RELEASE:` overrides), the
+> shared `/opt/resources/node_mod_cache` became in-tree per-copy `node_modules`,
+> and every run carries `RELEASE_SHA` provenance. This doc stays authoritative
+> for **server-wide** provisioning (users, groups, Postgres/Redis, secrets,
+> networks, backups); each app's own CLAUDE.md is authoritative for day-to-day
+> operation.
+> Migration dates: **data_acquisition (2026-08-24)**, **monday (2026-08-25)**,
 > **part-source-pipeline (2026-08-25)**, **acumatica_sync (2026-08-25)**,
 > **hhm_rpp_siemens (2026-08-25)**, **hhm_rpp_ge (2026-08-26)**,
 > **reports (2026-08-26)**, **incident-engine (2026-08-26)**,
 > **ops-dashboard (2026-08-26)**, **pg_manage_v2 (2026-08-26, admin-repo subset:
-> release flow + provenance + preflight; no image/entrypoint/logger parts)** —
-> their sections below are updated; other apps' sections still describe their live
-> pre-paradigm state and get corrected as each one migrates.
+> release flow + provenance + preflight; no image/entrypoint/logger parts)**,
+> **hhm_rpp_philips (2026-08-26 — release `534ad92`, hardened cron; CLAUDE.md
+> banner-off closeout pending)**. **That is the whole app fleet**: every app
+> section below describes migrated state. The one queue item left is
+> **redis-admin** (still a plain git checkout at `/opt/apps/redis-admin` — an
+> admin repo with no image, no scheduled jobs, and nothing containerized of its
+> own, so possibly nothing of the paradigm applies; decide-and-document, like
+> pg_manage_v2's subset call, is the remaining step).
 
 **Read this first — per-server identity.** The document is one recipe for all three
 server types. Wherever a command says `<DB_NAME>` (or another `<...>` placeholder),
@@ -37,12 +44,10 @@ which server it belongs to. The identity table:
 | App database `<DB_NAME>` | `dev` | `staging` | `prod` |
 | App-repo branch | `DEV_docker` | `STAGING_docker` | `PROD_docker` (doesn't exist yet) |
 | Admin-repo branch (redis-admin, pg_manage_v2) | `DEV` | `STAGING` | TBD |
-| `RUN_ENV` (logger routing only; **legacy apps** — migrated apps use `LOG_DIR`) | `dev`* | `staging` | `prod` |
-| `IMAGE_TAG` (**legacy apps** — migrated apps tag by `USER_ID`: dev = username, release = `svc`) | operator's choice, e.g. `dev` | `staging` | TBD |
+| `RUN_ENV` (**RETIRED fleet-wide** with the last app migration, 2026-08-26 — logger routing is the `LOG_DIR` mount now) | — | — | — |
+| `IMAGE_TAG` (**hhm_rpp shared image only** — its three consumers keep the variable as the shared-tag knob: dev = username in ge's clone, `svc` in every release. Every other app tags by `USER_ID`) | username | `svc` in releases | TBD |
 | `PG_DB` for maintenance scripts | `dev` | `staging` (default) | `prod` |
 
-\* `RUN_ENV=dev` routes per-run logs into each repo instead of `/opt/run-logs/` —
-that is a *routing choice*, not tied to the server type; pick where you want logs.
 Every other value in this doc (uids, gids, IPs, secrets) is **per-host** and lives
 only in untracked `.env` files — see CONVENTIONS.
 
@@ -69,9 +74,9 @@ set each one explicitly and don't assume they match:
 | Axis | Value on acq-vm-0 | Controls |
 |---|---|---|
 | Git branch (per repo, table below) | `STAGING_docker` / `STAGING` / `main` | which code runs |
-| Image tags | `:staging` on legacy apps (`IMAGE_TAG` in each `.env`); **migrated apps: `<app>:${USER_ID}`** (`data-acqu:svc` in production) | which image compose runs |
-| Compose volume vars | `_DEV`-suffixed names (`NODE_MOD_CACHE_DEV`, `DATA_STORE_DEV`) — migrated apps drop `NODE_MOD_CACHE_DEV` (in-tree deps) | where caches/files live — the *names* are fixed in compose; point their *values* wherever this server stores data |
-| `RUN_ENV` in `.env` | `staging` on legacy apps; **retired in migrated apps** (the `LOG_DIR` mount routes logs; fails safe to the dev path) | **logger file routing only** — not deployment |
+| Image tags | **identity tags fleet-wide**: `<app>:${USER_ID}` (dev = username, release = `svc`, e.g. `data-acqu:svc` in production). Exception: the shared `hhm_rpp:${IMAGE_TAG}` image (same dev/svc values, one tag for three consumers) | which image compose runs |
+| Compose volume vars | `_DEV`-suffixed names (`DATA_STORE_DEV`) — `NODE_MOD_CACHE_DEV` is **retired fleet-wide** (in-tree per-copy deps) | where caches/files live — the *names* are fixed in compose; point their *values* wherever this server stores data |
+| `LOG_DIR` in `.env` | `${LOG_DIR:-<dev path>}` compose mount — dev path by default (fails safe), `/opt/run-logs/<app>` via `#RELEASE:LOG_DIR` in releases. (`RUN_ENV`, its predecessor, is retired fleet-wide) | **logger file routing only** — not deployment |
 
 Database: the single local Postgres serves **one app database, `<DB_NAME>`** (from
 the identity table: `dev`/`staging`/`prod`), for every app (`PGDATABASE=<DB_NAME>`).
@@ -92,12 +97,16 @@ everywhere).** The env-branch repos follow the identity table: `DEV_docker`/`DEV
 a dev server, `STAGING_docker`/`STAGING` on staging (shown), `PROD_docker` when prod
 exists. The `main` repos are the same branch on every server.
 
+**Every migrated app's checkout lives at `~/apps/<app>`; `/opt/apps/<app>` is
+`build-release.sh` output, NOT a repo.** Only redis-admin (un-migrated),
+imprivata-poc, and acquisition-v2 are still checkouts under `/opt/apps`.
+
 | Repo | Branch on acq-vm-0 (staging) |
 |---|---|
-| acumatica_sync, hhm_rpp_ge, hhm_rpp_philips, hhm_rpp_siemens, reports | `STAGING_docker` |
-| data_acquisition, monday, part-source-pipeline (**migrated**) | `STAGING_docker` — but the checkout lives at `~/apps/<app>`; `/opt/apps/<app>` is `build-release.sh` output, NOT a repo |
-| redis-admin, pg_manage_v2 | `STAGING` |
-| incident-engine, ops-dashboard, acquisition-v2, imprivata-poc | `main` (no env branches) |
+| data_acquisition, monday, part-source-pipeline, acumatica_sync, hhm_rpp_ge, hhm_rpp_philips, hhm_rpp_siemens, reports (**all migrated** — clone in `~/apps`) | `STAGING_docker` |
+| pg_manage_v2 (**migrated** — clone in `~/apps`) | `STAGING` |
+| redis-admin (un-migrated — checkout at `/opt/apps/redis-admin`) | `STAGING` |
+| incident-engine, ops-dashboard (**migrated** — clone in `~/apps`); acquisition-v2, imprivata-poc (checkouts in `/opt/apps`) | `main` (no env branches) |
 | odd-jobs | **not a git checkout on this box** — Jonathan deploys it; see PARTITION MAINTENANCE |
 
 Other standing conventions:
@@ -107,19 +116,20 @@ Other standing conventions:
   acumatica_sync's `utils/` holds only its own `queries.js`.)
 - **Per-app entrypoint.** The gosu user-drop entrypoint is baked into each app image
   from a tracked `docker/entrypoint.sh` or root `entrypoint.sh` (matrix below).
-- **Run logs — legacy apps.** The vendored logger (`utils/logger/log.js`) switches on
-  `RUN_ENV`:
-  - `dev` → per-run JSON into **`<repo>/utils/logger/`** (gitignored)
-  - `staging`/anything else (including unset) → **`/opt/run-logs/<APP_NAME>/`**
-  Note the else-branch **fails unsafe** (missing var → production path); the paradigm
-  inverts this. Every job also self-logs a row into `util.app_run_logs` regardless
-  (that's what ops-dashboard and incident-engine read). Nit: psp leaves `RUN_ENV`
-  unset and lands centrally via the else-branch — same outcome, but set it explicitly
-  on a new build.
-- **Run logs — migrated apps** (data_acquisition): the logger always writes the fixed
-  container path `./utils/logger/logs/`, and the compose mount
-  `${LOG_DIR:-./utils/logger/logs}` decides the host destination — dev path by
-  default (**fails safe**), `/opt/run-logs/<app>` in a release via `#RELEASE:LOG_DIR`.
+- **Run logs.** File-logger apps (data_acquisition, part-source-pipeline, the
+  hhm_rpp trio): the logger always writes the fixed container path
+  `./utils/logger/logs/`, and the compose mount `${LOG_DIR:-./utils/logger/logs}`
+  decides the host destination — dev path by default (**fails safe**),
+  `/opt/run-logs/<app>` in a release via `#RELEASE:LOG_DIR`. Apps without a file
+  logger (monday, acumatica_sync, ops-dashboard, pg_manage_v2) keep their run
+  record in a DB table or an owned logfile, with `RELEASE_SHA` provenance via the
+  stamped `.env` + boot line. Every job app also self-logs a row into
+  `util.app_run_logs` or `stats.job_runs` (that's what ops-dashboard and
+  incident-engine read).
+  *(Historical: the pre-paradigm logger switched on `RUN_ENV` — `dev` → in-repo,
+  anything else **including unset** → `/opt/run-logs/` — i.e. it failed UNSAFE to
+  the production path. `RUN_ENV` is retired fleet-wide since 2026-08-26; if it
+  reappears in an `.env`, that app's preflight warns.)*
 - **`RUN_LOGS_DIR` format (RETIRED fleet-wide since 2026-08-26).** It was a **full
   `host:container` bind spec** consumed verbatim by a compose volume entry
   (`RUN_LOGS_DIR=/opt/run-logs/<app>:/opt/run-logs/<app>`); incident-engine, its last
@@ -213,11 +223,12 @@ id jonathan-pope        # acq-vm-0: uid=1001
 getent group docker     # acq-vm-0: gid=987
 ```
 
-> ⚠️ Two repos still hardcode `105:987` outside `.env` (compose `user:` on
-> incident-engine/ops-dashboard; literals in reports' Dockerfile). On a new server,
-> either make the ids match or update those files — then run each app's
-> write-permission smoke test. Migrating those stragglers to the `.env` convention is
-> tracked debt.
+> The last hardcoded-id stragglers are gone (verified 2026-08-27): the
+> incident-engine/ops-dashboard compose `user: "105:987"` pins were retired by
+> their 2026-08-26 migrations (gosu entrypoint + `.env` build args), and reports'
+> Dockerfile carries staging's numbers only in a comment. Host ids now come
+> exclusively from each repo's untracked `.env` — on a new server, fill in this
+> host's values and run each app's write-permission smoke test.
 
 # STEP 1.2: SHARED RESOURCE PERMISSIONS
 
@@ -873,21 +884,22 @@ APPS="data_acquisition hhm_rpp_ge hhm_rpp_philips hhm_rpp_siemens \
 acumatica_sync monday reports part-source-pipeline incident-engine ops-dashboard \
 acquisition-v2 odd-jobs"
 
-sudo mkdir -p /opt/resources/node_mod_cache /opt/resources/acqu_files
-sudo chgrp -R docker /opt/resources/node_mod_cache /opt/resources/acqu_files
-sudo chmod -R 2775   /opt/resources/node_mod_cache /opt/resources/acqu_files
+sudo mkdir -p /opt/resources/acqu_files
+sudo chgrp -R docker /opt/resources/acqu_files
+sudo chmod -R 2775   /opt/resources/acqu_files
 
-for a in $APPS; do mkdir -p "/opt/resources/node_mod_cache/$a" "/opt/run-logs/$a"; done
-chgrp -R docker /opt/resources/node_mod_cache /opt/run-logs
-chmod -R g+rwXs /opt/resources/node_mod_cache /opt/run-logs
+for a in $APPS; do mkdir -p "/opt/run-logs/$a"; done
+chgrp -R docker /opt/run-logs
+chmod -R g+rwXs /opt/run-logs
 ```
 
-The `/opt/run-logs/<app>` dirs are the logger's hot path (legacy `RUN_ENV=staging`
-routing; migrated apps reach the same dirs via their release `LOG_DIR` mount) — they
-**must be writable by the container run user** (svc uid via group docker). The
-group-write + setgid bits above are what OPS-05 was about; verify with a real run,
-not `ls`. **Migrated apps no longer use `/opt/resources/node_mod_cache/<app>`**
-(in-tree deps) — keep creating it only for the legacy apps still in the list.
+The `/opt/run-logs/<app>` dirs are the hot path for release `LOG_DIR` mounts and
+for the bounded cron `.out` files — they **must be writable by the container run
+user** (svc uid via group docker). The group-write + setgid bits above are what
+OPS-05 was about; verify with a real run, not `ls`.
+**`/opt/resources/node_mod_cache` is retired fleet-wide** (every app installs
+deps in-tree, per copy) — do NOT create it on a new server. On acq-vm-0 the old
+per-app cache dirs still exist as orphans awaiting cleanup (follow-up 15).
 
 App status notes:
 - **acquisition-v2** — strangler-fig replacement for data_acquisition; **paused**
@@ -1086,13 +1098,13 @@ Per-app migration checklist (repeat for each remaining app):
 6. **Re-run each setup-role script after any app-database reset** (grants die with the
    schema; roles survive) and re-run it BEFORE deploying code needing new grants.
 
-Rollout order suggestion (blast radius, low → high): ~~monday~~ →
-~~part-source-pipeline~~ → ~~acumatica_sync~~ → ~~hhm_rpp_siemens~~ (all four
-done 2026-08-25) → ~~hhm_rpp_ge~~ (done 2026-08-26 — built `hhm_rpp:svc` and
-re-pointed the `staging` alias so un-migrated philips kept running; siemens
-flipped its reference in the same cutover) → **hhm_rpp_philips (next — retires
-the `staging` alias in its own migration)**. (data_acquisition, originally
-saved for last as the busiest app, ended up going first as the pilot.)
+The **paradigm migration** (which this list once tracked) completed fleet-wide
+with hhm_rpp_philips on 2026-08-26 — every job app is now on the dev/release
+paradigm. The **role rollout itself (Phase 4a) has NOT progressed**: verified
+2026-08-27, the seven apps above still carry `PGUSER=postgres`. Suggested role
+order (blast radius, low → high): monday → part-source-pipeline →
+acumatica_sync → hhm_rpp_siemens → hhm_rpp_ge → hhm_rpp_philips →
+data_acquisition (busiest last).
 
 ------------------------------------------------------------------------
 
@@ -1115,13 +1127,13 @@ instructions are dead):
 | App | Entrypoint | Image compose runs | Built by |
 |---|---|---|---|
 | data_acquisition (**migrated**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `data-acqu:${USER_ID}` (dev = username, release = `svc`) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
-| hhm_rpp_ge (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked, gosu drop only — NO log-dir repair; build.sh/preflight create the dev log dir host-side, `/opt/run-logs` pre-created) | `hhm_rpp:${IMAGE_TAG}` (dev = username, release = `svc`; **owns the shared image**) | `bash build.sh` (dev) / `build-release.sh` (release, as svc — also re-points the `staging` alias for philips) |
+| hhm_rpp_ge (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked, gosu drop only — NO log-dir repair; build.sh/preflight create the dev log dir host-side, `/opt/run-logs` pre-created) | `hhm_rpp:${IMAGE_TAG}` (dev = username, release = `svc`; **owns the shared image**) | `bash build.sh` (dev) / `build-release.sh` (release, as svc — still refreshes the now-unconsumed `staging` alias; retiring that step is follow-up 15) |
 | hhm_rpp_siemens (**migrated 2026-08-25**) | — (no Dockerfile, on purpose; GE's baked gosu entrypoint, NO log-dir repair — build.sh/preflight create the dev log dir host-side) | `hhm_rpp:${IMAGE_TAG}` = `hhm_rpp:svc` since ge migrated (2026-08-26) | no image build — `build.sh` (deps only) / `build-release.sh` (release, as svc) |
-| hhm_rpp_philips | — (no Dockerfile, on purpose) | `hhm_rpp:${IMAGE_TAG}` (GE's image via the transitional `staging` alias) | by reuse |
-| monday | `entrypoint.sh` (root, baked; repairs `files/`+`data_outputs/`) | `monday:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
+| hhm_rpp_philips (**migrated 2026-08-26**) | — (no Dockerfile, on purpose; GE's baked gosu entrypoint, NO log-dir repair — build.sh/preflight create the dev log dir host-side) | `hhm_rpp:${IMAGE_TAG}` = `hhm_rpp:svc` (`IMAGE_TAG=svc` in its release `.env` — the transitional `staging` alias is no longer consumed) | no image build — `build.sh` (deps only) / `build-release.sh` (release, as svc) |
+| monday (**migrated 2026-08-25**) | `entrypoint.sh` (root, baked; repairs `files/`+`data_outputs/`) | `monday:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | reports (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `reports:${USER_ID}` (dev = username, release = `svc`; the legacy `aux:` tag is retired — follow-up 10 closed) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
 | part-source-pipeline (**migrated**) | `entrypoint.sh` (root, baked; repairs `files/` + the log mount) | `psp:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
-| acumatica_sync | `entrypoint.sh` (root) | `acu-sync:${USER_ID}` (migrated 2026-08-25) | `bash build.sh` / release via `build-release.sh` |
+| acumatica_sync (**migrated 2026-08-25**) | `entrypoint.sh` (root) | `acu-sync:${USER_ID}` (dev = username, release = `svc`) | `bash build.sh` / release via `build-release.sh` |
 | incident-engine (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair, gosu drop) | `incident-engine:${USER_ID}` (dev = username, release = `svc`; replaced stock `node:lts` + `user: "105:987"` pin) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
 | ops-dashboard (**migrated 2026-08-26**) | `entrypoint.sh` (root, baked; NO dir repair — the app writes no files) | `ops-dashboard:${USER_ID}` (dev = username, release = `svc`; replaced stock `node:lts` + `user: "105:987"` pin) | `bash build.sh` (dev) / `build-release.sh` (release, as svc + service restart step 6) |
 | imprivata-poc | `docker/entrypoint.sh` (conditional gosu) | `imprivata-poc:local` | `docker compose build app_tools` |
@@ -1204,7 +1216,9 @@ All three run the **same image, `hhm_rpp:${IMAGE_TAG}`**, built from
 `hhm_rpp_ge/docker/Dockerfile` (node:lts + gosu entrypoint + the same UID_* build args
 as data_acquisition). Philips/Siemens have no Dockerfile on purpose. **The GE repo
 owns the image and its compose has the `build:` block** — build there once, before
-first run of any RPP app:
+first run of any RPP app. **All three are migrated** (siemens 2026-08-25, ge +
+philips 2026-08-26): dev clones in `~/apps`, `/opt/apps/<app>` is build output,
+and each repo's own CLAUDE.md is authoritative for day-to-day operation.
 
 > **hhm_rpp_siemens is MIGRATED (2026-08-25)** — the clone/warm-cache
 > instructions below no longer apply to it. Dev clone `~/apps/hhm_rpp_siemens`;
@@ -1213,21 +1227,22 @@ first run of any RPP app:
 > `USER_ID`/`LOGGER_MODE` (RUN_ENV/LOGGER retired); shared `node_mod_cache`
 > mount retired; runs record `RELEASE_SHA` in `util.app_run_logs`. It keeps
 > `image: hhm_rpp:${IMAGE_TAG}` **deliberately**: since ge's migration
-> (2026-08-26) that resolves to `hhm_rpp:svc`; ge's release also re-points the
-> `staging` alias so un-migrated philips needs zero edits,
-> and philips retires the alias in its own migration. Per-consumer identity
-> tags were rejected — the image carries no app code. Schedule: **shared svc
-> crontab**, `15,45` (CT `:15:55`, MRI `:16:05`); SIEMENS_CV is dead by config
-> (0 systems) and stays unscheduled. Before 2026-08-25 this app had NEVER run
-> on this box — the section text below describing it pre-paradigm is historical.
+> (2026-08-26) that resolves to `hhm_rpp:svc` (all three consumers carry
+> `IMAGE_TAG=svc` in their release `.env`s since philips migrated the same
+> day; the transitional `staging` alias is no longer consumed — follow-up 15).
+> Per-consumer identity tags were rejected — the image carries no app code.
+> Schedule: **shared svc crontab**, `15,45` (CT `:15:55`, MRI `:16:05`);
+> SIEMENS_CV is dead by config (0 systems) and stays unscheduled. Before
+> 2026-08-25 this app had NEVER run on this box.
 
-> **hhm_rpp_ge is MIGRATED (2026-08-26)** — the clone/warm-cache instructions
-> below no longer apply to it (philips only now). Dev clone `~/apps/hhm_rpp_ge`;
+> **hhm_rpp_ge is MIGRATED (2026-08-26)**. Dev clone `~/apps/hhm_rpp_ge`;
 > `/opt/apps/hhm_rpp_ge` is build output of its `build-release.sh`. As the
 > image owner its `build.sh` BUILDS `hhm_rpp:<USER_ID>` (dev) and the release
-> builds `hhm_rpp:svc` + re-points the `staging` alias (rollback tag
-> `hhm_rpp:pre-ge-migration` = the last pre-migration image). Logger flipped to
-> the `LOG_DIR` mount pattern with `USER_ID`/`LOGGER_MODE` (RUN_ENV/LOGGER
+> builds `hhm_rpp:svc` (rollback tag `hhm_rpp:pre-ge-migration` = the last
+> pre-migration image). The release also still re-points the `staging` alias —
+> a transitional step for then-un-migrated philips that no longer has a
+> consumer; removing it from `build-release.sh` is follow-up 15. Logger flipped
+> to the `LOG_DIR` mount pattern with `USER_ID`/`LOGGER_MODE` (RUN_ENV/LOGGER
 > retired); `node_mod_cache` mount and legacy `app` service retired;
 > SIGTERM/SIGINT once-guarded flush added; runs record `RELEASE_SHA` in
 > `util.app_run_logs`. Schedule: **matt-teixeira's user crontab** (stays there
@@ -1236,26 +1251,28 @@ first run of any RPP app:
 > `.out` files, 0/20/40s stagger). Its CLAUDE.md is authoritative for
 > day-to-day operation.
 
+> **hhm_rpp_philips is MIGRATED (2026-08-26** — release `534ad92`; CLAUDE.md
+> banner-off closeout pending the verification tail**)**. Dev clone
+> `~/apps/hhm_rpp_philips`; `/opt/apps/hhm_rpp_philips` is build output of its
+> `build-release.sh` (no image build — deps only; `IMAGE_TAG=svc` in the
+> release `.env` resolves the shared image directly, no more `staging` alias).
+> Same shape as siemens: GE's baked gosu entrypoint, `LOG_DIR` mount pattern
+> with `USER_ID`/`LOGGER_MODE` (RUN_ENV/LOGGER retired), `node_mod_cache`
+> mount retired, runs record `RELEASE_SHA` in `util.app_run_logs`. Schedule:
+> **matt-teixeira's user crontab** (stays there until BACKLOG 6f), hardened
+> 2026-08-26 at unchanged cadences — job families `15,45 * * * *` (CT, CV,
+> MRI monitor/rmmu/log ×5 with sleep staggers) plus `delete_old_files` at
+> `:05/:35`. Its CLAUDE.md is authoritative for day-to-day operation.
+
 ```bash
-# Image build now happens in ge's DEV CLONE (bash build.sh -> hhm_rpp:<USER_ID>)
-# or via ge's build-release.sh (-> hhm_rpp:svc + staging alias). Never build by
-# hand in /opt/apps — that tree is build output.
+# Image build happens in ge's DEV CLONE (bash build.sh -> hhm_rpp:<USER_ID>)
+# or via ge's build-release.sh (-> hhm_rpp:svc). Never build by hand in
+# /opt/apps — that tree is build output.
 cd ~/apps/hhm_rpp_ge && bash build.sh
 ```
 
-Per app — **philips only** (ge and siemens are migrated; their own CLAUDE.md
-and build-release.sh replace all of this):
-
-```bash
-git clone git@github.com:Matt-Teixeira/hhm_rpp_philips.git /opt/apps/hhm_rpp_philips
-cd /opt/apps/hhm_rpp_philips
-git switch -c STAGING_docker --track origin/STAGING_docker
-chmod -R g+rwX utils/logger && chgrp -R docker utils/logger
-# .env: PG*/REDIS_* vars (incl. REDIS_PW), RUN_USER=svc, RUN_ENV=staging,
-#       DATA_STORE_DEV=/opt/resources/acqu_files, IMAGE_TAG, UID_*/DOCKER_GID
-# Warm cache once:
-docker compose run --rm app_tools bash -lc "npm ci --omit=dev --no-audit --no-fund"
-```
+All three repos' own CLAUDE.md + build.sh/build-release.sh replace the old
+per-app clone/warm-cache instructions that used to live here.
 
 **Philips also owns `log.saved_files` retention** — see SAVED_FILES RETENTION below.
 
@@ -1528,8 +1545,10 @@ sync with `crontab -l`.
 > **2026-08-24:** data_acquisition's 24 entries were replaced with hardened ones
 > (direct `node index.js` argv, `flock -n`, `-T`, absolute paths, bounded
 > `cron.<job>.out` files) at the paradigm cutover — the installed set is
-> `data_acquisition/cron-bk/crontab.restore-2026-08-24.cron`. `schedules.md`
-> still shows the legacy npm-run entries for this app: sync it on next touch.
+> `data_acquisition/cron-bk/crontab.restore-2026-08-24.cron`.
+> **2026-08-26:** hhm_rpp_ge's and hhm_rpp_philips' user-crontab entries were
+> hardened the same way at their cutovers (cadences unchanged). `schedules.md`
+> still shows the legacy entries for these apps: sync it on next touch.
 
 The maintenance schedule at a glance:
 
@@ -1651,13 +1670,23 @@ plain `VACUUM` does not return the disk space.
     is `reports:${USER_ID}`; verified nothing consumed `aux:` (no compose file,
     container, or script). The orphaned `aux:staging` image itself is
     post-cutover cleanup.
-11. **incident-engine / ops-dashboard hardcoded ids** — migrate the remaining
-    `105:987` literals to the `.env` convention. (reports' literals were already
+11. ~~**incident-engine / ops-dashboard hardcoded ids**~~ — DONE 2026-08-26 by
+    their migrations: the compose `user: "105:987"` pins are retired (gosu
+    entrypoint + `.env` build args). (reports' literals were already
     parameterized pre-migration, REL-07.)
 12. **systems-inventory sync policy (B0a)** — named decision + owner (see 5.5).
 13. **git-history scrub of the old DB password** (D3) — value is dead; cleanup only.
 14. **PROD** (4j) — branches, cutover runbook, data governance: unblocked once this
     document passes acceptance.
+15. **Post-migration orphan cleanup** (verified present 2026-08-27) — the
+    `hhm_rpp:staging` alias: no consumer since philips' cutover, but ge's
+    `build-release.sh` still re-tags it every release (remove the tag step, then
+    `docker rmi hhm_rpp:staging`); the orphaned `/opt/resources/node_mod_cache/*`
+    per-app dirs (no compose file references the cache anymore); the `aux:staging`
+    image (from #10). Also close out the two migration tails: hhm_rpp_philips'
+    CLAUDE.md banner-off + closeout release, and pg_manage_v2's verification
+    (BACKLOG 6p). And decide redis-admin's disposition — the last queue item
+    (see the header note).
 
 ------------------------------------------------------------------------
 
@@ -1680,10 +1709,13 @@ Build a blank dev/staging VM from this document alone, then demonstrate **all** 
 **Identity & permissions**
 - [ ] Each container runs as its intended uid:gid and can write its mounts (run a
       real job per app — a directory existing is not the test).
-- [ ] `/opt/run-logs/<app>/` receives fresh files from a scheduled run of each family
-      (legacy apps: `RUN_ENV=staging` routing; migrated apps: release `LOG_DIR`
-      mount — files named `<app>-log.svc.<run_id>.json` and rows in
-      `util.app_run_logs` carrying the release's `RELEASE_SHA`).
+- [ ] `/opt/run-logs/<app>/` receives fresh files from a scheduled run of each
+      family via the release `LOG_DIR` mount — files named
+      `<app>-log.svc.<run_id>.json` and rows in `util.app_run_logs` carrying the
+      release's `RELEASE_SHA`. (Apps without a file logger — monday,
+      acumatica_sync, ops-dashboard, pg_manage_v2 — verify instead from their
+      run record: `stats.job_runs` rows, the self-log heartbeat, or
+      `sha=`-stamped backup/watchdog log lines, plus bounded cron `.out` files.)
 
 **Database**
 - [ ] Non-SSL connection rejected; `verify-full` passes; `docker inspect pg_db` shows
