@@ -63,12 +63,14 @@ An item that needs a *decision* says so — don't fix those unilaterally.
 
 ## 3 — Quick wins (session can do; no decision needed)
 
-- [ ] **3a. "Release is N commits behind" preflight check** (FLEET-FINDINGS
-      §4 practice 1, ~12 lines). In each preflight's dev-tree branch: compare
-      `/opt/apps/<app>/.env` `RELEASE_SHA` against `git rev-parse HEAD`,
-      report the commit count behind. Two of their sessions shipped stale
-      releases believing fixes were live. Land in data_acquisition as the
-      reference, then propagate fleet-wide (keep byte-similar).
+- [x] **3a. "Release is N commits behind" preflight check** — DONE
+      2026-08-27, all 12 repos, byte-identical block before each Summary
+      (data_acquisition `0bec5a2` … redis-admin `48b75be`, all pushed).
+      Dev tree: warns with commit count behind + uncommitted-work note;
+      release copy: asserts its RELEASE_SHA stamp exists. Proved itself on
+      first run: data_acquisition's release is 21 commits behind (mostly
+      docs — but includes the build.sh env_val fix; re-release at next
+      convenience clears the warn).
 
 ## 4 — Orphan cleanup (mechanical; needs sudo/operator or explicit go)
 
@@ -113,6 +115,12 @@ An item that needs a *decision* says so — don't fix those unilaterally.
       `PROD` branch). Before any such merge:
       `git diff --name-status <base> origin/<branch>` and look for ADDS that
       replace modified files.
+- [ ] **6d. reports dependabot alerts** — GitHub flagged 27 vulnerabilities
+      on reports' default branch at the 2026-08-27 push (1 critical,
+      13 high): github.com/Matt-Teixeira/reports/security/dependabot.
+      Triage per FLEET-FINDINGS §4 (verify reachability before bumping —
+      their fleet found lodash/uuid advisories unreachable and `pg-promise`
+      the one worth fixing). Feeds Phase 4e (version pinning + CI).
 
 ---
 
