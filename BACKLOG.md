@@ -561,7 +561,30 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       smoke's OK line, two nightly backup.log lines on `03b1a1a` (expect clean
       2026-08-28 am), then banner off + one closeout re-release; watchdog's
       Sep 3 tick reports on its own clock.
-      **Next app in the queue: hhm_rpp_philips** (unchanged since 6l).
+- [x] **6q. Fleet rollout #11: hhm_rpp_philips — migrated 2026-08-26, verified
+      2026-08-27.** Siemens shape (no Dockerfile — ge's shared image, deps-only
+      build.sh), release `534ad92`, `IMAGE_TAG=svc` direct (no more `staging`
+      alias — the alias itself + ge's re-tag step were retired 2026-08-27, ge
+      `fabd749`). Cron: user crontab, hardened 2026-08-26 at unchanged cadences
+      (18 families `15,45` with sleep staggers; `delete_old_files` `:05/:35`).
+      Verification (full day, `util.app_run_logs` 08-26 13:45 → 08-27 13:15):
+      48 runs/family (delete_old_files 47), all `svc | 534ad92`, zero
+      `dev-tree`, zero failed; partial ratio 27.8% and warn band 10.4 match
+      the pre-cutover baseline exactly. Banner off `3a2c0ec`; REMAINING: the
+      closeout release (`bash ~/apps/hhm_rpp_philips/build-release.sh`).
+- [x] **6r. Fleet rollout #12: redis-admin — migrated 2026-08-27. QUEUE
+      COMPLETE.** Second admin repo (pg_manage_v2 subset precedent): dev clone
+      `~/apps/redis-admin` (STAGING), release `7bd34e1` applied to all four
+      instances (provenance = `com.redis-admin.release_sha` container label,
+      fails safe to `dev-tree`); preflight (read-only, secret-safe, auth
+      verified from inside the containers). Headline hazard documented in its
+      CLAUDE.md: dev clone and release copy resolve to the SAME compose
+      project/container names — lifecycle commands ONLY from the release copy.
+      Skipped (shape): image/entrypoint/logger/cron/run_outcome. REMAINING:
+      banner off after two clean cron cycles of the consuming apps + the next
+      nightly backup line.
+      **The migration queue is COMPLETE** — remaining tails tracked in doc 2.1
+      follow-up 15.
 
 ---
 
