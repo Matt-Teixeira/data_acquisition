@@ -26,9 +26,9 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > **reports (2026-08-26)**, **incident-engine (2026-08-26)**,
 > **ops-dashboard (2026-08-26)**, **pg_manage_v2 (2026-08-26, admin-repo subset:
 > release flow + provenance + preflight; no image/entrypoint/logger parts)**,
-> **hhm_rpp_philips (2026-08-26 — release `534ad92`, hardened cron; verified
-> over a full day of cycles 2026-08-27, banner off; closeout release
-> pending)**, **redis-admin (2026-08-27, admin-repo
+> **hhm_rpp_philips (2026-08-26 — hardened cron; verified over a full day
+> of cycles and closed out 2026-08-27, release `3a2c0ec`)**,
+> **redis-admin (2026-08-27, admin-repo
 > subset: dev/release split + `RELEASE_SHA` provenance as the
 > `com.redis-admin.release_sha` container label + preflight; no
 > image/logger/cron parts — release `7bd34e1` applied to all four instances;
@@ -1703,12 +1703,12 @@ plain `VACUUM` does not return the disk space.
     `fabd749` — and the tag deleted; `hhm_rpp:pre-ge-migration` kept as the
     rollback handle). Still open: the orphaned `/opt/resources/node_mod_cache/*`
     per-app dirs (no compose file references the cache anymore); the `aux:staging`
-    image (from #10). Also close out the migration tails: hhm_rpp_philips'
-    closeout release (verified + banner off 2026-08-27, BACKLOG 6q — only
-    `bash ~/apps/hhm_rpp_philips/build-release.sh` remains), pg_manage_v2's
-    verification (BACKLOG 6p), and redis-admin's banner-off (BACKLOG 6r;
-    verification tail = two clean cron cycles of the consuming apps + the
-    next nightly backup line).
+    image (from #10). Also close out the migration tails — ~~hhm_rpp_philips~~
+    (6q COMPLETE 2026-08-27: verified, banner off, release `3a2c0ec`),
+    pg_manage_v2's verification (BACKLOG 6p), and redis-admin's banner-off
+    (BACKLOG 6r; verification tail = two clean cron cycles of the consuming
+    apps + the next nightly backup line). The working queue for all of this
+    now lives in `docs/FLEET-TODO.md`.
 
 ------------------------------------------------------------------------
 

@@ -570,8 +570,9 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       Verification (full day, `util.app_run_logs` 08-26 13:45 → 08-27 13:15):
       48 runs/family (delete_old_files 47), all `svc | 534ad92`, zero
       `dev-tree`, zero failed; partial ratio 27.8% and warn band 10.4 match
-      the pre-cutover baseline exactly. Banner off `3a2c0ec`; REMAINING: the
-      closeout release (`bash ~/apps/hhm_rpp_philips/build-release.sh`).
+      the pre-cutover baseline exactly. Banner off `3a2c0ec`; closeout
+      release run 2026-08-27 — `/opt/apps` carries `RELEASE_SHA=3a2c0ec`.
+      **6q COMPLETE.**
 - [x] **6r. Fleet rollout #12: redis-admin — migrated 2026-08-27. QUEUE
       COMPLETE.** Second admin repo (pg_manage_v2 subset precedent): dev clone
       `~/apps/redis-admin` (STAGING), release `7bd34e1` applied to all four
