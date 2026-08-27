@@ -27,12 +27,12 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > **ops-dashboard (2026-08-26)**, **pg_manage_v2 (2026-08-26, admin-repo subset:
 > release flow + provenance + preflight; no image/entrypoint/logger parts)**,
 > **hhm_rpp_philips (2026-08-26 — release `534ad92`, hardened cron; CLAUDE.md
-> banner-off closeout pending)**. **That is the whole app fleet**: every app
-> section below describes migrated state. The one queue item left is
-> **redis-admin** (still a plain git checkout at `/opt/apps/redis-admin` — an
-> admin repo with no image, no scheduled jobs, and nothing containerized of its
-> own, so possibly nothing of the paradigm applies; decide-and-document, like
-> pg_manage_v2's subset call, is the remaining step).
+> banner-off closeout pending)**, **redis-admin (2026-08-27, admin-repo
+> subset: dev/release split + `RELEASE_SHA` provenance as the
+> `com.redis-admin.release_sha` container label + preflight; no
+> image/logger/cron parts — release `7bd34e1` applied to all four instances;
+> banner-off pending its verification tail)**. **The migration queue is
+> COMPLETE** — every repo section below describes migrated state.
 
 **Read this first — per-server identity.** The document is one recipe for all three
 server types. Wherever a command says `<DB_NAME>` (or another `<...>` placeholder),
@@ -97,15 +97,14 @@ everywhere).** The env-branch repos follow the identity table: `DEV_docker`/`DEV
 a dev server, `STAGING_docker`/`STAGING` on staging (shown), `PROD_docker` when prod
 exists. The `main` repos are the same branch on every server.
 
-**Every migrated app's checkout lives at `~/apps/<app>`; `/opt/apps/<app>` is
-`build-release.sh` output, NOT a repo.** Only redis-admin (un-migrated),
-imprivata-poc, and acquisition-v2 are still checkouts under `/opt/apps`.
+**Every migrated repo's checkout lives at `~/apps/<app>`; `/opt/apps/<app>` is
+`build-release.sh` output, NOT a repo.** Only imprivata-poc and acquisition-v2
+are still checkouts under `/opt/apps`.
 
 | Repo | Branch on acq-vm-0 (staging) |
 |---|---|
 | data_acquisition, monday, part-source-pipeline, acumatica_sync, hhm_rpp_ge, hhm_rpp_philips, hhm_rpp_siemens, reports (**all migrated** — clone in `~/apps`) | `STAGING_docker` |
-| pg_manage_v2 (**migrated** — clone in `~/apps`) | `STAGING` |
-| redis-admin (un-migrated — checkout at `/opt/apps/redis-admin`) | `STAGING` |
+| redis-admin, pg_manage_v2 (**migrated** — clone in `~/apps`) | `STAGING` |
 | incident-engine, ops-dashboard (**migrated** — clone in `~/apps`); acquisition-v2, imprivata-poc (checkouts in `/opt/apps`) | `main` (no env branches) |
 | odd-jobs | **not a git checkout on this box** — Jonathan deploys it; see PARTITION MAINTENANCE |
 
@@ -276,11 +275,13 @@ Clone the two infra repos now — STEP 2 (database) and STEP 3 (Redis) run compo
 from inside them, before the app-repo steps:
 
 ```bash
-git clone git@github.com:Matt-Teixeira/redis-admin.git /opt/apps/redis-admin
-git -C /opt/apps/redis-admin switch <branch per the identity table>     # STAGING on acq-vm-0
+# BOTH infra repos are paradigm-migrated (pg_manage_v2 2026-08-26, redis-admin
+# 2026-08-27): the editable clone lives in ~/apps and /opt/apps/<repo> is
+# BUILD OUTPUT — never a git checkout.
+git clone -b <branch per the identity table> git@github.com:Matt-Teixeira/redis-admin.git ~/apps/redis-admin
+# create ~/apps/redis-admin/.env from .env.example, then produce the release copy:
+cd ~/apps/redis-admin && bash build-release.sh      # STEP 3 runs compose from the release copy
 
-# pg_manage_v2 is paradigm-migrated (2026-08-26): the editable clone lives in
-# ~/apps and /opt/apps/pg_manage_v2 is BUILD OUTPUT — never a git checkout.
 git clone -b <branch per the identity table> git@github.com:Matt-Teixeira/pg_manage_v2.git ~/apps/pg_manage_v2
 # create ~/apps/pg_manage_v2/.env from .env.example, then produce the release copy:
 cd ~/apps/pg_manage_v2 && bash build-release.sh     # STEP 2 runs compose from the release copy
@@ -373,6 +374,21 @@ docker exec pg_db psql -U postgres -d <DB_NAME> -c "CREATE EXTENSION IF NOT EXIS
 
 # STEP 3: REDIS (redis-admin — ports off, auth on)
 
+> **redis-admin is MIGRATED (2026-08-27, admin-repo subset — see its CLAUDE.md,
+> authoritative for conventions and hazards).** Editable clone `~/apps/redis-admin`
+> (branch `STAGING`); `/opt/apps/redis-admin` is `build-release.sh` output
+> (clean-tree guard, `RELEASE_SHA` stamped; the compose file carries it onto every
+> container as label `com.redis-admin.release_sha`, failing safe to `dev-tree`).
+> **☠️ Compose lifecycle commands run ONLY from `/opt/apps/redis-admin`**: both
+> copies resolve to the same compose project with fixed `container_name`s and
+> static IPs, so an `up`/`down`/`restart` from the dev clone operates on the four
+> PRODUCTION containers and re-points their config mounts at the dev tree. Dev-side
+> validation is containerless (`bash preflight-check.sh`, `docker compose config`).
+> A release is two steps: `build-release.sh` (touches no container), then apply
+> per instance from the release copy in a quiet cron window (spare → PROD →
+> STAGING → dev-0-4 last; changed config-file *contents* need
+> `--force-recreate`/`restart` — compose won't recreate on its own).
+
 **The standard build is all four instances together** — one `docker compose up -d`
 in redis-admin creates the full set on the dedicated `redis-admin_redis_net` bridge.
 Never bring up a subset; apps and odd-jobs resolve these by container name:
@@ -398,8 +414,8 @@ tested 2026-08-18); the reverse fails fast with a clean NOAUTH error. So on any
 rollout or rollback: **server first, app `.env`s immediately after.**
 
 ```bash
-# 1. Kernel settings Redis needs (once per host; files are tracked in the repo,
-#    cloned in STEP 1.4)
+# 1. Kernel settings Redis needs (once per host; files are tracked in the repo —
+#    cloned to ~/apps and released to /opt/apps in STEP 1.4)
 cd /opt/apps/redis-admin
 sudo cp host-setup/90-redis.conf /etc/sysctl.d/ && sudo sysctl --system
 sudo cp host-setup/disable-thp.service /etc/systemd/system/ && sudo systemctl enable --now disable-thp.service
@@ -411,7 +427,9 @@ sudo chown 999:root /opt/resources/secrets/redis_auth.conf   # 999 = container r
 sudo chmod 400 /opt/resources/secrets/redis_auth.conf
 
 # 3. Instances up
-# Create .env (gitignored): REDIS_SUBNET, REDIS_GATEWAY, REDIS_{PROD,STAGING,DEV04,DEV05}_IP
+# .env (gitignored; keys per .env.example: REDIS_SUBNET, REDIS_GATEWAY,
+# REDIS_{PROD,STAGING,DEV04,DEV05}_IP) is created in the DEV CLONE and arrives
+# here via build-release.sh, RELEASE_SHA-stamped.
 docker compose config --quiet && docker compose up -d
 docker compose ps        # all four (healthy) — healthchecks authenticate and demand a literal PONG
 
@@ -1138,6 +1156,7 @@ instructions are dead):
 | ops-dashboard (**migrated 2026-08-26**) | `entrypoint.sh` (root, baked; NO dir repair — the app writes no files) | `ops-dashboard:${USER_ID}` (dev = username, release = `svc`; replaced stock `node:lts` + `user: "105:987"` pin) | `bash build.sh` (dev) / `build-release.sh` (release, as svc + service restart step 6) |
 | imprivata-poc | `docker/entrypoint.sh` (conditional gosu) | `imprivata-poc:local` | `docker compose build app_tools` |
 | pg_manage_v2 (**migrated 2026-08-26**, admin-repo subset) | n/a — scheduled jobs are HOST bash scripts (user crontab), no containerized runs | `pg_manage:latest` (dormant seeding tooling only, operator-run; deliberately not identity-tagged) | `docker build -t pg_manage .` (operator, STEP 5) / releases via `build-release.sh` (no image step; provenance = `sha=` in backup.log / partition-watchdog.log) |
+| redis-admin (**migrated 2026-08-27**, admin-repo subset) | n/a — four long-running stock `redis:7-alpine` containers, no app code | stock `redis:7-alpine` (no image build; provenance = `com.redis-admin.release_sha` container label) | no build script — releases via `build-release.sh`, then per-instance apply from the release copy (STEP 3; lifecycle commands NEVER from the dev clone) |
 
 Host identity (uid/gid build args, image tags) comes exclusively from each repo's
 untracked `.env` — builds fail loudly if unset. That is the convention working, not
@@ -1683,10 +1702,11 @@ plain `VACUUM` does not return the disk space.
     `fabd749` — and the tag deleted; `hhm_rpp:pre-ge-migration` kept as the
     rollback handle). Still open: the orphaned `/opt/resources/node_mod_cache/*`
     per-app dirs (no compose file references the cache anymore); the `aux:staging`
-    image (from #10). Also close out the two migration tails: hhm_rpp_philips'
-    CLAUDE.md banner-off + closeout release, and pg_manage_v2's verification
-    (BACKLOG 6p). And decide redis-admin's disposition — the last queue item
-    (see the header note).
+    image (from #10). Also close out the migration tails: hhm_rpp_philips'
+    CLAUDE.md banner-off + closeout release, pg_manage_v2's verification
+    (BACKLOG 6p), and redis-admin's banner-off (its migration — the last queue
+    item — landed 2026-08-27; verification tail = two clean cron cycles of the
+    consuming apps + the next nightly backup line).
 
 ------------------------------------------------------------------------
 
