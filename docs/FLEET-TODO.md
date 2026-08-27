@@ -60,14 +60,20 @@ An item that needs a *decision* says so — don't fix those unilaterally.
       (was infinite hang); real pg_db connect 150ms.
       **REMAINING: each app's next release makes it live** — see the
       release queue note at the bottom of §1.
-- [ ] **2b. `stamp_compress.sh` — REFRAMED (Matt): refactor, not retire.
-      Proposal DRAFTED 2026-08-27** —
-      `docs/stamp-compress-refactor-proposal.md`: extend prune-run-logs.sh
-      with a daily bundle stage (per-day tar.gz in
-      `/opt/run-logs/<app>/archive/`, ~15× compression measured, 2.7 GB /
-      20k loose files today), 180-day bundle retention, flock, idempotent;
-      no per-app copies. **Awaiting Matt's call on the 5 decision points
-      at the bottom of the proposal**, then ~60 lines + dry-run verify.
+- [x] **2b. Log lifecycle — APPROVED + EXECUTED 2026-08-27** (proposal:
+      `docs/stamp-compress-refactor-proposal.md`, uniform naming +
+      compartmentalization per Matt). Shipped: bundle stage in
+      prune-run-logs.sh (first run: 15,644 files → 41 day-bundles,
+      /opt/run-logs 2.7 GB → 886 MB, restore verified; cron slot
+      unchanged); root-file moves (prune.log → data_acquisition/,
+      partition-watchdog.log → pg_manage_v2/ + script path edit 688cb0e);
+      **winston retired** (decision 7 verified: 2,497 files ~70% empty —
+      logger.js console-only 2dca114, smoke-tested; entrypoint change
+      needs data_acquisition's next release, 1d); 7 vendored
+      stamp_compress.sh copies deleted. Tail to watch: tomorrow's 03:30
+      cron cycle writes its first bundled summary line to the NEW
+      prune.log path; watchdog's new path needs pg_manage_v2's 1a
+      closeout release before Sep 3.
 - [x] **2c. `build.sh`: `env_val` is our standard** — SETTLED 2026-08-27
       (already shipped in all 12 repos; pilot straggler fixed cb890f3).
       Whether the other fleet adopts it is their call.

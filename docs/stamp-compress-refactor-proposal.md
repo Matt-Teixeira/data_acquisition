@@ -1,7 +1,14 @@
 # Proposal: daily log bundling for /opt/run-logs (the stamp_compress refactor)
 
-FLEET-TODO 2b. Decision requested at the bottom; nothing here is implemented.
-Drafted 2026-08-27 from measured state.
+FLEET-TODO 2b. **APPROVED AND EXECUTED 2026-08-27** (all seven decisions:
+Matt approved 1–6 and the proposed values; #7 resolved as "winston is
+deprecated — verify and remove" instead of re-homing its output, and the
+verification confirmed it: ~70% of its files were empty, none read).
+Implemented: the bundle stage in `scripts/prune-run-logs.sh` (first run:
+15,644 files → 41 day-bundles, `/opt/run-logs` 2.7 GB → 886 MB, restore
+verified), the root-file moves, the winston retirement (`2dca114`), and the
+7 vendored stamp_compress.sh deletions. This document remains as the design
+record; the living rules are in the script header and doc 2.1 STEP 10.
 
 ## What stamp_compress.sh was, and the value worth keeping
 

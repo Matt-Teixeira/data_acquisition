@@ -1607,9 +1607,16 @@ All scripts are **tracked in their owning repos** and already scheduled (STEP 9)
   (including backup.log freshness) with zero-warning standard.
   **Local-only until decision D4 picks an off-host target** (Azure storage is the
   natural fit) — then enable the sync stub at the bottom of the script (Phase 4g).
-- **`data_acquisition/scripts/prune-run-logs.sh`** — nightly 03:30: prunes
-  `/opt/run-logs/<app>/` and legacy repo-local logger dirs; summary to
-  `/opt/run-logs/prune.log`.
+- **`data_acquisition/scripts/prune-run-logs.sh`** — nightly 03:30, the
+  cross-app **log lifecycle** (bundling added 2026-08-27, FLEET-TODO 2b):
+  per-run logs older than 2 days are tar'd per day into
+  `/opt/run-logs/<app>/archive/YYYY-MM-DD.tar.gz` (~15× compression,
+  180-day bundle retention); loose-file prunes remain as the safety net
+  (30 d central / 14 d dev trees). Only `*-log.*` per-run files are ever
+  bundled — `cron.*.out` and append-mode `*.log` files never match.
+  Summary to `/opt/run-logs/data_acquisition/prune.log` (nothing loose
+  lives at the run-logs root; `partition-watchdog.log` moved to
+  `pg_manage_v2/` the same day).
 - **Container log rotation** — per-service `logging:` blocks in the tracked compose
   files (see CONVENTIONS). There is deliberately no `daemon.json` step.
 - **Reference dumps** kept outside retention on purpose: `staging-20260727-1933.dump.initial`,
