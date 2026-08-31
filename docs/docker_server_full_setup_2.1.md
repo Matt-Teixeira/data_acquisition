@@ -31,9 +31,18 @@ disagree, one of them is wrong — fix the drift, then fix the document.
 > **redis-admin (2026-08-27, admin-repo
 > subset: dev/release split + `RELEASE_SHA` provenance as the
 > `com.redis-admin.release_sha` container label + preflight; no
-> image/logger/cron parts — release `7bd34e1` applied to all four instances;
+> image/logger/cron parts — release `05e2d20` applied to all four instances,
+> confirmed by their `com.redis-admin.release_sha` labels (verified 2026-08-28);
 > banner-off pending its verification tail)**. **The migration queue is
 > COMPLETE** — every repo section below describes migrated state.
+>
+> **Post-migration app work: reports took the `PROD` branch's application code
+> into `STAGING_docker` on 2026-08-31** (release `f8ea7e0`) — the `sme_reports`
+> Magnet Health Brief engine, and with it the fleet's first image that is not
+> just node+gosu (Chromium, `zip`, `fonts-liberation`). Two things generalize
+> beyond reports: the **archived-partition grant drift** that broke its
+> setup-role script (DATABASE ROLES) and the **`@puppeteer/browsers` install
+> hazard** (REPORTS APP).
 
 **Read this first — per-server identity.** The document is one recipe for all three
 server types. Wherever a command says `<DB_NAME>` (or another `<...>` placeholder),
@@ -128,13 +137,25 @@ Other standing conventions:
   incident-engine read).
   *(Historical: the pre-paradigm logger switched on `RUN_ENV` — `dev` → in-repo,
   anything else **including unset** → `/opt/run-logs/` — i.e. it failed UNSAFE to
-  the production path. `RUN_ENV` is retired fleet-wide since 2026-08-26; if it
-  reappears in an `.env`, that app's preflight warns.)*
+  the production path. `RUN_ENV` is retired fleet-wide since 2026-08-26; **most**
+  apps' preflight warns if it reappears in an `.env` — but not all, see the
+  retired-key caveat below.)*
 - **`RUN_LOGS_DIR` format (RETIRED fleet-wide since 2026-08-26).** It was a **full
   `host:container` bind spec** consumed verbatim by a compose volume entry
   (`RUN_LOGS_DIR=/opt/run-logs/<app>:/opt/run-logs/<app>`); incident-engine, its last
-  user, migrated to `LOG_DIR` above. If it reappears in an `.env`, that app's
+  user, migrated to `LOG_DIR` above. If it reappears in an `.env`, most apps'
   preflight warns.
+- **⚠️ The retired-key preflight backstop is NOT fleet-wide** (verified 2026-08-28).
+  `data_acquisition`, `reports`, `incident-engine`, `part-source-pipeline`,
+  `hhm_rpp_ge` and `acumatica_sync` check for retired keys; **`monday` and
+  `ops-dashboard` do not**. That gap bites where it matters most: monday is the one
+  app on this box where `RUN_ENV` actually survived the migration —
+  `RUN_ENV='staging'` is still present in **both** `~/apps/monday/.env` and
+  `/opt/apps/monday/.env`, and its preflight reports zero warnings about it. It is
+  inert (monday has no file logger and nothing reads the variable), so this is
+  cleanup, not breakage — but do not rely on preflight to find retired keys on a new
+  server. Grep instead:
+  `grep -lE '^(RUN_ENV|RUN_LOGS_DIR|NODE_MOD_CACHE_DEV|LOGGER)=' /opt/apps/*/.env ~/apps/*/.env`
 - **Maintenance scripts live in the repo that owns their subject** (2026-08-18):
   database scripts in `pg_manage_v2/scripts/`, Redis scripts and host-setup files in
   `redis-admin/`, the cross-app run-log prune in `data_acquisition/scripts/`.
@@ -260,6 +281,14 @@ private repos — a blank VM has none of these (audit A21-01/03/13).
 ```bash
 sudo apt install -y git postgresql-client
 
+# Docker group membership from STEP 1.1 is NOT active in your current shell yet.
+# STEP 1.4 below runs build-release.sh, which calls docker — activate it first, or
+# every docker command here fails with "permission denied ... docker.sock":
+id -nG | tr ' ' '\n' | grep -qx docker && echo "docker group active" || \
+  echo "NOT in docker group — run 'newgrp docker' or re-login before continuing"
+# `newgrp docker` starts a SUBSHELL: run it on its own, then carry on inside that
+# shell (don't paste it mid-script — everything after it would run in the subshell).
+
 git config --global user.email "you.guy@avantehs.com"
 git config --global user.name  "You Guy"
 
@@ -290,11 +319,56 @@ cd ~/apps/pg_manage_v2 && bash build-release.sh     # STEP 2 runs compose from t
 
 ------------------------------------------------------------------------
 
+# STEP 1.5: DATABASE TLS MATERIAL (must exist before STEP 2)
+
+STEP 2's compose binds the cert and key **long-form with `create_host_path: false`**,
+so `docker compose up -d` **fails immediately** if they do not exist yet. Generate
+them here, before the database step — nothing between this point and STEP 2 creates
+them.
+
+Full detail, the reasoning behind the permission layout, and the regeneration
+procedure live in **DATABASE SSL SETUP** (below, before DATABASE ROLES); this is the
+minimum needed to get past STEP 2. `<VM_IP>` is this host's primary address
+(`hostname -I | awk '{print $1}'` — on acq-vm-0, `10.2.0.4`); it must appear in the
+SAN or external `verify-full` clients fail with `ERR_TLS_CERT_ALTNAME_INVALID`.
+
+```bash
+sudo install -d -m 2775 -g docker /opt/resources/ssl
+sudo install -d -m 700  -o root -g root /opt/resources/ssl/private
+
+openssl genrsa -out /tmp/pg_ssl.key 2048
+openssl req -new -x509 -days 1095 \
+  -key /tmp/pg_ssl.key \
+  -out /tmp/pg_ssl.crt \
+  -subj "/CN=pg_db" \
+  -addext "subjectAltName=DNS:pg_db,DNS:postgres-server,DNS:localhost,IP:<VM_IP>,IP:127.0.0.1"
+
+sudo install -m 644 -g docker /tmp/pg_ssl.crt /opt/resources/ssl/pg_ssl.crt
+sudo install -m 600 -o 999 -g root /tmp/pg_ssl.key /opt/resources/ssl/private/pg_ssl.key
+rm -f /tmp/pg_ssl.key /tmp/pg_ssl.crt        # 999 = container postgres uid (SEC-06)
+
+# Confirm both exist with the right modes before running STEP 2:
+sudo ls -l /opt/resources/ssl/pg_ssl.crt /opt/resources/ssl/private/pg_ssl.key
+openssl x509 -in /opt/resources/ssl/pg_ssl.crt -noout -dates -ext subjectAltName
+```
+
+------------------------------------------------------------------------
+
 # STEP 2: DATABASE (pg_db — tracked compose, pg_manage_v2/infra/pg_db)
 
 The database container is **defined in git**: `pg_manage_v2/infra/pg_db/
 docker-compose.yaml`, with its recreate procedure in `RUNBOOK.md` beside it (executed
 2026-08-18; SEC-05/06, DB-04/06). Never `docker run` it by hand again.
+
+> **☠️ Compose lifecycle commands run ONLY from `/opt/apps/pg_manage_v2`** — the same
+> hazard redis-admin carries (STEP 3), for the same reason. The compose file pins
+> `name: pg-infra` (a fixed project name, **not** derived from the directory) and
+> `container_name: pg_db`, and the dev clone's copy is byte-identical to the release's.
+> So `docker compose up -d` / `down` / `restart` from `~/apps/pg_manage_v2` resolves to
+> the **same project and the same running container** — a `down` there stops
+> PRODUCTION Postgres and takes every app on `pg_net` with it. Dev-side validation is
+> containerless: `docker compose config --quiet`. The only exception is the
+> new-server initialization in this step, where no production database exists yet.
 
 What the tracked definition provides:
 - reuses the **external** named volume `postgres_data` and network `pg_net` — a
@@ -319,18 +393,45 @@ docker volume create postgres_data
 sudo install -m 600 -o root -g root /dev/null /root/pg_superuser_pw
 sudo sh -c 'head -c 32 /dev/urandom | base64 | tr -d "/+=" | head -c 32 > /root/pg_superuser_pw'
 
-# In pg_manage_v2/infra/pg_db/docker-compose.yaml, uncomment the environment: and
-# secrets: blocks (POSTGRES_PASSWORD_FILE) — initialization genuinely needs them.
-# Generate the TLS material FIRST (see DATABASE SSL SETUP below), then:
-cd /opt/apps/pg_manage_v2/infra/pg_db
+# TLS material must already exist (STEP 1.5) — create_host_path:false means
+# `up -d` fails loudly without it.
+#
+# The environment:/secrets: blocks (POSTGRES_PASSWORD_FILE) are commented out in the
+# tracked compose; initialization genuinely needs them. Edit them in the DEV CLONE
+# and release — /opt/apps is build output, and build-release.sh refuses a dirty tree,
+# so editing the release copy directly is both a paradigm violation and unreleasable.
+cd ~/apps/pg_manage_v2
+$EDITOR infra/pg_db/docker-compose.yaml       # uncomment environment: + secrets:
+git commit -am "pg_db: enable POSTGRES_PASSWORD_FILE for empty-volume init"
+bash build-release.sh
+
+cd /opt/apps/pg_manage_v2/infra/pg_db         # release copy — compose runs from here
 docker compose config --quiet && docker compose up -d
 
 until docker exec pg_db pg_isready -U postgres -q; do sleep 1; done && echo ready
 docker exec -it pg_db psql -U postgres -c "CREATE DATABASE <DB_NAME>;   -- dev / staging / prod per the identity table"
-# Then RE-COMMENT the secret blocks and recreate once (docker compose up -d), so the
-# running container carries no password reference (SEC-05). Keep /root/pg_superuser_pw
-# as the break-glass copy.
+
+# Then RE-COMMENT the secret blocks and recreate once, so the running container
+# carries no password reference (SEC-05). Same route — clone, commit, release:
+cd ~/apps/pg_manage_v2
+$EDITOR infra/pg_db/docker-compose.yaml       # re-comment environment: + secrets:
+git commit -am "pg_db: re-comment secret plumbing post-init (SEC-05)"
+bash build-release.sh
+(cd /opt/apps/pg_manage_v2/infra/pg_db && docker compose up -d)
+
+# Keep /root/pg_superuser_pw as the break-glass copy. Verify no password reference
+# survives in the running container:
+docker inspect pg_db | grep -c POSTGRES_PASSWORD      # expect 0
 ```
+
+> **Why two commits.** The uncomment/re-comment pair is a genuine round-trip through
+> git — that is the cost of the paradigm, not a mistake. `build-release.sh` enforces
+> a clean-tree guard (`ERROR: working tree is dirty — refusing to release`), so there
+> is no supported way to toggle these blocks only in `/opt/apps`. Do **not** reach for
+> `--allow-dirty` here: it would stamp a `RELEASE_SHA` that matches no commit, which
+> is exactly the provenance guarantee the paradigm exists to provide. On a
+> **new-server build these two commits are throwaway** — squash or revert them once
+> the volume is initialized, or keep them on a short-lived branch.
 
 **This stack uses a single `<DB_NAME>` database for every app** — do not also create
 the *other* server type's name (a `dev` database on staging, a `staging` database on
@@ -439,10 +540,33 @@ docker compose ps        # all four (healthy) — healthchecks authenticate and 
 sudo cat /opt/resources/secrets/redis_auth.conf   # value after "requirepass"
 
 # 4. Give the consuming apps the password (after their .envs exist — see app steps).
-# Prefer the script over hand-copying — it propagates REDIS_PW into the four job-app
-# .envs and verifies auth end-to-end without echoing the value:
-sudo scripts/activate_redis_auth.sh
+# Prefer the script over hand-copying — it propagates REDIS_PW and verifies auth
+# end-to-end without echoing the value. Run it from the RELEASE copy:
+cd /opt/apps/redis-admin && sudo scripts/activate_redis_auth.sh
 ```
+
+> ⚠️ **On any server that is not acq-vm-0, check the script's coverage before
+> trusting it** (found 2026-08-28). Its `ENVS` array is **10 paths across 6 apps** —
+> not "the four job-app .envs": both copies (release + dev clone) of
+> data_acquisition and the three hhm_rpp apps, plus `/opt/apps/odd-jobs/.env` and
+> `/opt/apps/mmb-rpp/.env` (Jonathan's — see STEP 7). Two consequences:
+> - The four **dev-clone** entries are hardcoded to `/home/matt-teixeira/apps/...`.
+>   That is deliberate — the script runs under `sudo`, where `~` is root's home —
+>   but it means on a server built by anyone else those four paths never match. The
+>   loop **skips missing paths by design** and prints `skip <path> (not present on
+>   this host)`, so a silent no-op looks like a clean run. Edit the array to this
+>   host's operator(s) before running, or set each dev clone's `REDIS_PW` by hand.
+> - Both copies genuinely need it: credentials carry no `#RELEASE:` override, so
+>   updating only one leaves the other broken until the next release.
+>
+> After running, confirm every consumer actually got it (prints names only, never
+> the value):
+> ```bash
+> for f in /opt/apps/{data_acquisition,hhm_rpp_ge,hhm_rpp_philips,hhm_rpp_siemens}/.env \
+>          ~/apps/{data_acquisition,hhm_rpp_ge,hhm_rpp_philips,hhm_rpp_siemens}/.env; do
+>   [ -f "$f" ] && { grep -q '^REDIS_PW=.\+' "$f" && echo "ok   $f" || echo "MISS $f"; }
+> done
+> ```
 
 **Verify the configs actually loaded** — not optional. Compose bind-mounts
 `./config/<name>.config` over `/usr/local/etc/redis/redis.conf` long-form with
@@ -484,33 +608,67 @@ build).
 
 ```bash
 # On the SOURCE server — the script is tracked as data_acquisition/scripts/
-# redis_migrate.sh (since 2026-08-20); copy it over or run it from a checkout:
+# redis_migrate.sh (since 2026-08-20); copy it over or run it from a checkout.
+#
+# PREREQUISITE (undocumented until 2026-08-28): the script hardcodes
+#   REMOTE="data-acqu-vm-staging"
+# — an ssh alias that must already exist in the SOURCE server's ~/.ssh/config with a
+# working key to THIS target. STEP 1.4 only enrolls a GitHub key; this is a separate,
+# host-to-host trust. Edit REMOTE for any target other than acq-vm-0. The sibling
+# scripts/known_hosts_migrate.sh (STEP 5.8, SHARED SSH BUNDLE) hardcodes the same
+# alias at line 30. Verify before running: ssh <alias> true
 ./redis_migrate.sh                      # ships latest RDB to ~/redis_dumps/ on the target
 
 # On the target server:
 DUMP=$(ls -t ~/redis_dumps/redis-PROD-dump-*.rdb | head -1)
-echo "Loading: $DUMP"
 
-# Record the source key count for verification, then stop targets BEFORE touching
-# their volumes (a running Redis rewrites its RDB on shutdown and would clobber
-# the seed):
+# GUARD: validate the dump BEFORE stopping anything or touching a volume. Without
+# this, an absent/empty dump still runs the destructive step below and leaves you
+# with empty volumes and no original (the rm precedes the cp).
+[ -s "$DUMP" ] || { echo "FATAL: no non-empty dump found in ~/redis_dumps"; exit 1; }
+echo "Loading: $DUMP ($(stat -c%s "$DUMP") bytes)"
+
+# SOURCE_KEYS: the number this seed must reproduce. Capture it ON THE SOURCE server
+# before migrating (redis_migrate.sh does not emit it — FOLLOW-UPS 19):
+#   docker exec redis-PROD sh -c 'redis-cli -a "$(awk "/^requirepass/{print \$2}" \
+#     /usr/local/etc/redis/auth.conf)" --no-auth-warning DBSIZE'
+# Set it here; every DBSIZE check below is compared against it automatically.
+SOURCE_KEYS=<count from the source server>
+
+# Stop targets BEFORE touching their volumes (a running Redis rewrites its RDB on
+# shutdown and would clobber the seed):
 docker stop redis-PROD redis-STAGING redis_dev-0-4
 
 for pair in redis-PROD:prod_data redis-STAGING:staging_data redis_dev-0-4:dev04_data; do
   name=${pair%%:*}; vol=redis-admin_${pair##*:}
 
-  # 1. Clear the AOF the fresh build created, place the dump:
+  # 1. COPY FIRST, THEN SWAP — never delete before the replacement is in place.
+  #    The copy lands beside the live data as dump.rdb.new; only once it has
+  #    arrived intact do we clear the AOF and move it into position. A failed or
+  #    truncated copy aborts here with the volume still untouched.
   docker run --rm -v $vol:/data -v ~/redis_dumps:/seed:ro redis:7-alpine \
-    sh -c "rm -rf /data/appendonlydir /data/dump.rdb \
-           && cp /seed/$(basename "$DUMP") /data/dump.rdb \
-           && chown redis:redis /data/dump.rdb"
+    sh -c "set -e
+           cp /seed/$(basename "$DUMP") /data/dump.rdb.new
+           [ -s /data/dump.rdb.new ]
+           rm -rf /data/appendonlydir /data/dump.rdb
+           mv /data/dump.rdb.new /data/dump.rdb
+           chown redis:redis /data/dump.rdb" \
+    || { echo "FATAL: seed copy failed for $name — volume left as-is"; exit 1; }
 
   # 2. Load it in a throwaway server with AOF OFF (the only state in which
   #    dump.rdb is actually read), then convert the loaded dataset to AOF:
   docker run -d --rm --name seed -v $vol:/data redis:7-alpine \
     redis-server --appendonly no --save ''
-  sleep 2
-  docker exec seed redis-cli DBSIZE      # must equal the source count
+  until docker exec seed redis-cli PING 2>/dev/null | grep -q PONG; do sleep 1; done
+
+  # ASSERT, don't eyeball: the loaded key count must equal the source.
+  LOADED=$(docker exec seed redis-cli DBSIZE)
+  if [ "$LOADED" != "$SOURCE_KEYS" ]; then
+    echo "FATAL: $name loaded $LOADED keys, expected $SOURCE_KEYS"
+    docker stop seed; exit 1
+  fi
+  echo "$name: $LOADED keys OK"
+
   docker exec seed redis-cli CONFIG SET appendonly yes
   docker exec seed redis-cli INFO persistence | grep aof_rewrite_in_progress  # expect :0
   docker stop seed                       # --rm removes it
@@ -519,8 +677,10 @@ for pair in redis-PROD:prod_data redis-STAGING:staging_data redis_dev-0-4:dev04_
   docker start $name
 done
 
-# DBSIZE per instance (all four are auth'd — use the -a pattern from STEP 3)
-# must equal the source count. dev-0-5 (spare) is deliberately left empty.
+# Final check: DBSIZE per instance (all four are auth'd — use the -a pattern from
+# STEP 3) must equal $SOURCE_KEYS. dev-0-5 (spare) is deliberately left empty.
+# The loop already asserted this per instance; this confirms it survived the
+# AOF conversion and the real container's boot.
 ```
 
 > ⚠️ **Why the temp-server dance instead of `docker cp` + start** (rehearsed
@@ -578,8 +738,26 @@ docker run --rm --network pg_net --env-file .env -v "$PWD":/app -w /app \
 
 ```bash
 # Spot-check row counts per critical table against the source, e.g.:
-psql -h localhost -U postgres -d <DB_NAME> -c "SELECT count(*) FROM alert.models;"
+docker exec pg_db psql -U postgres -d <DB_NAME> -c "SELECT count(*) FROM alert.models;"
 ```
+
+A host-side `psql -h localhost -U postgres` **prompts for a password and fails
+non-interactively** (`fe_sendauth: no password supplied`) — the superuser password is
+in `/root/pg_superuser_pw`, not in your environment. Use `docker exec` for counting
+rows, as above: it is a read-only query against the catalog, so the loopback-trust
+caveat below does not affect the answer.
+
+> ⚠️ **`docker exec pg_db psql` is NOT a credential test.** pg_hba keeps `trust` on
+> the local socket and loopback (deliberately — see STEP 2), so that command connects
+> **even with a deliberately wrong password**. It is fine for DDL, config and row
+> counts; it can never tell you whether an app's credentials work. To actually verify
+> a credential, connect the way an app does — from a sibling container over `pg_net`,
+> which fails correctly on a bad password:
+> ```bash
+> docker run --rm --network pg_net -e PGPASSWORD='<password>' postgres:16 \
+>   psql -h pg_db -U <role> -d <DB_NAME> -tAc "SELECT 1"
+> ```
+> This is the pattern every app's `preflight-check.sh` already uses.
 
 > DB-08 resolved as a non-issue (2026-08-19): the once-flagged "missing" `mag.ge_mm`
 > table never existed and no code references it — every real query uses
@@ -726,6 +904,16 @@ procedure and verification: SHARED SSH BUNDLE → "Incremental import after a mi
 
 ### 5.9 Re-provision app DB schemas & roles (every reseed — learned the hard way 2026-08-21)
 
+> **NEW-SERVER BUILD: skip this section on the first pass and come back to it.**
+> Every command below reads files that do not exist yet — `/opt/apps/<app>/.env` and
+> `<app>/db/*.sql` for incident-engine, ops-dashboard and reports, which are not
+> deployed until their sections much later in this document (INCIDENT-ENGINE,
+> OPS-DASHBOARD, REPORTS). Each of those sections provisions its own role at the
+> right moment, so a first build needs nothing here. Return to 5.9 **only** when
+> re-seeding a server whose apps are already deployed — that is the case it was
+> written for (the 2026-08-19 reseed). Order within it still matters:
+> incident-engine before ops-dashboard.
+
 Recreating schemas/tables **destroys every grant on them**, and app-owned schemas
 that don't exist in the source DB (`incidents`) vanish entirely. Roles survive (they
 are cluster-level) — which makes the breakage *silent*: after the 2026-08-19 reseed,
@@ -737,7 +925,13 @@ in the payload), and reports_rw sat broken-but-latent (no schedule on this box).
 **Step 0 — make sure the role password files exist.** The scripts read each role's
 password from a root-only file (`/root/<role>_pw`, DATABASE ROLES pattern). These
 files are host state — a rebuilt/never-provisioned host won't have them (found
-missing on acq-vm-0, 2026-08-21). No password is lost when they're absent: the live
+missing on acq-vm-0, 2026-08-21 — **and missing AGAIN as of 2026-08-28**:
+`sudo ls -l /root/*_pw` returns "No such file or directory", so this is a recurrence,
+not a one-off. Nothing is broken while apps run — they authenticate from their own
+`.env` — but **every `setup-role.sql` re-run will fail at Step 0 until they are
+recreated**, which is exactly the reseed path below. Recreate them now rather than
+discovering it mid-reseed; if they vanish a third time, find out what removes them).
+No password is lost when they're absent: the live
 value is in each app's untracked `.env`. Recreate them from there — values flow
 through pipes only, never shell history or `ps`, and **nothing is rotated** (the
 scripts will re-set each role to the password the apps already use):
@@ -768,6 +962,11 @@ docker exec -i pg_db psql -U postgres -d <DB_NAME> -f - < /opt/apps/incident-eng
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v pw="$(sudo cat /root/incident_engine_rw_pw)" -f - < /opt/apps/incident-engine/db/setup-owner-role.sql
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v ro_pw="$(sudo cat /root/ops_dashboard_ro_pw)" < /opt/apps/ops-dashboard/db/setup-readonly-role.sql
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v rw_pw="$(sudo cat /root/ops_dashboard_rw_pw)" < /opt/apps/ops-dashboard/db/setup-writer-role.sql
+# reports: DDL FIRST (2026-08-31). setup-role.sql now names alert.sme_report_sends
+# and its sequence directly; on a freshly reseeded DB those objects do not exist
+# yet and the script — being non-transactional — would stop midway. The DDL is
+# repeatable, so this is a no-op wherever the tables already exist.
+docker exec -i pg_db psql -U postgres -d <DB_NAME> -v ON_ERROR_STOP=1 -f - < /opt/apps/reports/sql/sme_reports_config.sql
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v pw="$(sudo cat /root/reports_rw_pw)" -f - < /opt/apps/reports/db/setup-role.sql
 ```
 
@@ -781,6 +980,16 @@ SELECT r, has_schema_privilege(r,'util','USAGE'),
        has_table_privilege(r,'util.app_run_logs','INSERT')
 FROM unnest(ARRAY['incident_engine_rw','ops_dashboard_ro','reports_rw']) r"
 # expect: incident_engine_rw t|t|f · ops_dashboard_ro t|t|f · reports_rw t|f|t
+# reports also needs its sme_reports write path intact (2026-08-31) — the
+# sequence grant is the one that fails at RUNTIME rather than at deploy:
+docker exec pg_db psql -U postgres -d <DB_NAME> -tAc "
+SELECT has_table_privilege('reports_rw','alert.sme_report_sends','INSERT'),
+       has_sequence_privilege('reports_rw','alert.sme_report_sends_id_seq','USAGE'),
+       has_any_column_privilege('reports_rw','public.users','SELECT'),
+       has_table_privilege('reports_rw','public.users','SELECT'),
+       has_table_privilege('reports_rw','public.hhm_credentials','SELECT')"
+# expect: t|t|t|f|f  (column-level on users: any-column TRUE, whole-table FALSE;
+#          hhm_credentials must stay unreachable)
 # (reports_rw is INSERT-not-SELECT by design; ops_dashboard_rw has NO table
 #  grants by design — it only executes the writer function:)
 docker exec pg_db psql -U postgres -d <DB_NAME> -tAc "
@@ -888,11 +1097,41 @@ and disk, the run refuses to report clean success.
 Quick health read across the fleet:
 
 ```sql
+-- Per-app outcome tally for the last hour, PLUS an explicit count of rows that
+-- could not be parsed. Never silently drops a row: an unreadable log is reported,
+-- not hidden (same principle as the outcome contract itself).
+WITH src AS (
+  SELECT app_name, verbose_log,
+         (verbose_log::text LIKE '%\u0000%') AS unreadable
+  FROM util.app_run_logs
+  WHERE inserted_at > now() - interval '1 hour'
+)
 SELECT app_name, e->'note'->>'outcome' AS outcome, count(*)
-FROM util.app_run_logs, LATERAL json_array_elements(verbose_log) e
-WHERE inserted_at > now() - interval '1 hour' AND e->>'func' = 'run_outcome'
-GROUP BY 1, 2 ORDER BY 1, 2;
+FROM src, LATERAL json_array_elements(verbose_log) e
+WHERE NOT unreadable AND e->>'func' = 'run_outcome'
+GROUP BY 1, 2
+UNION ALL
+SELECT app_name, '** UNREADABLE (null byte in log) **', count(*)
+FROM src WHERE unreadable
+GROUP BY 1
+ORDER BY 1, 2;
 ```
+
+> **Why the `unreadable` branch exists** (added 2026-08-28). Some machine output
+> contains a literal `\u0000`; Postgres refuses to convert that to `text`, so the
+> naive form of this query —
+> `FROM util.app_run_logs, LATERAL json_array_elements(verbose_log) e` — **aborts
+> outright** with `unsupported Unicode escape sequence: \u0000 cannot be converted
+> to text`. One bad row in the window kills the entire result. Casting to `jsonb`
+> does **not** help (same error). The tempting one-line fix — filtering those rows
+> out with `NOT LIKE` — works but makes the health check lie: an app whose log
+> happens to contain a null byte silently disappears from the tally, which is
+> exactly the "reports clean success while broken" failure this section exists to
+> prevent. Hence the `UNION ALL`: unparseable rows are counted and named. A nonzero
+> `** UNREADABLE **` line is a real signal — that app's outcomes are NOT covered by
+> the tally above it, so check it directly. (On acq-vm-0 this currently surfaces a
+> handful of `mmb-rpp` rows per hour.) The upstream fix — stripping null bytes
+> before the logger persists — is FOLLOW-UPS 18.
 
 ------------------------------------------------------------------------
 
@@ -901,15 +1140,18 @@ GROUP BY 1, 2 ORDER BY 1, 2;
 ```bash
 APPS="data_acquisition hhm_rpp_ge hhm_rpp_philips hhm_rpp_siemens \
 acumatica_sync monday reports part-source-pipeline incident-engine ops-dashboard \
-acquisition-v2 odd-jobs"
+acquisition-v2 odd-jobs mmb-rpp alert-processor alert-notify"
 
 sudo mkdir -p /opt/resources/acqu_files
 sudo chgrp -R docker /opt/resources/acqu_files
 sudo chmod -R 2775   /opt/resources/acqu_files
 
-for a in $APPS; do mkdir -p "/opt/run-logs/$a"; done
-chgrp -R docker /opt/run-logs
-chmod -R g+rwXs /opt/run-logs
+# sudo throughout: /opt/run-logs is root-owned (STEP 1.2) and its per-app subdirs are
+# svc-owned, so an unprivileged chgrp/chmod fails with "Operation not permitted".
+for a in $APPS; do sudo mkdir -p "/opt/run-logs/$a"; done
+sudo chgrp -R docker /opt/run-logs
+sudo chmod -R g+rwXs /opt/run-logs
+sudo chown -R svc /opt/run-logs        # container run user writes here as svc:docker
 ```
 
 The `/opt/run-logs/<app>` dirs are the hot path for release `LOG_DIR` mounts and
@@ -928,6 +1170,19 @@ App status notes:
 - **odd-jobs** — Jonathan's app, **out of scope, never modify** — but it owns
   partition maintenance (next section), so it must exist and run on any server that
   hosts the database.
+- **mmb-rpp, alert-processor, alert-notify** — Jonathan's apps, **out of scope,
+  never modify**, and deliberately undocumented here (no clone/build/release/schedule
+  instructions: he deploys them, same as odd-jobs). They are nonetheless **live,
+  paradigm-migrated job apps on this box** (`USER_ID=svc`, `RELEASE_SHA`-stamped,
+  scheduled in the `svc` crontab), and they consume **server-wide resources this
+  document owns**: `/opt/run-logs/<app>` (in the `APPS` list above), `pg_net`
+  (STEP 2), `redis-admin_redis_net` (STEP 3 — mmb-rpp and alert-processor only), and
+  `/opt/resources` mounted read-only. Their compose files use short-form
+  `${LOG_DIR:-...}` mounts, so a **missing** `/opt/run-logs/<app>` does not fail
+  loudly — Docker auto-creates it root-owned and their logs then silently land
+  unwritable-by-`svc`. That is why they belong in the list above even though nothing
+  else about them belongs in this document. Coordinate their deployment with
+  Jonathan before relying on a rebuilt server.
 - **imprivata-poc** — fully self-contained PoC; needs none of these dirs.
 
 ------------------------------------------------------------------------
@@ -985,10 +1240,24 @@ cd /opt/apps/data_acquisition
 ```
 
 What it actually does (read the script): pins EOL-but-compatible `node:16.20.2`,
-deletes the (stray, unused) repo-local `node_modules/` dir, then runs
-`npm ci && npm run update_db_creds` in a container whose `node_modules` is a **tmpfs**
-— nothing lands on the host, no cleanup needed afterwards. The `APP_DIR` path is
-hardcoded to `/opt/apps/data_acquisition` — edit it if the layout ever changes.
+then runs `npm ci && npm run update_db_creds` in a container whose `node_modules`
+is a **tmpfs** — nothing lands on the host, no cleanup needed afterwards. The
+`APP_DIR` path is hardcoded to `/opt/apps/data_acquisition` — edit it if the layout
+ever changes.
+
+> ⚠️ **KNOWN DEFECT — running this today breaks the release copy** (found
+> 2026-08-28; script fix pending, see FOLLOW-UPS 16). Line 17 is
+> `rm -rf "$APP_DIR/node_modules"`, commented "just in case a previous run created
+> node_modules on the host". That was correct **pre-paradigm**, when deps lived in
+> the shared `/opt/resources/node_mod_cache` and any host-side `node_modules` was
+> genuinely stray. Under the paradigm `node_modules` is **in-tree, per copy**
+> (CONVENTIONS; STEP 6.2) — so `$APP_DIR/node_modules` is the live release's real
+> dependency tree (~49 MB on acq-vm-0), and deleting it breaks every
+> data_acquisition cron job until the next `build-release.sh`. The deletion is also
+> pointless for the run itself: the container mounts a tmpfs over that path.
+> **Until the script is fixed**, either comment out line 17 first, or re-run
+> `bash build-release.sh` from `~/apps/data_acquisition` immediately afterwards.
+> Verify before leaving: `ls -d /opt/apps/data_acquisition/node_modules`.
 
 ------------------------------------------------------------------------
 
@@ -1012,6 +1281,18 @@ chown $USER:docker /opt/resources/ssl/pg_ssl.crt && chmod 644 /opt/resources/ssl
 CN/SAN must cover every hostname/IP clients use (`pg_db` for dockerized apps on
 `pg_net`, localhost/127.0.0.1 for IDE proxies, the VM IP for external clients) or
 Node rejects with `ERR_TLS_CERT_ALTNAME_INVALID`. Regenerate when the IP changes.
+
+> **Known SAN drift on acq-vm-0 — accepted, fix at next reissue** (verified
+> 2026-08-28). The live cert's SAN carries `IP:20.121.125.115` (a public address),
+> but this VM's actual address is **`10.2.0.4`**. Nothing is broken by it today:
+> all ten apps connect as `PGHOST=pg_db`, which IS in the SAN, and `verify-full`
+> over `pg_db` was tested end-to-end and passes. The only thing that would fail is
+> a client connecting **by IP** with `verify-full` — an IDE proxy or external tool,
+> which nothing currently does. Since regenerating means a Postgres reload plus
+> re-distributing the cert to every app, it is deliberately deferred: **add
+> `IP:10.2.0.4` when the cert is next reissued** (it expires 2029-05-25). Note
+> `20.121.125.115` still routes from this host, so if it is ever reassigned the
+> staleness inverts — confirm the SAN against `hostname -I` at reissue time.
 
 ## Key permissions (SEC-06 — the layout is the security control)
 
@@ -1087,12 +1368,19 @@ The pattern (proven three times; scripts to copy):
 - `incident-engine/db/setup-owner-role.sql` — owner-role variant (app owns its schema)
 - `ops-dashboard/db/setup-readonly-role.sql` — read-only variant
 - `reports/db/setup-role.sql` — read-mostly + targeted writes variant, with a
-  database-wide fail-closed allowlist audit
+  database-wide fail-closed allowlist audit. Since 2026-08-31 it is also the
+  reference for two things the other two scripts lack: a **column-level** grant
+  (`SELECT (email_address, status, notify_email, system_list_cache) ON
+  public.users` — the feature needs four columns, not the table) and a
+  **sequence** grant (`USAGE ON alert.sme_report_sends_id_seq`; the id is
+  `BIGSERIAL` and `nextval` in a column DEFAULT executes as the INSERTING role,
+  so the INSERT fails without it — a runtime failure, not a deploy-time one)
 
 **Passwords never go on a command line as literals** (SEC-09 — shell history and
 `ps` exposure). Generate into a root-only file first, then expand from it. The
 `/root/<role>_pw` files are **host state** — keep them; if a host is missing them
-(found on acq-vm-0 2026-08-21), recreate each from the owning app's `.env` per
+(found on acq-vm-0 2026-08-21, and again 2026-08-28 — currently absent), recreate
+each from the owning app's `.env` per
 **§5.9 Step 0** before re-running any role script:
 
 ```bash
@@ -1117,6 +1405,61 @@ Per-app migration checklist (repeat for each remaining app):
 6. **Re-run each setup-role script after any app-database reset** (grants die with the
    schema; roles survive) and re-run it BEFORE deploying code needing new grants.
 
+> ## ⚠️ Archived partitions carry their grants out of the schema (found 2026-08-31)
+>
+> **Moving a table to another schema PRESERVES its ACL.** odd-jobs' partition
+> archiver detaches month partitions from `alert`/`edu`/`mag`/`log` and moves them
+> into `archive_*`, so every partition that was live the last time a
+> `GRANT ... ON ALL TABLES IN SCHEMA` swept those schemas carries that role's
+> SELECT out with it. The role has no `USAGE` on `archive_*`, so the privilege is
+> unusable — but it is HELD, and a fail-closed allowlist audit is right to refuse
+> to certify it.
+>
+> Effect: **the setup-role script silently stops being re-runnable.** Found on
+> reports, which aborted on 13 stale grants (`archive_alert`, `archive_edu`,
+> `archive_mag` — the `2026_02` partitions) that had nothing to do with the change
+> being deployed. Nothing is broken while the app runs; it breaks the next time you
+> need the script, which per item 6 above is exactly during a reseed or a
+> grant-adding deploy — the worst moment to be debugging someone else's drift.
+>
+> **Do not allowlist `archive_*`** — that hides the drift instead of fixing it and
+> widens the surface. Sweep it instead, on every run, before the audit. Loop over
+> `pg_namespace` rather than naming schemas literally: `archive_*` does not exist on
+> a fresh server, and these scripts are non-transactional (DB-03), so a `REVOKE` on
+> a missing schema aborts the run partway through. The implementation is in
+> `reports/db/setup-role.sql` ("ARCHIVED-PARTITION SWEEP") — copy it:
+>
+> ```sql
+> DO $$
+> DECLARE s record;
+> BEGIN
+>   FOR s IN SELECT nspname FROM pg_namespace WHERE nspname LIKE 'archive%' ORDER BY 1
+>   LOOP
+>     EXECUTE format('REVOKE ALL ON ALL TABLES    IN SCHEMA %I FROM <role>', s.nspname);
+>     EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA %I FROM <role>', s.nspname);
+>     EXECUTE format('REVOKE ALL ON SCHEMA %I                  FROM <role>', s.nspname);
+>   END LOOP;
+> END
+> $$;
+> ```
+>
+> **Who is exposed, precisely.** `GRANT ... ON ALL TABLES IN SCHEMA` grants on
+> every table *individually*, partitions included — those per-partition ACLs are
+> what walk out. A grant naming a parent table (`GRANT SELECT ON util.app_run_logs`)
+> does NOT grant on its partitions, so nothing walks out. That is the whole
+> difference: **reports is the only role on this box that grants schema-wide over
+> partitioned schemas** (`alert`, `mag`, `config`, `edu`), which is why only it
+> drifted. Verified 2026-08-31: `incident_engine_rw`, `ops_dashboard_ro` and
+> `ops_dashboard_rw` grant table-by-table and are clean. But reports'
+> `setup-role.sql` is the template this document recommends copying, so carry the
+> sweep across with it. Audit any role with:
+> ```bash
+> docker exec pg_db psql -U postgres -d <DB_NAME> -tAc "
+> SELECT n.nspname, count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+> WHERE n.nspname LIKE 'archive%' AND c.relkind IN ('r','p')
+>   AND has_any_column_privilege('<role>', c.oid, 'SELECT') GROUP BY 1 ORDER BY 1"
+> ```
+
 The **paradigm migration** (which this list once tracked) completed fleet-wide
 with hhm_rpp_philips on 2026-08-26 — every job app is now on the dev/release
 paradigm. The **role rollout itself (Phase 4a) has NOT progressed**: verified
@@ -1127,7 +1470,7 @@ data_acquisition (busiest last).
 
 ------------------------------------------------------------------------
 
-# PER-APP ENTRYPOINT & BUILD MATRIX (verified 2026-08-18)
+# PER-APP ENTRYPOINT & BUILD MATRIX (rows verified 2026-08-28; base reconciliation 2026-08-18)
 
 Standard entrypoint (gosu drop to `RUN_USER`, default `svc`):
 
@@ -1150,7 +1493,7 @@ instructions are dead):
 | hhm_rpp_siemens (**migrated 2026-08-25**) | — (no Dockerfile, on purpose; GE's baked gosu entrypoint, NO log-dir repair — build.sh/preflight create the dev log dir host-side) | `hhm_rpp:${IMAGE_TAG}` = `hhm_rpp:svc` since ge migrated (2026-08-26) | no image build — `build.sh` (deps only) / `build-release.sh` (release, as svc) |
 | hhm_rpp_philips (**migrated 2026-08-26**) | — (no Dockerfile, on purpose; GE's baked gosu entrypoint, NO log-dir repair — build.sh/preflight create the dev log dir host-side) | `hhm_rpp:${IMAGE_TAG}` = `hhm_rpp:svc` (`IMAGE_TAG=svc` in its release `.env` — the transitional `staging` alias is no longer consumed) | no image build — `build.sh` (deps only) / `build-release.sh` (release, as svc) |
 | monday (**migrated 2026-08-25**) | `entrypoint.sh` (root, baked; repairs `files/`+`data_outputs/`) | `monday:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
-| reports (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `reports:${USER_ID}` (dev = username, release = `svc`; the legacy `aux:` tag is retired — follow-up 10 closed) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
+| reports (**migrated 2026-08-26**; PROD app code merged 2026-08-31) | `docker/entrypoint.sh` (baked; root-phase log-dir repair) | `reports:${USER_ID}` (dev = username, release = `svc`; the legacy `aux:` tag is retired — follow-up 10 closed). **NOT a bare node+gosu image since 2026-08-31**: also carries `zip`, `fonts-liberation`, Chromium's shared libs, and a baked Chrome under `/opt/puppeteer` (`PUPPETEER_EXECUTABLE_PATH`) — 2.17 GB | `bash build.sh` (dev) / `build-release.sh` (release, as svc). build.sh derives `CHROME_VERSION` from the installed puppeteer and sets `PUPPETEER_SKIP_DOWNLOAD=true` |
 | part-source-pipeline (**migrated**) | `entrypoint.sh` (root, baked; repairs `files/` + the log mount) | `psp:${USER_ID}` (dev = username, release = `svc`) | `build.sh` (dev) / `build-release.sh` (release) |
 | acumatica_sync (**migrated 2026-08-25**) | `entrypoint.sh` (root) | `acu-sync:${USER_ID}` (dev = username, release = `svc`) | `bash build.sh` / release via `build-release.sh` |
 | incident-engine (**migrated 2026-08-26**) | `docker/entrypoint.sh` (baked; root-phase log-dir repair, gosu drop) | `incident-engine:${USER_ID}` (dev = username, release = `svc`; replaced stock `node:lts` + `user: "105:987"` pin) | `bash build.sh` (dev) / `build-release.sh` (release, as svc) |
@@ -1271,8 +1614,8 @@ and each repo's own CLAUDE.md is authoritative for day-to-day operation.
 > `.out` files, 0/20/40s stagger). Its CLAUDE.md is authoritative for
 > day-to-day operation.
 
-> **hhm_rpp_philips is MIGRATED (2026-08-26** — release `534ad92`; CLAUDE.md
-> banner-off closeout pending the verification tail**)**. Dev clone
+> **hhm_rpp_philips is MIGRATED (2026-08-26; closed out 2026-08-27** — release
+> `3a2c0ec`, verified over a full day of cycles, CLAUDE.md banner off**)**. Dev clone
 > `~/apps/hhm_rpp_philips`; `/opt/apps/hhm_rpp_philips` is build output of its
 > `build-release.sh` (no image build — deps only; `IMAGE_TAG=svc` in the
 > release `.env` resolves the shared image directly, no more `staging` alias).
@@ -1336,7 +1679,11 @@ belongs to the DB-roles rollout, not to casual cleanup.
 
 # REPORTS APP
 
-**MIGRATED to the fleet paradigm 2026-08-26** (#7). Its own CLAUDE.md is
+**MIGRATED to the fleet paradigm 2026-08-26** (#7). **The `PROD` branch's
+application work was merged into `STAGING_docker` 2026-08-31** (release
+`f8ea7e0`): the `sme_reports/` Magnet Health Brief engine, scoped and
+customer-scoped summaries, EDU environmental reporting, the `alert.sme_reports`
+subscription table, PDF rendering and zip batch delivery. Its own CLAUDE.md is
 authoritative for day-to-day operation; summary:
 
 ```bash
@@ -1346,18 +1693,63 @@ cd ~/apps/reports && git switch STAGING_docker
 # .env from .env.example: PGUSER=reports_rw, PG_SSLMODE=verify-full,
 # PG_SSL_PATH=/opt/resources/ssl/pg_ssl.crt, USER_ID=<you>, host identity args.
 
-# DB role (pilot pattern — see DATABASE ROLES; use the password-file pattern):
+# DB, IN THIS ORDER (2026-08-31). setup-role.sql now NAMES alert.sme_report_sends
+# and its sequence, and it is non-transactional (DB-03) — against a database
+# without those objects it stops midway, having applied everything above the
+# failure. The DDL is repeatable, so re-running it on an existing DB is a no-op.
+docker exec -i pg_db psql -U postgres -d <DB_NAME> -v ON_ERROR_STOP=1 -f - < sql/sme_reports_config.sql
 docker exec -i pg_db psql -U postgres -d <DB_NAME> -v pw="$(sudo cat /root/reports_rw_pw)" -f - < db/setup-role.sql
 
-bash preflight-check.sh     # authed verify-full PG as reports_rw + Monday.com me query
-bash build.sh               # in-tree deps + reports:<you>
+bash build.sh               # in-tree deps + reports:<you>  (MUST precede preflight:
+                            #   preflight errors "image reports:<you> missing")
+bash preflight-check.sh     # authed verify-full PG as reports_rw + Monday.com me
+                            #   query + a REAL headless-Chromium launch (below)
 bash build-release.sh       # -> /opt/apps/reports as reports:svc, RELEASE_SHA stamped
 ```
+
+**This image is no longer "gosu only"** (2026-08-31). `sme_reports` renders every
+PDF with headless Chromium and zips batches with the Info-ZIP binary, so the
+Dockerfile now also installs `zip`, `fonts-liberation` and Chromium's shared-library
+set, and bakes a browser into the image at `/opt/puppeteer` (symlinked
+`/usr/local/bin/chrome-headless`, exported as `PUPPETEER_EXECUTABLE_PATH`).
+Image size went 1.63 GB → 2.17 GB. **New-server prerequisite:** the image build
+now needs egress to `storage.googleapis.com` (chrome-for-testing) on top of the
+GitHub and npm access STEP 1.4 covers — an air-gapped or egress-filtered host
+cannot build reports without mirroring that browser. Three things a rebuild must
+not undo:
+
+- **`fonts-liberation` is not cosmetic.** `sme_reports/render/assets/charw8.js` is
+  a table of per-character pixel widths measured in Chromium for the
+  Helvetica/Arial stack. With no metric-compatible face installed, Chromium
+  substitutes and every computed column width is silently wrong — broken PDF
+  tables, no error. Verified in the rendered output: the PDF embeds
+  `LiberationSans` / `LiberationSans-Bold`.
+- **Install the browser with `@puppeteer/browsers`, never `npx puppeteer@<ver>
+  browsers install chrome`.** The latter installs the whole puppeteer package
+  first and its POSTINSTALL also downloads Chrome — that postinstall hangs
+  (observed here: 32 minutes at ~1 KiB/s with 9 s of CPU, while the same
+  chrome-for-testing URL served 91 MB/s to the host and 44 MB/s to a plain
+  container, and the npm registry was equally fast — it is the installer, not the
+  network). `@puppeteer/browsers` fetches the identical build in ~6 s.
+- **The Chrome build is derived, not hand-pinned.** `build.sh` reads
+  `PUPPETEER_REVISIONS.chrome` out of the puppeteer it just installed and exports
+  `CHROME_VERSION` for compose, so bumping the npm dependency moves the baked
+  browser with it. `build.sh` also passes `PUPPETEER_SKIP_DOWNLOAD=true` to the
+  npm install so ~350 MB of browser never lands in the tree, where
+  `build-release.sh` would mirror it into `/opt/apps` on every release.
+  puppeteer's `21.x` pin holds on `node:lts` (Node 24 drives Chrome 121) — the
+  in-code comment claiming "the server runs Node 16" describes the legacy
+  non-docker host, not this one.
 
 Two standing hazards (see its CLAUDE.md): **no schedule is installed, by
 decision** — this app had never run on this host, and running a report family
 at a `:00`/`:30` minute emails real customers from `alert.reports`
-subscriptions; smoke-test at non-matching minutes only. The retired
+subscriptions; smoke-test at non-matching minutes only. **That decision now
+covers the `sme_report` family too**, which emails from `alert.sme_reports`;
+those rows are inert until BOTH `enabled=true` AND `dry_run=false`, and the
+table is currently empty on this box. The safe smokes are
+`node index.js sme_report` at a non-matching minute (outcome `skipped`, exit 0)
+and a request file with `"email": false`. The retired
 `aux:staging` image and the orphaned `/opt/resources/node_mod_cache/reports`
 dir await post-cutover cleanup.
 
@@ -1366,12 +1758,22 @@ dir await post-cutover cleanup.
 # MONDAY APP
 
 **MIGRATED to the fleet paradigm 2026-08-25** (second after the pilot). Its own
-CLAUDE.md is authoritative for day-to-day operation; summary:
+CLAUDE.md is authoritative for day-to-day operation — **but read its banner first**:
+as of 2026-08-28 `~/apps/monday/CLAUDE.md` still opens with a ⚠️ MID-MIGRATION
+notice warning that its sections may describe either pre- or post-migration state.
+The migration itself is complete (verified: `monday:svc`, `RELEASE_SHA` stamped,
+release copy is build output); the banner is an un-closed tail, tracked alongside the
+other banner-off items in FOLLOW-UPS 15. Where that file and this one disagree on
+day-to-day operation, prefer it — but treat anything it frames as "pre-migration" as
+stale. Summary:
 
 ```bash
 # Dev clone (the ONLY editable tree):
 git clone git@github.com:Matt-Teixeira/monday.git ~/apps/monday
-cd ~/apps/monday        # branch STAGING_docker
+cd ~/apps/monday && git switch STAGING_docker
+# ^ REQUIRED: this repo's origin/HEAD is PROD — a plain clone lands on PROD, not
+#   STAGING_docker, and nothing downstream would tell you. Verify before building:
+#   git rev-parse --abbrev-ref HEAD   # expect STAGING_docker
 cp .env.example .env    # fill in; USER_ID=<your username>, #RELEASE:USER_ID=svc
 bash build.sh           # in-tree npm install (as you) + image monday:<username>
 bash preflight-check.sh # zero warnings expected (authed PG + Monday.com checks)
@@ -1387,11 +1789,22 @@ cron `.out` files in `/opt/run-logs/monday/`. Provenance is the stamped `.env`
 + boot line, NOT a DB column (2026-08-25 decision: shared table left alone).
 SIGTERM/SIGINT write an honest `error` row and exit 1.
 
-Schedule: **5 entries in the shared svc crontab** (the first app there under the
-paradigm; block recorded in monday's CLAUDE.md). Historical cadences restored
-2026-08-25 after a deliberate stop on 2026-08-19: process_new_additions every
-10 min, update_mmb_he_data :20/:50, update_hhm_status hourly :50, dailies
-04:20/07:25 UTC. `new_avconn_tickets` is dead (2026-04-21) — never schedule it.
+**Schedule: deliberately STOPPED — do NOT restore it on a rebuild** (owner decision;
+state confirmed 2026-08-28). monday writes to the **live Monday.com API**, not just to
+this database, so a running schedule on staging mutates real production boards. It is
+stopped for exactly that reason — the same class of decision as reports (emails real
+customers) and part-source-pipeline (vendor SFTP), both also dormant by choice.
+
+Last run was **2026-08-25 14:10 UTC**; `stats.job_runs` has had no monday row since,
+and the cron `.out` files in `/opt/run-logs/monday/` are frozen at that date. **That is
+the intended state, not a fault** — do not "fix" it by reinstalling the entries.
+
+Historical cadences, recorded only so nobody reconstructs them by guesswork if the app
+is ever deliberately revived: 5 entries in the shared svc crontab —
+`process_new_additions` every 10 min, `update_mmb_he_data` :20/:50, `update_hhm_status`
+hourly :50, dailies 04:20/07:25 UTC. `new_avconn_tickets` is dead (2026-04-21) — never
+schedule it. Reviving any of these is an owner decision about live external data, not a
+routine deployment step.
 
 `.env` points at the real **`staging`** database (the pre-August `dev` value was a
 standing failure — REL-02). The app reads `PGUSER` (`utils/db/pg-pool.js`); compose
@@ -1410,7 +1823,10 @@ CLAUDE.md is authoritative for day-to-day operation; summary:
 ```bash
 # Dev clone (the ONLY editable tree):
 git clone git@github.com:Matt-Teixeira/part-source-pipeline.git ~/apps/part-source-pipeline
-cd ~/apps/part-source-pipeline   # branch STAGING_docker
+cd ~/apps/part-source-pipeline && git switch STAGING_docker
+# ^ REQUIRED: this repo's origin/HEAD is PROD — a plain clone lands on PROD, not
+#   STAGING_docker, and nothing downstream would tell you. Verify before building:
+#   git rev-parse --abbrev-ref HEAD   # expect STAGING_docker
 cp .env.example .env             # fill in; USER_ID=<your username>, #RELEASE:USER_ID=svc
 bash build.sh                    # in-tree npm install (as you) + image psp:<username>
 bash preflight-check.sh          # zero warnings expected (authed PG + HCA OData checks)
@@ -1464,9 +1880,18 @@ docker exec -i pg_db psql -U postgres -d <DB_NAME> -v pw="$(sudo cat /root/incid
 
 bash build.sh                          # in-tree deps + image incident-engine:<you>
 bash preflight-check.sh                # expect zero warnings
-RUN_USER=$(id -un) docker compose run --rm app node index.js noop        # lifecycle smoke
-RUN_USER=$(id -un) docker compose run --rm app node index.js materialize
-RUN_USER=$(id -un) docker compose run --rm app node index.js assess
+
+# ⚠️ These are NOT read-only smoke tests. The dev clone's .env points at the SAME
+# live database as the release (PGDATABASE=<DB_NAME>, PGHOST=pg_db) — there is no
+# separate dev DB on this stack. `materialize` writes incidents.error_events and
+# `assess` writes severity/confidence/state to real incidents. Only `noop` is inert.
+# On an EXISTING server this mutates production incident data; the writes are
+# idempotent (the second `assess` proves it) but they are still writes. On a NEW
+# server build that is exactly what you want. Run the two write jobs only when you
+# intend to, and see incident-engine's CLAUDE.md before doing so on a live box.
+RUN_USER=$(id -un) docker compose run --rm app node index.js noop        # lifecycle smoke (inert)
+RUN_USER=$(id -un) docker compose run --rm app node index.js materialize # WRITES incidents.*
+RUN_USER=$(id -un) docker compose run --rm app node index.js assess      # WRITES incidents.*
 RUN_USER=$(id -un) docker compose run --rm app node index.js assess      # second pass proves idempotency
 
 # Release (wipes/mirrors /opt/apps/incident-engine, stamps RELEASE_SHA, builds :svc)
@@ -1567,8 +1992,10 @@ sync with `crontab -l`.
 > `cron.<job>.out` files) at the paradigm cutover — the installed set is
 > `data_acquisition/cron-bk/crontab.restore-2026-08-24.cron`.
 > **2026-08-26:** hhm_rpp_ge's and hhm_rpp_philips' user-crontab entries were
-> hardened the same way at their cutovers (cadences unchanged). `schedules.md`
-> still shows the legacy entries for these apps: sync it on next touch.
+> hardened the same way at their cutovers (cadences unchanged).
+> **2026-08-27:** `schedules.md` was synced to match — it now carries the hardened
+> GE (3) and Philips (18) entries verbatim and its header count agrees with the
+> live crontab (50 active entries, verified 2026-08-28).
 
 The maintenance schedule at a glance:
 
@@ -1643,10 +2070,15 @@ participation (lock-busy = `skipped`, exit 0). History: the original cron line w
 lost in the hhm_rpp three-way split and the table silently grew to 141 GB / 40 days
 before being purged back to ~6 GB.
 
-Steady state to expect: ~15,400 rows / ~6 GB on disk; nightly dump ~10 GB. If the
-table is ever found far above that, the retention job has been failing — check its
-outcomes in `util.app_run_logs` (a persistent `skipped` streak means something holds
-the advisory lock). A large backlog must be cleared with **batched deletes + a
+Steady state to expect: **~15,000 rows** (48 h of retention) occupying **~12 GB**
+on disk, with the nightly dump around **17–18 GB** (measured 2026-08-28; the earlier
+"~6 GB / ~10 GB" figures were the immediate post-purge low and have been corrected).
+**Judge health by ROW COUNT, not size** — the two diverge: rows track retention
+directly, while on-disk size also carries table bloat that only `VACUUM FULL`
+reclaims. A row count near ~15,000 with a larger-than-expected size means bloat, not
+a retention failure. If the ROW COUNT is far above that, the retention job has been
+failing — check its outcomes in `util.app_run_logs` (a persistent `skipped` streak
+means something holds the advisory lock). A large backlog must be cleared with **batched deletes + a
 post-purge `VACUUM FULL` in a quiet minute** — never one big `DELETE`, and remember
 plain `VACUUM` does not return the disk space.
 
@@ -1679,6 +2111,15 @@ plain `VACUUM` does not return the disk space.
 1. **DB roles fleet rollout** (4a) — 7 apps still connect as `postgres` with
    unverified TLS; per-app checklist above.
 2. **Verified TLS everywhere** (4b) — copy reports' fail-closed pg-pool to each app.
+2b. **Archived-partition grant drift** (new 2026-08-31) — reports hit it and now
+    sweeps for it. **Checked 2026-08-31: `incident_engine_rw`, `ops_dashboard_ro`
+    and `ops_dashboard_rw` are all clean, and structurally not exposed** — they
+    grant table-by-table, never `ON ALL TABLES IN SCHEMA` over a partitioned
+    schema, so their grants live on parent tables that are never moved. No action
+    needed on them today. The debt is that reports' script is the **template this
+    document tells you to copy**, and the exposure travels with the pattern: any
+    new role granting schema-wide over `alert`/`edu`/`mag`/`log`/`util` inherits
+    it. Port the ARCHIVED-PARTITION SWEEP whenever you copy that template.
 3. **Stricter secret/config file permissions + runtime group** (4d).
 4. **Version pinning + CI checks** (4e) — `node:lts` is mutable; pin per-app; add
    secret-scanning and compose-validation to CI.
@@ -1712,10 +2153,44 @@ plain `VACUUM` does not return the disk space.
     per-app dirs (no compose file references the cache anymore); the `aux:staging`
     image (from #10). Also close out the migration tails — ~~hhm_rpp_philips~~
     (6q COMPLETE 2026-08-27: verified, banner off, release `3a2c0ec`),
-    pg_manage_v2's verification (BACKLOG 6p), and redis-admin's banner-off
+    pg_manage_v2's verification (BACKLOG 6p), redis-admin's banner-off
     (BACKLOG 6r; verification tail = two clean cron cycles of the consuming
-    apps + the next nightly backup line). The working queue for all of this
-    now lives in `docs/FLEET-TODO.md`.
+    apps + the next nightly backup line), and **monday's banner-off** (found
+    2026-08-28: `~/apps/monday/CLAUDE.md` still opens with a MID-MIGRATION
+    notice though the migration completed 2026-08-25 — see MONDAY APP). The
+    working queue for all of this now lives in `docs/FLEET-TODO.md`.
+16. **`update_db_creds.sh` deletes the release's `node_modules`** (found
+    2026-08-28, STEP 8) — line 17's `rm -rf "$APP_DIR/node_modules"` predates the
+    paradigm and was correct when deps lived in the shared `node_mod_cache`; with
+    in-tree per-copy deps it destroys the live release's dependency tree (~49 MB)
+    and breaks every data_acquisition cron job until the next `build-release.sh`.
+    The container mounts a tmpfs over that path, so the deletion serves no purpose
+    for the run. Fix in the data_acquisition repo (drop the line, or scope it to a
+    genuine stray-detection check); the doc carries a warning until then.
+17. **`activate_redis_auth.sh` dev-clone paths are operator-specific** (found
+    2026-08-28, STEP 3 step 4) — four of the ten `ENVS` entries are hardcoded to
+    `/home/matt-teixeira/apps/...`. Correct under `sudo` on acq-vm-0, silently
+    skipped on any server with a different operator. Make the dev-clone owner a
+    variable (or derive it from `SUDO_USER`) in the redis-admin repo; the doc
+    carries a coverage check until then.
+18. **Null bytes reach `util.app_run_logs`** (found 2026-08-28) — some machine
+    output contains a literal `\u0000`, which Postgres cannot convert to `text`.
+    Any query doing `json_array_elements(verbose_log)` over a window containing
+    one **aborts entirely** (`unsupported Unicode escape sequence`); `::jsonb`
+    behaves the same. The fleet health read (THE OUTCOME CONTRACT) now isolates and
+    counts these rows rather than dying or hiding them, but the tally cannot cover
+    them. Upstream fix: strip/replace null bytes in the logger before persisting
+    (`utils/logger`, vendored per app — so it is a fleet-wide change). Currently
+    visible on `mmb-rpp`. Until then, a nonzero `** UNREADABLE **` line means those
+    outcomes need checking by hand.
+19. **`redis_migrate.sh` does not emit a source key count** (found 2026-08-28,
+    STEP 4) — the seed verification is stated three times as "must equal the source
+    count", but nothing produces that number, so the check historically compared
+    against a remembered guess and a half-loaded Redis would pass. STEP 4 now takes
+    `SOURCE_KEYS` as an explicit variable and asserts against it, but the operator
+    must capture it by hand on the source. Fix in the data_acquisition repo: have
+    `redis_migrate.sh` record `DBSIZE` per instance alongside the RDB it ships
+    (e.g. a `.keycount` sidecar), so the target can assert without a manual step.
 
 ------------------------------------------------------------------------
 
@@ -1758,7 +2233,12 @@ Build a blank dev/staging VM from this document alone, then demonstrate **all** 
       zero rows) and the watchdog cron is installed.
 - [ ] **odd-jobs is deployed and scheduled** (Jonathan): `sudo crontab -l -u svc`
       shows the `pg-part-arch` line — a new DB server without it has no partition
-      maintenance (A21-12).
+      maintenance (A21-12). The same listing is the check for Jonathan's other
+      scheduled apps (mmb-rpp, alert-processor) and for hhm_rpp_siemens.
+- [ ] **Role password files exist**: `sudo ls -l /root/*_pw` lists one per
+      provisioned role, each non-empty. They are host state, not in git, and have
+      gone missing twice (2026-08-21, 2026-08-28) — absent files break every
+      `setup-role.sql` re-run at §5.9 Step 0, silently until a reseed needs them.
 - [ ] The systems inventory has been reconciled against prod (B0a) and the delta
       recorded.
 
