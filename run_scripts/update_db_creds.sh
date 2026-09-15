@@ -13,8 +13,13 @@ if ! "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1; then
   "$DOCKER" pull "$IMAGE"
 fi
 
-# Just in case a previous run created node_modules on the host
-rm -rf "$APP_DIR/node_modules" || true
+# Do NOT delete "$APP_DIR/node_modules" here. Post-migration, the release copy's
+# node_modules is build.sh's in-tree install (owned by svc) and build-release.sh
+# preserves it across releases. The old `rm -rf` wiped it, and the tmpfs mount
+# below then made Docker recreate the mount point as an EMPTY ROOT-OWNED dir:
+# every compose run in /opt/apps failed "Cannot find module 'dotenv'" and the
+# next build-release.sh died EACCES in npm install (observed 2026-09-15).
+# The tmpfs mount simply shadows the host dir inside this container.
 
 # Run with a tmpfs for node_modules so nothing lands on the host.
 # NOTE: this bypasses docker-compose AND the image entrypoint (no gosu, no
