@@ -21,7 +21,7 @@ FROM
     JOIN config.acquisition ac ON sys.id = ac.system_id
     JOIN config.mag mag ON sys.id = mag.system_id
 WHERE
-    sys.id IN ('SME21922','SME11221','SME01136')
+    sys.id IN ('SME21922','SME11221','SME01136','SME18359','SME17676','SME16940','SME21920')
     AND
     sys.process_mag IS TRUE
     AND
