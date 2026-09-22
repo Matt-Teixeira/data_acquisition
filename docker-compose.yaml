@@ -74,6 +74,9 @@ services:
       # Shared SSH bundle (read-only). Entrypoint is now baked into the image,
       # so we no longer mount the full /opt/resources tree.
       - /opt/resources/ssh:/opt/resources/ssh:ro
+      # PostgreSQL server certificate (read-only). PG_SSLMODE=verify-full
+      # reads it at PG_SSL_PATH; the pool fails closed if it is missing.
+      - /opt/resources/ssl:/opt/resources/ssl:ro
     environment:
       # Intentionally unset in .env: empty -> entrypoint.sh defaults to svc.
       # Dev runs pass it on the command line. ':-' silences the compose WARN.
