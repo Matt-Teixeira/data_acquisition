@@ -25,9 +25,8 @@ to the shared Postgres (`pg_db`, database `staging`) and Redis.
 
 | Doc | What it is |
 |---|---|
-| [docs/docker_server_full_setup_2.0.md](docs/docker_server_full_setup_2.0.md) | **The server build guide** — full dev/staging server setup for this and all sibling apps |
+| `pg_manage_v2/docs/runbook/full_setup_3.0.md` (in the pg_manage_v2 repo) | **The server build guide** — full server setup for this and all sibling apps; section 4.1 is this app |
 | [docs/schedules.md](docs/schedules.md) | Canonical cron schedule manifest (live crontab, stagger design) |
-| [docs/docker_server_full_setup_2.0_audit_claude.md](docs/docker_server_full_setup_2.0_audit_claude.md) | Live-verified audit that drove the 2026-07 reconciliation |
 | [docs/entrypoint.md](docs/entrypoint.md) | Per-app baked entrypoint standard |
 | docs/attic/ | Deprecated docs from the pre-vendoring era (kept for history) |
 

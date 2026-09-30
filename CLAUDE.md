@@ -2,9 +2,10 @@
 
 > Migrated to the fleet Docker/release paradigm **2026-08-24** (pilot app; cutover
 > verified over two full cron cycles). Conventions reference: `docs/migration_CLAUDE.md`
-> Parts 1+3. Older setup docs (`setup.md`, `docs/docker_server_full_setup_2.1.md`) remain
-> authoritative for *server-wide* provisioning but are superseded by the paradigm docs
-> for *app-level* Docker/release conventions.
+> Parts 1+3. Server-wide provisioning: the server runbook
+> `pg_manage_v2/docs/runbook/full_setup_3.0.md` (section 4.1 is this app). The older
+> setup docs (`setup.md`, `docs/docker_server_full_setup_2.0/2.1.md`) were deleted on
+> 2026-09-30.
 
 **data_acquisition** is a Node.js run-once pipeline fleet: HHM equipment data pulls
 (GE / Philips / Siemens over lftp/rsync/ssh), MMB log acquisition (run groups 0–7),
