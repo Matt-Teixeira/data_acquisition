@@ -36,7 +36,9 @@ const config = {
   host: process.env.PGHOST || "pg_db",
   port: Number(process.env.PGPORT || 5432),
   database: process.env.PGDATABASE || "dev",
-  user: process.env.PGUSER || "postgres",
+  // No fallback: an unset PGUSER must fail authentication, never quietly
+  // connect as the superuser (runbook 4.0.4; the app's role is data_acquisition_rw).
+  user: process.env.PGUSER,
   password: process.env.PGPASSWORD,
   ssl: buildSsl(),
   // DB-001 -- fleet pool standard (decided 2026-08-27), previously applied to

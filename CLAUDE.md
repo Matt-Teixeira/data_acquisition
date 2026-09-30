@@ -110,12 +110,20 @@ logs — and note a run's identity/commit: production rows read `svc | <sha>`; a
 
 ## Secrets
 
-Host-owned credentials live root-only under `/opt/resources/secrets/` and are copied
-into each copy's `.env`. **Both copies go stale together** on rotation — the dev clone
-and the release copy must both be registered with the rotation script for `PGPASSWORD`
-and `REDIS_PW`. A sudden auth failure across apps usually means a rotation happened, not
-a code change; `preflight-check.sh` catches this with REAL authenticated checks (Redis
-authed PING; Postgres from a sibling container — loopback psql lies).
+- **PostgreSQL:** the app connects as its own role `data_acquisition_rw` (member of the
+  shared group `apps_rw`, not a superuser; server runbook 4.0.4). Its password lives in
+  root-only `/root/data_acquisition_rw_pw`. `pg_manage_v2/db/roles/apply-app-role.sh
+  data_acquisition` writes `PGUSER`/`PGPASSWORD` into the clone's `.env` (`--rotate` for a
+  new password, `--rollback` to go back to `postgres`); `build-release.sh` carries them to
+  the release copy. Never paste the password by hand. Neither pool file falls back to a
+  default user.
+- **Redis** (`REDIS_PW`) and `APP_SECRET`: pasted into the clone's `.env` by hand. There
+  is no rotation script on the dev server; after any secret change, update the clone and
+  release so both copies match.
+
+A sudden auth failure across apps usually means a secret changed, not a code change;
+`preflight-check.sh` catches this with REAL authenticated checks (Redis authed PING;
+Postgres from a sibling container — loopback psql lies).
 
 ## Preflight
 
