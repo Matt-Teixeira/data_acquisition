@@ -38,7 +38,11 @@ DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
 
 # Single writer: a slow previous run means skip, never overlap.
-exec 9>/tmp/prune-run-logs.lock
+# The lock lives in the svc-owned run-log folder, whose default ACL makes any
+# new file group-writable for docker: an administrator's hand run must not
+# leave a lock that svc's cron run cannot open (a /tmp lock created by an
+# admin did exactly that, 2026-10-02).
+exec 9>/opt/run-logs/data_acquisition/.prune-run-logs.lock
 flock -n 9 || { echo "prune-run-logs: already running, skipping"; exit 0; }
 
 deleted=0
