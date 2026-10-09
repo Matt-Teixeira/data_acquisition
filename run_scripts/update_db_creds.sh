@@ -26,11 +26,14 @@ fi
 # log-dir repair), so the run-log mount must be wired by hand: the logger
 # always writes ./utils/logger/logs inside the container, so mount the
 # production log dir over that path (mirrors compose's LOG_DIR mount).
+# Both pools are fail-closed verify-full (PG_SSL_PATH in .env): mount the CA
+# as compose does, or index.js throws ENOENT at load.
 "$DOCKER" run --rm \
   --network pg_net \
   -w /usr/src/app \
   -v "$APP_DIR":/usr/src/app \
   -v /opt/run-logs/data_acquisition:/usr/src/app/utils/logger/logs \
+  -v /opt/resources/ssl:/opt/resources/ssl:ro \
   --env-file "$ENV_FILE" \
   --mount type=tmpfs,destination=/usr/src/app/node_modules \
   -e NPM_CONFIG_CACHE=/tmp/.npm \
