@@ -38,7 +38,13 @@ const execRsync = async (
   };
   await addLogEvent(I, run_log, "execRsync", cal, note, null);
 
-  const connection_test_1 = /Connection timed out/g;
+  // Network-level failures: retried once via ip:queue (ip reset) before being marked offline
+  const connection_test_1 =
+    /Connection timed out|Connection to \S+ port \d+ timed out|No route to host|Network is unreachable/g;
+  // Any other failure to get into the host: DNS, refused, auth, host key, stalled transfer.
+  // "0 bytes received so far" is rsync's signature for an ssh session that died before sending data.
+  const connection_test_2 =
+    /Could not resolve hostname|Connection refused|Connection (closed|reset) by|kex_exchange_identification|Permission denied \([a-z,-]+\)|Too many authentication failures|Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED|Unable to negotiate|io timeout|connection unexpectedly closed \(0 bytes received so far\)/i;
 
   try {
     const { stdout } = await execFile(rsyncShPath, rsyncShArgs);
@@ -58,7 +64,8 @@ const execRsync = async (
         id: sme,
         capture_datetime,
         successful_acquisition: true,
-        data_source: "mmb"
+        data_source: "mmb",
+        conn_err: false
       });
     }
 
@@ -91,7 +98,9 @@ const execRsync = async (
           id: system.id,
           capture_datetime,
           successful_acquisition: false,
-          data_source: "mmb"
+          data_source: "mmb",
+          // offline_alert routes on conn_err: keep capture_datetime, bump inserted_at
+          conn_err: true
         });
 
         return null;
@@ -100,6 +109,17 @@ const execRsync = async (
       await add_to_redis_queue(job_id, run_log, system);
 
       return null;
+    }
+
+    // An ip reset won't fix these, so place in online:queue as offline on the first attempt
+    if (connection_test_2.test(error)) {
+      await add_to_online_queue(job_id, run_log, {
+        id: sme,
+        capture_datetime,
+        successful_acquisition: false,
+        data_source: "mmb",
+        conn_err: true
+      });
     }
     return null;
   }
