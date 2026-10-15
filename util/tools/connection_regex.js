@@ -22,6 +22,21 @@ function extractConnectionError(text, regexes) {
   return null;
 }
 
+// MMB OFFLINE SEMANTICS: "offline" means we could not reach or get into the
+// box. connection_error alone is the RETRY signal (would a tunnel reset help?),
+// and auth / host-key failures deliberately say no - but the box is still
+// unreachable to us. offline_alert routes on conn_err, so these must carry
+// conn_err: true or they advance capture_datetime and the box looks online.
+// File-level errors (missing / partial) are NOT offline: the box answered.
+function isAccessFailure(entry) {
+  if (!entry) return false;
+  return (
+    entry.connection_error ||
+    entry.error_type === "key" ||
+    entry.error_type === "credentials"
+  );
+}
+
 const connection_regexes = [
   // -- Connectivity (network layer) --
   {
@@ -385,4 +400,4 @@ const connection_regexes = [
   }
 ];
 
-module.exports = { extractConnectionError, connection_regexes };
+module.exports = { extractConnectionError, isAccessFailure, connection_regexes };

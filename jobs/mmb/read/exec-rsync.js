@@ -7,6 +7,7 @@ const {
 } = require("../../../redis");
 const {
   extractConnectionError,
+  isAccessFailure,
   connection_regexes
 } = require("../../../util/tools/connection_regex");
 
@@ -76,7 +77,7 @@ const execRsync = async (
         data_source: "mmb",
         host_intervention: extracted ? extracted.manual_intervention : false,
         connection_error: extracted ? extracted.message : null,
-        conn_err: extracted ? extracted.connection_error : false,
+        conn_err: isAccessFailure(extracted),
         error_category: extracted ? extracted.error_category : null,
         phase: PHASE
       });
@@ -129,8 +130,9 @@ const execRsync = async (
       return null;
     }
 
-    // Extraction-layer error (file missing, partial, etc.): land on
-    // online:queue with the classification - not a connectivity issue.
+    // Extraction-layer error: land on online:queue with the classification,
+    // no tunnel-reset retry. Auth / host-key failures count as offline
+    // (isAccessFailure); file missing / partial do not.
     if (extracted?.extraction_error) {
       await add_to_online_queue(job_id, run_log, {
         id: sme,
@@ -139,7 +141,7 @@ const execRsync = async (
         data_source: "mmb",
         host_intervention: extracted.manual_intervention,
         connection_error: extracted.message,
-        conn_err: extracted.connection_error,
+        conn_err: isAccessFailure(extracted),
         error_category: extracted.error_category,
         phase: PHASE
       });
