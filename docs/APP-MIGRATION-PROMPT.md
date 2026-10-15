@@ -155,7 +155,7 @@ session or was caught only by verification:**
   `/opt/resources/acqu_files`. Where the checklist says "if the app does X",
   check whether it does.
 
-**Shared-state warning:** dev-clone runs hit the SAME staging DB, data mounts, and
+**Shared-state warning:** dev-clone runs hit the SAME database (this server's Docker Postgres, `pg_db`), data mounts, and
 Redis as production. A dev run is a real run. Pick smoke jobs deliberately and say
 what state each will touch before running it.
 

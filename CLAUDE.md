@@ -142,9 +142,15 @@ bash preflight-check.sh   # exit 0 + ZERO warnings = good to run
   do not "fix" the env vars expecting a behavior change.
 - `run_scripts/update_db_creds.sh` bypasses compose AND the entrypoint (raw node:16
   container); its log mount is wired by hand to the container's fixed log path.
-- Dev-clone runs hit the SAME staging DB, `/opt/resources/acqu_files`, and Redis
-  (`redis_dev-0-4` cursors) as production — a dev run is a real run against shared
-  state; choose test jobs accordingly (`offline_alert` is the cheap one).
+- Dev-clone runs hit the SAME database as the release copy — this server's Docker
+  Postgres (`pg_db` container, database `dev`) — plus the same `/opt/resources/acqu_files`
+  and Redis (`redis_dev-0-4`). A dev run is a real run against shared state; choose
+  test jobs accordingly (`offline_alert` is the cheap one, but it DRAINS the shared
+  `online:queue` and upserts every entry in it, real ones included).
+- `alert.offline_*_conn.system_id` and `stats.acquisition_history.system_id` are
+  `varchar(8)`. A longer id fails the whole batched upsert AFTER `offline_alert` has
+  already cleared the queue, dropping that cycle's real entries — test ids must be
+  8 characters or fewer.
 - Verify any run from the DB, not the log file:
   ```sql
   SELECT (verbose_log->0->'note'->>'RELEASE_SHA') sha, COUNT(*), MAX(inserted_at)
