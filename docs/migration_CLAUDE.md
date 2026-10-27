@@ -130,8 +130,11 @@ so dev runs don't reintroduce an `undefined` in that log line).
 
 `RELEASE_AT` is the release time in UTC, format `YYYY-MM-DDTHH:MM:SSZ`, from
 `date -u +%Y-%m-%dT%H:%M:%SZ` taken once at stamp time. It exists for the orchestrator's
-release-drift view. Do not use the `.env`'s modification time instead: any edit, copy or restore
-moves it. Like `RELEASE_SHA` it is never set by hand, and a dev tree has none. It is not
+release-drift view. The `.env`'s modification time is never the release time: any edit, copy or
+restore moves it. A reader may show it only for a release with no `RELEASE_AT` (one cut before
+the stamp existed), and only labelled as an approximation (ops-dashboard records
+`released_at_source=mtime`). A malformed `RELEASE_AT` gets no such fallback. Like `RELEASE_SHA`
+it is never set by hand, and a dev tree has none. It is not
 logged in the boot `env_note`; the commit identifies a run, and the time belongs to the release.
 
 The stamping step is idempotent, so repeated releases replace both lines rather than stacking.
