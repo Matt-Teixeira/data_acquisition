@@ -112,14 +112,15 @@ bash build-release.sh --allow-dirty    # emergency override (ALLOW_DIRTY=1 also 
 If it refuses, commit or stash first — do not reach for `--allow-dirty` out of habit. The
 whole point is that `/opt/apps/<app>` should always correspond to a commit.
 
-**Release provenance — `RELEASE_SHA`**
+**Release provenance — `RELEASE_SHA` + `RELEASE_AT`**
 
 The release banner alone is not a record; it scrolls away. So `build-release.sh` also stamps
-the released commit into the **deployed** `.env`:
+the released commit and the release time into the **deployed** `.env`:
 
 ```
 # Injected by build-release.sh — do not edit by hand.
 RELEASE_SHA=a9f7f8b
+RELEASE_AT=2026-10-27T14:05:09Z
 ```
 
 `index.js` reads it into the boot `env_note`, which means **every run log and every
@@ -127,7 +128,33 @@ RELEASE_SHA=a9f7f8b
 in a dev tree — it is absent there, and `index.js` logs `dev-tree` instead (`|| 'dev-tree'`,
 so dev runs don't reintroduce an `undefined` in that log line).
 
-The stamping step is idempotent, so repeated releases replace the line rather than stacking.
+`RELEASE_AT` is the release time in UTC, format `YYYY-MM-DDTHH:MM:SSZ`, from
+`date -u +%Y-%m-%dT%H:%M:%SZ` taken once at stamp time. It exists for the orchestrator's
+release-drift view. Do not use the `.env`'s modification time instead: any edit, copy or restore
+moves it. Like `RELEASE_SHA` it is never set by hand, and a dev tree has none. It is not
+logged in the boot `env_note`; the commit identifies a run, and the time belongs to the release.
+
+The stamping step is idempotent, so repeated releases replace both lines rather than stacking.
+It deletes the marker comment and both keys, then appends the block in one `printf`:
+
+```bash
+# --- 4. Stamp RELEASE_SHA + RELEASE_AT (idempotent: delete then append) --------
+RELEASE_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+sudo sed -i '/^# Injected by build-release.sh/d; /^RELEASE_SHA=/d; /^RELEASE_AT=/d' "$DEST/.env"
+printf '\n# Injected by build-release.sh — do not edit by hand.\nRELEASE_SHA=%s\nRELEASE_AT=%s\n' \
+    "$GIT_SHA" "$RELEASE_AT" | sudo tee -a "$DEST/.env" >/dev/null
+```
+
+Readers (preflight, the orchestrator) **grep** the keys and never `source` the `.env`. It holds
+secrets and is not guaranteed to be valid shell:
+
+```bash
+grep '^RELEASE_AT=' /opt/apps/<app>/.env | head -1 | cut -d= -f2- | tr -d "'\"[:space:]"
+```
+
+`preflight-check.sh` warns when the release `.env` has `RELEASE_SHA` but no `RELEASE_AT`
+(released before the stamp existed: re-release) or a `RELEASE_AT` that is not in the format
+above (edited by hand).
 
 Ask which commit produced a run — or what production has been running:
 
@@ -401,8 +428,9 @@ and a release, since everything else describes the *server*, not the release:
 | `USER_ID` | your username | `svc` |
 | `LOG_DIR` | `./utils/logger/logs` | `/opt/run-logs/<app>` |
 
-`RELEASE_SHA` is **injected by `build-release.sh`** into the deployed `.env`, never set by
-hand — it records which commit a release came from. See *Release provenance* above.
+`RELEASE_SHA` and `RELEASE_AT` are **injected by `build-release.sh`** into the deployed `.env`,
+never set by hand. They record which commit a release came from and when it was released.
+See *Release provenance* above.
 
 
 ## Secrets
@@ -894,7 +922,7 @@ Then confirm the **deployed copy is the code you think it is** — three separat
 the odd-jobs migration were "the release copy is not what I released":
 
 ```bash
-grep '^RELEASE_SHA=' /opt/apps/<app>/.env          # matches the commit you meant to ship?
+grep -E '^RELEASE_(SHA|AT)=' /opt/apps/<app>/.env  # the commit you meant to ship, stamped just now?
 diff -r --brief --exclude=node_modules --exclude=.git --exclude=.env \
      /opt/apps/<app> /path/to/dev/tree              # any output = drift
 (cd /opt/apps/<app> && bash preflight-check.sh)     # exercises the release-copy branch

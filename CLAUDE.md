@@ -25,7 +25,7 @@ schedule, never a long-running service.
 - **Release copy** — `/opt/apps/data_acquisition`, produced ONLY by `build-release.sh`.
   Never edit it, never `git pull` in it — it is not a git repo, it is build output.
   Image `data-acqu:svc`, runs as `svc`, logs to `/opt/run-logs/data_acquisition`,
-  `RELEASE_SHA=<commit>` stamped into its `.env`.
+  `RELEASE_SHA=<commit>` and `RELEASE_AT=<UTC time>` stamped into its `.env`.
 
 ## Standardized Docker setup (5 files)
 
@@ -35,7 +35,7 @@ schedule, never a long-running service.
 | `docker/entrypoint.sh` | `RUN_USER` (default `svc`) → gosu. While still root, repairs the structured log dir (`utils/logger/logs`; `logs/` repair removed with winston 2026-08-27) — but only when root-owned, so a deliberately-chowned production dir is left alone. |
 | `docker-compose.yaml` | Service to use is **`app_tools`** (`data-acqu:${USER_ID}`). The `app` service is deprecated. Mounts: `./:/workspace` (node_modules rides along in-tree), `${LOG_DIR:-./utils/logger/logs}` (fails SAFE to the dev path), `${DATA_STORE_DEV}:/workspace/files`, `/opt/resources/ssh:ro`. Networks: `pg_net` + `redis-admin_redis_net` (external). |
 | `build.sh` | One root `npm install` inside a throwaway node:lts container as the host user (in-tree `node_modules`, per-copy), then `docker compose build app_tools`. |
-| `build-release.sh` | Mirrors the WORKING TREE to `/opt/apps/data_acquisition`. Clean-tree guard (untracked files count) sits above the wipe; `--allow-dirty` is the emergency override — never habit. Applies `#RELEASE:` overrides, stamps `RELEASE_SHA`, builds as svc. (No longer recreates `logs/` — winston retired 2026-08-27.) |
+| `build-release.sh` | Mirrors the WORKING TREE to `/opt/apps/data_acquisition`. Clean-tree guard (untracked files count) sits above the wipe; `--allow-dirty` is the emergency override — never habit. Applies `#RELEASE:` overrides, stamps `RELEASE_SHA` + `RELEASE_AT`, builds as svc. (No longer recreates `logs/` — winston retired 2026-08-27.) |
 
 ## Running
 
@@ -62,8 +62,9 @@ overrides — **only identity, never PG*/REDIS_* (those describe the server)**:
 | `LOG_DIR` | `./utils/logger/logs` | `/opt/run-logs/data_acquisition` |
 | `LOGGER_MODE` | `log_and_console` | `log` |
 
-`RELEASE_SHA` is injected by `build-release.sh` — never set it by hand; dev runs log
-`dev-tree`. Retired keys (do not reintroduce): `IMAGE_TAG`, `RUN_ENV`, `RUN_LOGS_DIR`,
+`RELEASE_SHA` and `RELEASE_AT` (UTC, `YYYY-MM-DDTHH:MM:SSZ`, for the orchestrator's
+release-drift view) are injected by `build-release.sh` — never set them by hand; dev runs
+log `dev-tree` and a dev `.env` has neither. Retired keys (do not reintroduce): `IMAGE_TAG`, `RUN_ENV`, `RUN_LOGS_DIR`,
 `NODE_MOD_CACHE_DEV`, `LOGGER`, pinned `RUN_USER`.
 
 App-specific keys: `PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE/PG_SSLMODE/PG_SSL_PATH`
