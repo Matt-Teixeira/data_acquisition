@@ -41,9 +41,12 @@ const EXIT = { SUCCESS: 0, FAILED: 1, PARTIAL: 2, USAGE: 3 };
 async function runJob(run_log, run_group, schedule, manufacturer, modality) {
   const capture_datetime = captureDatetime();
 
+  // ops-dashboard READS THIS EVENT AT verbose_log->1 (func = 'runJob'): KEEP IT
+  // THE SECOND EVENT OF EVERY RUN, AND ITS KEYS ADDITIVE.
   let note = {
     run_group: run_group,
     schedule: schedule,
+    manufacturer: manufacturer,
     modality: modality,
   };
 
@@ -247,6 +250,18 @@ const onBoot = async () => {
   const run_log = await makeAppRunLog();
   active_run_log = run_log;
 
+  const run_group = process.argv[2];
+  const schedule = process.argv[3] || null;
+  const manufacturer = process.argv[4] || null;
+  const modality = process.argv[5] || null;
+
+  // CRON PASSES PLACEHOLDER ARGS AS THE LITERAL TEXT "null" (hhm null GE CT);
+  // THE BOOT NOTE RECORDS THOSE AS REAL JSON null SO note->>'schedule' IS NULL.
+  const argOrNull = (v) =>
+    v === undefined || v === null || v === "" || v === "null" || v === "undefined"
+      ? null
+      : v;
+
   let note = {
     USER_ID: process.env.USER_ID,
     LOGGER_MODE: process.env.LOGGER_MODE,
@@ -256,17 +271,19 @@ const onBoot = async () => {
     REDIS_IP: process.env.REDIS_HOST,
     PG_USER: process.env.PGUSER,
     PG_DB: process.env.PGDATABASE,
+    // WHICH JOB RAN (verbose_log->0->'note'): THE DISPATCH ARGS, null WHEN NOT
+    // PASSED. SAME KEY NAMES AS THE runJob NOTE. NEVER NAME A KEY `argv` HERE:
+    // ops-dashboard BUCKETS ITS GRID BY note.argv[2] OF THIS EVENT.
+    run_group: argOrNull(run_group),
+    schedule: argOrNull(schedule),
+    manufacturer: argOrNull(manufacturer),
+    modality: argOrNull(modality),
   };
 
   await addLogEvent(I, run_log, "onBoot", cal, note, null);
 
   let fatal_error = null;
   try {
-    const run_group = process.argv[2];
-    const schedule = process.argv[3] || null;
-    const manufacturer = process.argv[4] || null;
-    const modality = process.argv[5] || null;
-
     run_log.run_group = run_group;
     run_log.manufacturer = manufacturer;
     run_log.modality = modality;

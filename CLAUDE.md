@@ -154,8 +154,13 @@ bash preflight-check.sh   # exit 0 + ZERO warnings = good to run
   8 characters or fewer.
 - Verify any run from the DB, not the log file:
   ```sql
-  SELECT (verbose_log->0->'note'->>'RELEASE_SHA') sha, COUNT(*), MAX(inserted_at)
+  SELECT (verbose_log->0->'note'->>'RELEASE_SHA') sha,
+         (verbose_log->0->'note'->>'run_group') run_group, COUNT(*), MAX(inserted_at)
   FROM util.app_run_logs WHERE app_name='data_acquisition'
-    AND inserted_at > now() - interval '2 hours' GROUP BY 1;
+    AND inserted_at > now() - interval '2 hours' GROUP BY 1, 2;
   ```
+  The boot note (event 0) records `run_group`, `schedule`, `manufacturer`, `modality`
+  (JSON null when not passed). Event 1 is always `runJob` with the same keys, and
+  ops-dashboard reads it **by position**: keep it the second event, and never add an `argv`
+  key to the boot note (ops-dashboard groups its grid by `note.argv[2]` of event 0).
   `dev-tree` appearing on a schedule means cron is running the wrong copy.

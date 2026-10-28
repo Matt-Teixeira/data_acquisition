@@ -171,6 +171,22 @@ WHERE app_name = 'mmb-rpp'
 GROUP BY 1, 2 ORDER BY 4 DESC;
 ```
 
+The job key is app-specific: `schedule` is mmb-rpp's. **data_acquisition** dispatches on
+`run_group` and records `run_group`, `schedule`, `manufacturer`, `modality` in its boot note
+(JSON null when not passed). Releases before that change carry them only on event 1 (`runJob`):
+
+```sql
+SELECT (verbose_log -> 0 -> 'note' ->> 'RELEASE_SHA') AS release_sha,
+       COALESCE(verbose_log -> 0 -> 'note' ->> 'run_group',
+                verbose_log -> 1 -> 'note' ->> 'run_group')     AS run_group,
+       (verbose_log -> 0 -> 'note' ->> 'manufacturer')          AS manufacturer,
+       (verbose_log -> 0 -> 'note' ->> 'modality')              AS modality,
+       COUNT(*) AS runs, MIN(inserted_at) AS first_seen, MAX(inserted_at) AS last_seen
+FROM util.app_run_logs
+WHERE app_name = 'data_acquisition'
+GROUP BY 1, 2, 3, 4 ORDER BY 7 DESC;
+```
+
 Rows showing `dev-tree` came from someone's working tree, not a release. That is expected for
 dev testing, but a `dev-tree` row appearing on a schedule means cron is running the wrong copy.
 
