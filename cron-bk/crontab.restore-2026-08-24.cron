@@ -89,5 +89,5 @@
 # ---------------- HOST MAINTENANCE (preserved verbatim) ----------------
 0 3 1 * * tail -c 100000000 /var/mail/matt-teixeira > /tmp/mailtrim && cat /tmp/mailtrim > /var/mail/matt-teixeira && rm -f /tmp/mailtrim
 15 2 * * * /opt/apps/pg_manage_v2/scripts/backup.sh >/dev/null 2>&1
-30 3 * * * /opt/apps/data_acquisition/scripts/prune-run-logs.sh >/dev/null 2>&1
+# (2026-10-29) run-log prune removed: replaced by pg_manage_v2 scripts/rotate-run-logs.sh in the svc crontab; prune-run-logs.sh is deleted.
 0 9 3,25 * * /opt/apps/pg_manage_v2/scripts/check-partition-horizon.sh

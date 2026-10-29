@@ -1,28 +1,110 @@
+// utils/logger/log.js — THE FLEET'S RUN LOGGER, MASTER COPY.
+// The master lives in data_acquisition (next to docs/migration_CLAUDE.md);
+// every other app copies this file VERBATIM. Nothing app-specific belongs here:
+// change it in the master, then re-copy. Requires only ./enums,
+// ../db/pg-pool, ../db/sql/pg-helpers and Node built-ins (no npm packages).
 const enums = require("./enums");
 const db = require("../db/pg-pool");
 const { pg_column_sets } = require("../db/sql/pg-helpers");
 const fs = require("fs");
-const { v4: uuidv4 } = require("uuid");
+const { randomUUID } = require("node:crypto");
 const { performance } = require("node:perf_hooks");
+
+// ALWAYS the container/dev-tree path. Where it lands on the HOST is the compose
+// ${LOG_DIR:-./utils/logger/logs} mount's decision (dev tree by default,
+// /opt/run-logs/<app> in a release), so a missing LOG_DIR fails SAFE into the
+// dev tree instead of writing into the production record.
+const LOG_DIR = "./utils/logger/logs";
+
+// Run-log FILE NAMES carry the run's start time in New York time (a fleet
+// constant on purpose, not an env setting). Only the name: event `dt` and
+// everything in util.app_run_logs stay UTC ISO, and process TZ is never set.
+const LOG_FILE_TZ = "America/New_York";
+
+const stamp_format = new Intl.DateTimeFormat("en-US", {
+  timeZone: LOG_FILE_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  fractionalSecondDigits: 3,
+  hourCycle: "h23",
+  timeZoneName: "longOffset",
+});
+
+// Date -> "YYYY-MM-DDTHH-MM-SS.mmm±HHMM" (local wall time + its UTC offset, no
+// colons). pg_manage_v2's scripts/rotate-run-logs.sh dates files by this exact
+// shape and falls back to mtime for anything else — keep the two in step.
+const fileStamp = (date) => {
+  const p = {};
+  for (const { type, value } of stamp_format.formatToParts(date)) p[type] = value;
+  // longOffset prints "GMT-04:00", or a bare "GMT" for a zero offset.
+  const m = /^GMT(?:([+-])(\d{2}):(\d{2}))?$/.exec(p.timeZoneName);
+  if (!m) throw new Error(`[logger] unexpected UTC offset '${p.timeZoneName}'`);
+  const offset = m[1] ? `${m[1]}${m[2]}${m[3]}` : "+0000";
+  return (
+    `${p.year}-${p.month}-${p.day}T${p.hour}-${p.minute}-${p.second}` +
+    `.${p.fractionalSecond}${offset}`
+  );
+};
+
+// Opens <dir>/<prefix>.<stamp>.json EXCLUSIVELY ("wx"). If two runs start in
+// the same millisecond, the later one takes the next free millisecond — never
+// a suffix, which would break the rotation job's name pattern.
+const openRunLogFile = (dir, prefix, start) => {
+  for (let ms = start.getTime(), tries = 0; ; ms++, tries++) {
+    const candidate = `${dir}/${prefix}.${fileStamp(new Date(ms))}.json`;
+    try {
+      return { path: candidate, fd: fs.openSync(candidate, "wx") };
+    } catch (error) {
+      if (error.code !== "EEXIST" || tries >= 1000) throw error;
+    }
+  }
+};
 
 // EXPRESS WILL CREATE A run_id FOR EACH ENDPOINT INSTANCE AND
 // WILL NOT WRITE LOGS TO LOCAL STORAGE, ONLY INSERT TO DB
 let path;
 let write_stream;
+// FIRST FILE-SINK FAILURE (open or async stream error). RECORDED, NOT THROWN:
+// THE RUN AND THE DB SINK CARRY ON, AND writeLogEvents REPORTS IT AS false.
+let file_error;
 const makeAppRunLog = async () => {
-  const run_id = uuidv4();
+  // run_id stays a UUID in every event and DB row (ops-dashboard finds runs
+  // by it); the file name carries the start-time stamp instead.
+  const run_id = randomUUID();
+  path = undefined;
+  write_stream = undefined;
+  file_error = null;
 
   // EXPRESS HTTP APP ISN'T EPHERMAL
   if (process.env.APP_NAME !== "express-http") {
-    // Single container-fixed path. WHERE this lands on the host is the compose
-    // LOG_DIR mount's decision (dev tree by default, /opt/run-logs/<app> in a
-    // release), so a missing variable fails SAFE into the dev tree instead of
-    // writing into the production record.
-    path = `./utils/logger/logs/${process.env.APP_NAME}-log.${process.env.USER_ID}.${run_id}.json`;
-
-    write_stream = fs.createWriteStream(path, {
-      flags: "a",
-    });
+    try {
+      // Covers non-Docker runs; in Docker the bind mount already exists.
+      fs.mkdirSync(LOG_DIR, { recursive: true });
+      // USER_ID tags the file (dev = username, release = svc).
+      const opened = openRunLogFile(
+        LOG_DIR,
+        `${process.env.APP_NAME}-log.${process.env.USER_ID}`,
+        new Date()
+      );
+      path = opened.path;
+      write_stream = fs.createWriteStream(path, { fd: opened.fd });
+      // A LISTENER FROM THE START: AN UNHANDLED STREAM 'error' WOULD KILL THE
+      // PROCESS BEFORE EITHER SINK IS WRITTEN.
+      write_stream.on("error", (error) => {
+        file_error = file_error || error;
+      });
+    } catch (error) {
+      file_error = error;
+      console.error(
+        `[logger] makeAppRunLog: cannot create run log in ${LOG_DIR}: ${
+          error.message || error
+        }`
+      );
+    }
   }
 
   return {
@@ -32,18 +114,6 @@ const makeAppRunLog = async () => {
   };
 };
 
-// MAY STILL NEED TO USE WINSTON IF WRITE LOG EVENTS DON'T BECOME MORE CONSISTENT
-// const winston = require('winston');
-// const logger = winston.createLogger({
-//    level: 'info', // Set the log level
-//    format: winston.format.json(), // Use JSON format for logging
-//    transports: [
-//       // new winston.transports.Console(), // Log to console
-//       new winston.transports.File({ filename: 'logs.log' }), // Log to a file
-//    ],
-// });
-
-// const log_events = [];
 const addLogEvent = async (type, run_log, func, tag, note, err) => {
   const { run_id, log_events } = run_log;
 
@@ -59,7 +129,9 @@ const addLogEvent = async (type, run_log, func, tag, note, err) => {
 
   // CONDITIONALLY APPEND ERROR OBJECT'S STACK IF IT EXISTS
   if (type === enums.type.E) {
-    log_event["err_msg"] = err.stack ? err.stack : err;
+    // err MAY BE null/undefined (throw null, bare rejections) — THE LOGGER
+    // MUST NEVER THROW WHILE RECORDING A FAILURE.
+    log_event["err_msg"] = err?.stack ? err.stack : err ?? "Unknown error";
 
     // CONSOLE LOG ERROR TO DEV
     if (process.env.LOGGER_MODE === "log_and_console") {
@@ -68,9 +140,6 @@ const addLogEvent = async (type, run_log, func, tag, note, err) => {
   }
 
   log_events.push(log_event);
-
-  // WINSTON
-  // logger.info(log_event);
 };
 
 const startTimer = (run_log, label) => {
@@ -246,10 +315,12 @@ const dbInsertLogEvents = async (pgp, run_log) => {
       },
     ];
 
-    // STORE LOGS TO PG
+    // STORE LOGS TO PG. AN APP WHOSE ROLE MAY ONLY WRITE ITS SELF-LOG THROUGH A
+    // CHECK-OPTION VIEW DEFINES pg_column_sets.util.self_log IN ITS OWN
+    // pg-helpers; EVERY OTHER APP INSERTS INTO util.app_run_logs DIRECTLY.
     const query = pgp.helpers.insert(
       app_run_log,
-      pg_column_sets.util.app_run_logs
+      pg_column_sets.util.self_log || pg_column_sets.util.app_run_logs
     );
     await db.none(query);
 
@@ -275,23 +346,28 @@ const writeLogEvents = async (run_log) => {
   const { log_events } = run_log;
 
   // EXPRESS/HTTP MODE NEVER OPENS A WRITE STREAM; NOTHING TO FLUSH.
-  if (!write_stream) return true;
+  if (!write_stream && !file_error) return true;
 
   // AWAIT THE STREAM'S finish/error SO THE PROCESS CANNOT EXIT BEFORE THE
   // RUN LOG HITS DISK. STREAM ERRORS (EACCES ON /opt/run-logs, ENOSPC, ...)
   // ARE ASYNC -- THE OLD SYNC try/catch NEVER SAW THEM. REPORT AND RETURN
   // false INSTEAD OF SWALLOWING (OR CRASHING ON AN UNHANDLED 'error').
-  const ok = await new Promise((resolve) => {
-    write_stream.on("error", (error) => {
-      console.error(
-        `[logger] writeLogEvents: failed to write run log to ${path}: ${
-          error.message || error
-        }`
+  const ok =
+    !file_error &&
+    (await new Promise((resolve) => {
+      write_stream.once("error", () => resolve(false));
+      write_stream.end(JSON.stringify(log_events), (error) =>
+        resolve(!error && !file_error)
       );
-      resolve(false);
-    });
-    write_stream.end(JSON.stringify(log_events), () => resolve(true));
-  });
+    }));
+  if (!ok) {
+    const error = file_error || "stream did not finish";
+    console.error(
+      `[logger] writeLogEvents: failed to write run log to ${
+        path || LOG_DIR
+      }: ${error.message || error}`
+    );
+  }
 
   // PROVIDE BASIC DEV STATS
   if (process.env.LOGGER_MODE === "log_and_console") {
@@ -299,7 +375,7 @@ const writeLogEvents = async (run_log) => {
     console.log(
       `LAST LOG EVENT: ${JSON.stringify(log_events[log_events.length - 1])}\n`
     );
-    console.log(`WROTE ${log_events.length} EVENTS TO DISK`);
+    console.log(`WROTE ${log_events.length} EVENTS TO ${path || "(no file)"}`);
   }
 
   return ok;
@@ -319,3 +395,11 @@ module.exports = [
   endTimer,
   addRunSummary,
 ];
+
+// NAMED EXTRAS FOR utils/logger/log.test.js. Callers keep destructuring the
+// array by position; these do not shift it.
+Object.assign(module.exports, {
+  LOG_FILE_TZ,
+  fileStamp,
+  openRunLogFile,
+});

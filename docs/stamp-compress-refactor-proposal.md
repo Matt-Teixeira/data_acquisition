@@ -1,5 +1,9 @@
 # Proposal: daily log bundling for /opt/run-logs (the stamp_compress refactor)
 
+> **Superseded 2026-10-29.** `scripts/prune-run-logs.sh` is deleted. Bundling and retention
+> now belong to pg_manage_v2's `scripts/rotate-run-logs.sh` (svc crontab, New York days).
+> Kept as the historical design record.
+
 FLEET-TODO 2b. **APPROVED AND EXECUTED 2026-08-27** (all seven decisions:
 Matt approved 1–6 and the proposed values; #7 resolved as "winston is
 deprecated — verify and remove" instead of re-homing its output, and the

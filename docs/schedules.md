@@ -42,13 +42,13 @@ other's DB/Redis load peaks:
 | :25/:55 | incident-engine `run` (after producer bursts finish ~:21/:51) |
 | :05/:35 | hhm_rpp_philips `delete_old_files` — saved_files 48 h retention (DB-05; clear of the :00/:30 burst, the :10/:40 VPN reset, and the :15/:45 writers) |
 | 02:15 nightly | backups (`/opt/apps/pg_manage_v2/scripts/backup.sh`, bounded .out) |
-| 03:30 nightly | run-log prune (`/opt/apps/data_acquisition/scripts/prune-run-logs.sh`) |
+| 04:05 / 05:05 UTC (svc crontab) | run-log bundling + retention (pg_manage_v2 `scripts/rotate-run-logs.sh`, New York days; replaced data_acquisition's prune script 2026-10-29) |
 | 09:00 on the 3rd & 25th | partition-horizon watchdog (`check-partition-horizon.sh`; its stdout is cron MAIL on purpose — that is the alert channel) |
 | 03:00 monthly (1st) | trim cron-mail spool to last 100 MB |
 
 > Maintenance scripts live in the repo that owns their subject (2026-08-18):
 > database scripts in `pg_manage_v2/scripts/`, redis scripts + host-setup in
-> `redis-admin/`, the cross-app run-log prune in `data_acquisition/scripts/`.
+> `redis-admin/`. Run-log rotation (cross-app) is pg_manage_v2's `scripts/rotate-run-logs.sh`.
 
 ## Apps with NO schedule in this crontab
 
@@ -197,7 +197,7 @@ crontab /opt/resources/backups/crontab-<date>.txt                     # rollback
 # ---------------- HOST MAINTENANCE (preserved verbatim) ----------------
 0 3 1 * * tail -c 100000000 /var/mail/matt-teixeira > /tmp/mailtrim && cat /tmp/mailtrim > /var/mail/matt-teixeira && rm -f /tmp/mailtrim
 15 2 * * * /opt/apps/pg_manage_v2/scripts/backup.sh >/opt/run-logs/pg_manage_v2/cron.backup.out 2>&1
-30 3 * * * /opt/apps/data_acquisition/scripts/prune-run-logs.sh >/dev/null 2>&1
+# (2026-10-29) prune-run-logs.sh line removed: script deleted, replaced by pg_manage_v2 rotate-run-logs.sh (svc crontab)
 0 9 3,25 * * /opt/apps/pg_manage_v2/scripts/check-partition-horizon.sh
 ```
 

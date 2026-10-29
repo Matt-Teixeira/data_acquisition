@@ -16,7 +16,9 @@ to the shared Postgres (`pg_db`, database `staging`) and Redis.
   (`/opt/resources/node_mod_cache/data_acquisition`). Warm once with
   `npm ci --omit=dev`; scheduled runs never reinstall.
 - **`utils/` is vendored** in this repo — do not clone the old `AvanteHS-RTT/utils`.
-- **Logs:** with `RUN_ENV=dev`, per-run JSON lands in `utils/logger/` (pruned nightly);
+- **Logs:** per-run JSON lands in `utils/logger/logs/` (dev) or `/opt/run-logs/data_acquisition/`
+  (release), named `data_acquisition-log.<USER_ID>.<New York start stamp>.json`; bundling and
+  retention are pg_manage_v2's `scripts/rotate-run-logs.sh`;
   every run also self-logs to `util.app_run_logs` (what ops-dashboard reads).
 - **SSH bundle:** jobs that SFTP/rsync mount `/opt/resources/ssh` read-only
   (`SSH_KEY` in `.env`).

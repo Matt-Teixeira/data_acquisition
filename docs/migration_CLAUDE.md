@@ -385,12 +385,38 @@ GROUP BY 1;
 
 ## Logging (`utils/logger/`)
 
-- `makeAppRunLog()` — creates a `run_log` with a UUID and opens the file stream
+**`data_acquisition/utils/logger/log.js` is the fleet's master copy** (fleet standard approved
+2026-10-29). Every app (data_acquisition, hhm_rpp_ge, hhm_rpp_philips, hhm_rpp_siemens,
+incident-engine, reports, part-source-pipeline, monday) carries a **byte-identical** copy, with
+its tests (`log.test.js`) next to it. Change the master, run its tests
+(`node --test utils/logger/log.test.js`), then copy it verbatim. Never patch an app's copy in
+place. The master holds nothing app-specific. It needs only `./enums`, `../db/pg-pool`,
+`../db/sql/pg-helpers` and Node built-ins (no `uuid` package), and it reads only `APP_NAME`,
+`USER_ID` and `LOGGER_MODE` from the environment. Its export is a **positional array**:
+`[addLogEvent, writeLogEvents, dbInsertLogEvents, makeAppRunLog, destroyAppRunLog, startTimer,
+endTimer, addRunSummary]`. Only ever append to it, because apps destructure by position.
+
+- **Run-log file name:** `<APP_NAME>-log.<USER_ID>.<stamp>.json`, where the stamp is the run's
+  start time in **New York time** (`America/New_York`, a constant in the file, not an env
+  setting), with milliseconds and the UTC offset, and no colons:
+  `YYYY-MM-DDTHH-MM-SS.mmm±HHMM`, e.g. `hhm_rpp_ge-log.svc.2026-10-29T08-50-51.694-0400.json`.
+  The offset keeps the repeated 01:xx hour on the November clock change unambiguous. Only the
+  **name** is local time. Event `dt` and everything in `util.app_run_logs` stay UTC ISO, and
+  process `TZ` is never set. `run_id` is still a UUID in every event and DB row; ops-dashboard
+  finds runs by it. The file is opened exclusively, so if two runs start in the same
+  millisecond the second takes the next millisecond. It never adds a suffix, which would break
+  the rotation pattern below.
+- `makeAppRunLog()` — creates a `run_log` with a UUID `run_id` and opens the stamped file
 - `addLogEvent(type, run_log, func, tag, note, err)` — queues a structured event in memory
 - `writeLogEvents()` — flushes the JSON log to `utils/logger/logs/` inside the container. On the
   host that path is whatever `LOG_DIR` points at: the project tree in dev,
   `/opt/run-logs/<app_name>` for a release (see *Standard volume mounts*)
 - `dbInsertLogEvents()` — persists the full verbose log plus a warn/error subset to `app_run_logs`
+  (or through `pg_column_sets.util.self_log` if the app's `pg-helpers` defines one, which is how
+  incident-engine writes through its check-option view)
+- Both sinks return `true`/`false`; a failed sink must fail the run (exit 2), never exit 0. A log
+  directory that cannot be created or opened is reported on stderr and makes
+  `writeLogEvents()` return `false`. It does not crash the run, and the DB sink still works.
 - **Always call `writeLogEvents()` and `dbInsertLogEvents()` before the job finishes.**
 - Event types: `I` (INFO), `W` (WARN), `E` (ERROR)
 - Event tags: `cal` (CALL), `det` (DETAILS/DETECTION), `cat` (CATCH), `seq` (SEQUENCE HALTED), `qaf` (QA FAILURE)
@@ -401,14 +427,20 @@ GROUP BY 1;
   Read a run by opening the log file rather than changing what the logger prints:
   ```bash
   # dev
-  cat ./utils/logger/logs/<app>-log.<USER_ID>.<run_id>.js | python3 -m json.tool | less
+  cat ./utils/logger/logs/<app>-log.<USER_ID>.<stamp>.json | python3 -m json.tool | less
   # release
-  cat /opt/run-logs/<app>/<app>-log.svc.<run_id>.js | python3 -m json.tool | less
+  cat /opt/run-logs/<app>/<app>-log.svc.<stamp>.json | python3 -m json.tool | less
   ```
-- **Never open a run log in an editor.** The files hold JSON but are named `.js`, so an editor
-  with format-on-save rewrites them into JS literal notation — unquoted keys, single quotes —
-  and they stop parsing as JSON. It is silent and it edits the production record. Two of four
-  cron logs were rewritten this way before anyone noticed. Read them with `cat`, as above.
+- **Never open a run log in an editor.** Run logs are `.json` files (an older naming used `.js`,
+  and editors with format-on-save rewrote two of four cron logs into JS literal notation that no
+  longer parsed as JSON). A save from an editor still silently edits the production record.
+  Read them with `cat`, as above.
+- **Bundling and retention** of `/opt/run-logs/<app>/` belong to pg_manage_v2's
+  `scripts/rotate-run-logs.sh` (svc crontab, `5 4,5 * * *` UTC, live since 2026-10-29). It
+  groups files into **New York days** using the stamp in the name, and falls back to the file's
+  modified time for any name that doesn't match
+  `\.YYYY-MM-DDTHH-MM-SS(\.[0-9]+)?[+-]HHMM\.json$`. That is why the stamp format above is
+  fixed. It replaced data_acquisition's `scripts/prune-run-logs.sh`, which has been deleted.
 - `makeAppRunLog()` also `mkdirSync`s the log directory. That covers non-Docker runs; it
   **cannot** fix the Docker case, because a bind mount always exists by then (root-owned if
   Docker created it) — that is `entrypoint.sh`'s job.
@@ -437,7 +469,7 @@ A template lives in **`.env.example`** — `.env` itself is gitignored, so that 
 tracked record of what a new deployment needs.
 
 `USER_ID` does triple duty: image tag (`<app>:${USER_ID}`), log-file tag
-(`<app>-log.${USER_ID}.<run_id>.js`), and boot-log label.
+(`<app>-log.${USER_ID}.<stamp>.json`, stamp = New York start time, see *Logging*), and boot-log label.
 
 Two keys carry a `#RELEASE:` override — the only things that should differ between a dev tree
 and a release, since everything else describes the *server*, not the release:
@@ -561,7 +593,7 @@ On top of the shared keys (Part 1), mmb-rpp requires `REDIS_HOST`, `REDIS_PORT`,
 - Source logs (read-only mount): `/opt/resources/acqu_files/${SME_ID}.${file_name}.log`
   — a **flat** path. Note the mount also holds per-system *directories*
   (`SME09713/host_logfiles/...`) that are a different dataset this pipeline does not read.
-- App logs: `${LOG_DIR}/${APP_NAME}-log.${USER_ID}.${run_id}.js` — i.e.
+- App logs: `${LOG_DIR}/${APP_NAME}-log.${USER_ID}.<stamp>.json` (stamp `YYYY-MM-DDTHH-MM-SS.mmm±HHMM`, New York time) — i.e.
   `./utils/logger/logs/...` in dev, `/opt/run-logs/mmb-rpp/...` for a release
 
 
@@ -662,7 +694,7 @@ ls -lt ./utils/logger/logs/ | head -5
 ls -lt /opt/run-logs/mmb-rpp/ | head -5
 
 # View formatted log (either path)
-cat <log-file>.js | python3 -m json.tool | less
+cat <log-file>.json | python3 -m json.tool | less
 ```
 
 ### Debugging Redis

@@ -270,8 +270,9 @@ Sequencing + manual-step map: `docs/MIGRATION-RUNBOOK-data_acquisition.md`.
       `build-release.sh` when no data_acquisition container is running, to bring
       /opt/apps to the doc-closeout HEAD.
 - [ ] **6f. Follow-ups** — dev VM `.env` needs `USER_ID` (+ retired keys removed)
-      on next pull; prune-run-logs.sh covers neither `~/apps` dev logs nor
-      `logs/` adp files (retention TBD); `app` compose service is deprecated,
+      on next pull; run-log rotation (pg_manage_v2 rotate-run-logs.sh since
+      2026-10-29; prune-run-logs.sh deleted) covers only /opt/run-logs, not
+      `~/apps` dev logs (retention TBD); `app` compose service is deprecated,
       deletion descoped; dead `RUN_ENV` switches in `read/` cleanup candidate;
       register the dev clone's `.env` with the rotation script alongside the
       release copy's; **remove logger.js (winston — deprecated per owner

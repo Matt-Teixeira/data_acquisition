@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "test": "node --test utils/logger/log.test.js",
     "man": "node index.js manual",
     "ge_ct": "node index.js hhm null GE CT",
     "ge_cv": "node index.js hhm null GE CV",
