@@ -74,9 +74,14 @@ App-specific keys: `PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE/PG_SSLMODE/PG_SSL
 
 ## Logging — ONE logger writes files (winston side-logger retired 2026-08-27)
 
-1. **Structured run log** (`utils/logger/log.js`) — THE run record: events in
-   memory → `LOG_DIR/data_acquisition-log.${USER_ID}.<run_id>.json` +
-   `util.app_run_logs` (verbose + warn/error subset). The boot `env_note`
+1. **Structured run log** (`utils/logger/log.js`, **the fleet's master copy** —
+   the other 7 apps copy it verbatim, so keep it app-agnostic, only append to
+   its positional export array, and run `npm test` before committing) — THE run
+   record: events in memory →
+   `LOG_DIR/data_acquisition-log.${USER_ID}.<YYYY-MM-DDTHH-MM-SS.mmm±HHMM>.json`
+   (run start in New York time; `run_id` stays a UUID inside events and DB rows,
+   `dt` stays UTC) + `util.app_run_logs` (verbose + warn/error subset). Rotation
+   of `/opt/run-logs` is pg_manage_v2's `scripts/rotate-run-logs.sh`. The boot `env_note`
    records `USER_ID`, `LOGGER_MODE`, `RELEASE_SHA`. The terminal `run_outcome`
    event and graded exit codes
    (**run_outcome/v1**: 0 success/skipped, 1 failed, 2 partial/self-log-failure, 3 usage)
