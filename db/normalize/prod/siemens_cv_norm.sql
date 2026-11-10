@@ -614,3 +614,85 @@ VALUES
         NULL,
         NULL
     );
+
+--> DEMO SYSTEM 11/10/2026
+-->
+
+INSERT INTO
+    config.acquisition(
+        system_id,
+        host_ip,
+        mmb_ip,
+        protocal,
+        debian_server_path,
+        credentials_group,
+        acquisition_script,
+        run_group,
+        host,
+        user_id,
+        acqu_point,
+        host_path,
+        cerb_file
+    )
+VALUES
+    (
+        'SME10007',
+        '172.31.3.120',
+        NULL,
+        'lftp',
+        '/home/prod/hhm_data_acquisition/files/SME10007',
+        '<hhm_credentials id for avante@172.31.3.120>', -- set by go-live SQL below
+        'siemens_cv_logfiles_zip.sh',
+        1,
+        NULL,
+        'avante',
+        'host',
+        '/srv/ftp/arts',
+        'XA160418_'
+    );
+
+
+INSERT INTO
+    config.log (
+        system_id,
+        file_name,
+        dir_name,
+        regex_models,
+        pg_tables,
+        column_name,
+        agg
+    )
+VALUES
+    (
+        'SME10007',
+        'AppEventLog.txt',
+        'Event_Logs',
+        ARRAY ['cv_app_event_line'],
+        ARRAY ['siemens_cv'],
+        NULL,
+        NULL
+    );
+
+-- > SME10007 GO-LIVE
+-- > Artis pushes XA160418_<yyyy_mm_dd>_LogFiles.zip to avante@172.31.3.120:/srv/ftp/arts.
+-- > siemens_cv_logfiles_zip.sh mirrors the zips and extracts *_AppEventLog.txt flat
+-- > into debian_server_path for hhm_rpp_siemens (cv_app_event_line).
+-- > Credentials: avante / avante (encrypted with util/encrypt). Row 24 (avante/mmb)
+-- > has a different password, so this box gets its own row.
+-- > Explicit id: hhm_credentials_id_seq was behind max(id) (last_value 2), so a
+-- > default insert hit a pkey collision.
+INSERT INTO
+    hhm_credentials (id, user_num, pass_num, manufacturer, modality, user_enc, password_enc)
+VALUES
+    ('25', '2', '2', 'avante', 'arts', '71c3549a9139e73ea21ed4e32ff482e3', '71c3549a9139e73ea21ed4e32ff482e3');
+
+UPDATE
+    config.acquisition
+SET
+    credentials_group = '25',
+    acquisition_script = 'siemens_cv_logfiles_zip.sh'
+WHERE
+    system_id = 'SME10007';
+
+-- get_hhm only selects systems with process_log = true
+UPDATE systems SET process_log = true WHERE id = 'SME10007';
