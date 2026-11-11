@@ -1,5 +1,9 @@
 ("use strict");
 require("dotenv").config();
+// MASK DECRYPTED DEVICE CREDENTIALS IN ALL console.* OUTPUT (cron / dev runs)
+const { installConsoleRedaction, redactString } = require("./util/redact");
+installConsoleRedaction();
+const flushRunLog = require("./util/flush_run_log");
 const { performance } = require("node:perf_hooks");
 const pgp = require("pg-promise")();
 const db = require("./utils/db/pg-pool");
@@ -111,7 +115,7 @@ const onBoot = async () => {
     console.log("\n********** END **********");
   } catch (error) {
     status = "error";
-    error_message = error.message;
+    error_message = redactString(error.message);
     console.log(error);
     await addLogEvent(E, run_log, "onBoot", cat, null, error);
   } finally {
@@ -119,8 +123,8 @@ const onBoot = async () => {
     const ms = end - start;
     console.log(`Total runtime: ${ms.toFixed(2)} ms (${(ms / 1000).toFixed(2)} s)`);
 
-    await dbInsertLogEvents(pgp, run_log);
-    await writeLogEvents(run_log);
+    // DB INSERT + RUN-LOG FILE, WITH DEVICE CREDENTIALS MASKED (util/flush_run_log.js)
+    await flushRunLog(pgp, run_log);
 
     if (run_group) {
       try {

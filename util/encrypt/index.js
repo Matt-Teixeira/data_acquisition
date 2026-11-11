@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { registerSecret } = require("../redact");
 const algorithm = "aes-256-cbc";
 const key = "your-encryption-key"; // Replace with your secure encryption key
 
@@ -13,7 +14,8 @@ function decryptString(encryptedText) {
   const decipher = crypto.createDecipher(algorithm, key);
   let decrypted = decipher.update(encryptedText, "hex", "utf8");
   decrypted += decipher.final("utf8");
-  return decrypted;
+  // EVERY DECRYPTED VALUE IS A CREDENTIAL: REGISTER IT SO LOG SINKS MASK IT (util/redact.js)
+  return registerSecret(decrypted);
 }
 
 /* let user = decryptString("10ee1736338ac090fb42ecbc060574c4");
