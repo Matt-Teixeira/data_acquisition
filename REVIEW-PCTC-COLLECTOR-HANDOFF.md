@@ -7,8 +7,13 @@ Date: 2026-11-20 · Repo: `hhm_data_acquisition` · Branch: `DEV`.
   in the optional listing.
 - **Round 3:** `REVIEW-PCTC-COLLECTOR-CODEX-3.md` (this repo). It found 0 P1, 3 P2 (R3-1 to R3-3);
   verdict "not ready".
-- **This revision:** round 1–3 fixes, uncommitted on top of `aca5b3d`. **Please re-review.** Write
-  your output to `REVIEW-PCTC-COLLECTOR-CODEX-4.md` in this repo's root.
+- **Round 4:** `REVIEW-PCTC-COLLECTOR-CODEX-4.md` (this repo), on `00e94e1` (round 1–3 fixes,
+  pushed). It found 0 P1, 1 P2 (R4-1); verdict "not ready", with R4-1 as the only blocker.
+- **Round 5:** `REVIEW-PCTC-COLLECTOR-CODEX-5.md` (this repo), on the R4-1 fix (uncommitted on top
+  of `00e94e1`). It found 0 P1, 0 P2, 0 P3. **Verdict: ready to promote to STAGING and PROD** once
+  the reviewed fix and test are committed. One non-blocking precision note: the combined test's
+  readiness file is written by the stub's lftp right after it forks the resistant child, not by the
+  child after its trap. Codex confirmed the stronger case independently.
 - **Context:** `hhm_rpp_philips/PLAN-PHILIPS-CT-INSIGHTS.md` §3.2 (ingest defects I1–I6), §5 Q2
   (scope), §7.4 (Events lines that never reach the DB), §8 (this session).
 
@@ -23,6 +28,20 @@ Date: 2026-11-20 · Repo: `hhm_data_acquisition` · Branch: `DEV`.
 **Files to review:**
 - `read/sh/Philips/phil_ct_data_grab_1.sh`.
 - `read/__tests__/phil_ct_data_grab_1.test.js`.
+
+## Fix after round 4 (`REVIEW-PCTC-COLLECTOR-CODEX-4.md`, 2026-11-20)
+
+| Finding | Fix | Checked |
+|---|---|---|
+| **R4-1 P2**: if the collector shell is killed while `session()` waits, its group cleanup never runs, so a TERM-resistant descendant keeps the lock forever | `session()`'s body is now a **subshell** `session() ( … )`: a separate supervising process (Codex's prototype). It keeps waiting on `timeout` and then kills the session's process group even if the collector shell is killed, and it holds fd 9 until that cleanup is done. Its status is passed out with `exit`. Nothing else changed. | New jest test (Codex's combined case): the stub's lftp starts a TERM-resistant same-group child and signals readiness; **only the collector shell is SIGKILLed**. Then the lock is free within limit + grace (1 s + 1 s, measured < 8 s), every holder of the collector's stdout/stderr pipes is gone (`close` event), no resistant child is left, nothing was published, the killed grab's private staging is left, and the next grab runs, publishes and removes that staging. Mutation: `session()` back to `{ … }` with `return` → this test fails (the R4-1 reproduction). All 51 pass, nothing left running. Real-data equivalence rerun: `pctc/out/08_equivalence_round4.txt`, all OK. |
+
+**Limits that remain (Codex round 4, item 3), not changed:**
+- **Group kill.** If someone kills the collector's whole process group rather than just its shell,
+  the supervising subshell (same group as the collector) dies too, while `timeout` and lftp (their
+  own group) survive. Lock lifetime is then bounded only by `timeout -k` and the lftp process
+  itself, i.e. the round-3 position. The runner signals no one; cron doesn't kill groups.
+- **Untimed steps.** Exports, transformations and filesystem steps have no timers; a stuck utility
+  or uninterruptible I/O can still prolong a grab. These are general limits, not new.
 
 ## Fixes after round 3 (`REVIEW-PCTC-COLLECTOR-CODEX-3.md`, 2026-11-20)
 
@@ -148,8 +167,8 @@ covers the "script fails" shape.
 
 ## Evidence
 
-1. **Jest: `npx jest read/__tests__/phil_ct_data_grab_1.test.js` passes 50/50** in about 20 s, with no
-   open handles, no `lftp` and no leftover descendants afterwards. That's 43 script tests, 6
+1. **Jest: `npx jest read/__tests__/phil_ct_data_grab_1.test.js` passes 51/51** in about 20 s, with no
+   open handles, no `lftp` and no leftover descendants afterwards. That's 44 script tests, 6
    real-runner tests and 1 stub guard (7 stubbed tools).
 2. **Mutations, each caught:**
    - lock not held by `lftp`;
@@ -165,9 +184,11 @@ covers the "script fails" shape.
    - round 2: listing installed despite failure, no `-k`, no download timeout, throttle on listing
      age, no pending retry, listing not silenced, settings unvalidated;
    - round 3: proceed without a recorded attempt, no process-group kill, zero/huge settings
-     accepted, shrink only via the flag. Subshell → braces is **not** caught (see the R3-1 row).
+     accepted, shrink only via the flag. Subshell → braces is **not** caught (see the R3-1 row;
+     Codex round 4 agreed to keep the subshell as isolation);
+   - round 4: `session()` without its supervising subshell.
 3. **Real data, rerun on this revision** (`~/philips_ct_evidence/pctc/scripts/equivalence.sh`,
-   output `pctc/out/07_equivalence_round3.txt`). This is the old script versus the new one on
+   output `pctc/out/08_equivalence_round4.txt`). This is the old script versus the new one on
    5 real `Logger.mdb` copies, with a stub `lftp`:
    - `.output` files are **byte-identical on all 10**. For SME20598 they also match the file on prod.
    - `.csv` files **match the database on all 10** (179,478 rows, including 1,785 multi-line `Msg`
@@ -180,16 +201,14 @@ covers the "script fails" shape.
 
 ## Please look hard at
 
-1. **`session()`**:
-   - `$!` of `timeout` as the process-group id;
-   - the window between `wait` returning and the group kill (PID reuse: Linux doesn't reuse an id
-     while a group with it exists);
-   - `wait` if this shell gets a signal;
-   - is the background form equivalent for real `lftp` + `ssh` (stdin `/dev/null`, no tty)?
-2. **The listing subshell.** Is any fatal path left that the subshell actually guards? If not, keep
-   it as a second layer or drop it?
-3. **Anything that still makes a grab's lifetime unbounded** with default settings.
-4. **Verdict:** ready to commit and promote, or not?
+1. **`session() ( … )`.**
+   - Is the supervising subshell the right shape?
+   - Does it change anything else? Status propagation through `exit`; `$!` and `wait` inside the
+     subshell; fd 9 now held by the subshell too; stdin of the background job.
+   - Codex round 4 prototyped this; please confirm on the committed form.
+2. **The new combined test.** Is it deterministic (readiness file, then SIGKILL of the shell pid
+   only)? Does it prove what R4-1 needs: lock free, pipes closed, no descendants, next grab runs?
+3. **Verdict:** ready to promote to STAGING and PROD, or not? If not, list only the blocking items.
 
 ## Out of scope (separate work)
 

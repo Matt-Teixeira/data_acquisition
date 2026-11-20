@@ -97,7 +97,7 @@ esac
 dest=$(printf '%s' "$2" | sed -n 's/.*mget Logger\\.mdb -O \\([^;]*\\);.*/\\1/p' | tr -d ' ')
 [ -n "\${STUB_LFTP_SLEEP:-}" ] && sleep "$STUB_LFTP_SLEEP"
 # a same-group child that ignores TERM and outlives this process (keeps fd 9)
-if [ -n "\${STUB_LFTP_RESISTANT_CHILD:-}" ]; then ( trap '' TERM; exec sleep 47.25 ) & sleep 30.5; fi
+if [ -n "\${STUB_LFTP_RESISTANT_CHILD:-}" ]; then ( trap '' TERM; exec sleep 47.25 ) & : > "$STUB_DIR/started.\${STUB_MARK:-x}"; sleep 30.5; fi
 if [ -n "\${STUB_LFTP_LEAVE_CHILD:-}" ]; then ( trap '' TERM; exec sleep 47.25 ) & fi
 if [ -n "\${STUB_LFTP_HANDSHAKE:-}" ]; then
   : > "$STUB_DIR/started.$STUB_MARK"
@@ -595,6 +595,30 @@ describe("phil_ct_data_grab_1.sh", () => {
     expect(leftovers()).toBe("");
     expect(lockHeld(dir)).toBe(false);
   });
+
+  test("collector killed while a TERM-resistant child holds the lock: cleaned up after limit + grace, next grab runs", async () => {
+    const dir = sysDir();
+    seed(dir);
+    const c = spawn(wrapper, [...FAKE, dir], {
+      env: childEnv({ STUB_LFTP_RESISTANT_CHILD: "1", STUB_MARK: "K", PHIL_CT_DL_TIMEOUT: "1", PHIL_CT_KILL_GRACE: "1" }),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const pipesClosed = new Promise((res) => c.on("close", res)); // fires once every holder of stdout/stderr is gone
+    c.stdout.resume(); c.stderr.resume();
+    await waitFor(() => fs.existsSync(path.join(stubDir, "started.K"))); // resistant child is running
+    process.kill(c.pid, "SIGKILL"); // only the collector shell
+    const t0 = Date.now();
+    await waitFor(() => !lockHeld(dir), 10000);
+    expect(Date.now() - t0).toBeLessThan(8000);
+    await pipesClosed;
+    expect(leftovers()).toBe("");
+    // the killed grab published nothing; its private staging stays until the next grab removes it under the lock
+    for (const f of PUBLISHED) expect(read(dir, f)).toBe(`previous ${f}\n`);
+    expect(staging(dir)).toHaveLength(1);
+    expect(run(dir).status).toBe(0);
+    expect(read(dir, "Logger.mdb")).toBe("synthetic mdb\n");
+    expect(staging(dir)).toEqual([]);
+  }, 20000);
 
   test("a child left behind by a successful download is killed too", () => {
     const dir = sysDir();

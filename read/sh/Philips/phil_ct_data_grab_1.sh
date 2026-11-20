@@ -49,14 +49,16 @@ num() {
 # Run one lftp session under timeout as a background job, wait for it, then kill whatever is left
 # in its process group (GNU timeout leads its own group unless --foreground). Returns the
 # session's status. $1 = limit (s), $2 = lftp command string.
-session() {
+# The body is a subshell: a separate supervising process that keeps waiting and cleaning up even
+# if this collector shell is killed, and that holds the lock (fd 9) until its cleanup is done.
+session() (
     timeout -k "$kill_grace" "$1" lftp -c "$2" &
     sess_pid=$!
     wait "$sess_pid"
     sess_rc=$?
     kill -s KILL -- "-$sess_pid" 2>/dev/null
-    return $sess_rc
-}
+    exit $sess_rc
+)
 dl_timeout=$(num "$PHIL_CT_DL_TIMEOUT" 600)
 list_timeout=$(num "$PHIL_CT_LIST_TIMEOUT" 120)
 kill_grace=$(num "$PHIL_CT_KILL_GRACE" 15)
