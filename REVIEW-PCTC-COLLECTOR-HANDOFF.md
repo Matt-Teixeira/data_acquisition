@@ -1,161 +1,213 @@
-# Review handoff: Philips CT collector export (PCT-C, DEV, uncommitted)
+# Review handoff: Philips CT collector export (PCT-C, DEV)
 
-Date: 2026-11-20 · Repo: `hhm_data_acquisition` · Branch: `DEV` · Nothing committed or deployed.
-Reviewer output goes to `REVIEW-PCTC-COLLECTOR-CODEX.md`.
-Context: `hhm_rpp_philips/PLAN-PHILIPS-CT-INSIGHTS.md` §3.2 (ingest defects I1–I6), §5 Q2 (this
-session's scope), §7.4 (Events lines that never reach the DB).
+Date: 2026-11-20 · Repo: `hhm_data_acquisition` · Branch: `DEV`.
+- **First review:** commit `aca5b3d`. The Codex review is `hhm_rpp_philips/REVIEW-PCTC-COLLECTOR-CODEX.md`
+  (written in the sibling repo).
+- **Round 2:** `REVIEW-PCTC-COLLECTOR-CODEX-2.md` (this repo). It found 0 P1, 3 P2 (N1–N3), all
+  in the optional listing.
+- **Round 3:** `REVIEW-PCTC-COLLECTOR-CODEX-3.md` (this repo). It found 0 P1, 3 P2 (R3-1 to R3-3);
+  verdict "not ready".
+- **This revision:** round 1–3 fixes, uncommitted on top of `aca5b3d`. **Please re-review.** Write
+  your output to `REVIEW-PCTC-COLLECTOR-CODEX-4.md` in this repo's root.
+- **Context:** `hhm_rpp_philips/PLAN-PHILIPS-CT-INSIGHTS.md` §3.2 (ingest defects I1–I6), §5 Q2
+  (scope), §7.4 (Events lines that never reach the DB), §8 (this session).
 
 **Ground rules for the review:**
-- Never print, quote or copy a credential, host IP or site name. The tests use fake values and a
-  TEST-NET address only.
-- Make no network connection to any scanner. Run nothing against `/home/prod/*`; it is the live app.
+- Never print, quote or copy a credential, host IP or site name. The tests use fake values and the
+  TEST-NET address 192.0.2.10.
+- Make no network connection to any scanner. Run nothing against `/home/prod/*`.
 - Don't touch the unrelated uncommitted WIP in this repo (`db/normalize/prod/*.sql`,
-  `db/tables/TABLES.sql`, `handoff/`). It is someone else's work.
+  `db/tables/TABLES.sql`, `handoff/`).
+- The script runs under `/bin/sh`, which is dash 0.5.11 here.
 
 **Files to review:**
-- `read/sh/Philips/phil_ct_data_grab_1.sh` (modified).
-- `read/__tests__/phil_ct_data_grab_1.test.js` (new).
+- `read/sh/Philips/phil_ct_data_grab_1.sh`.
+- `read/__tests__/phil_ct_data_grab_1.test.js`.
 
-## Problem in one paragraph
+## Fixes after round 3 (`REVIEW-PCTC-COLLECTOR-CODEX-3.md`, 2026-11-20)
 
-Every 15 minutes the Philips CT collector downloads `D:\Data_Logger\Logger.mdb` (an Access DB on
-the scanner) with `lftp`/sftp and rewrites two text exports that `hhm_rpp_philips` parses:
-`EALInfo.output` and `Events.output`. All 9 systems with `process_log = true` use this one script,
-`phil_ct_data_grab_1.sh` (`config.acquisition.acquisition_script`).
+| Finding | Fix | Checked |
+|---|---|---|
+| **R3-1 P2**: a failed `: >state` redirection (a special builtin) killed the dash script after the outputs were published | (a) State files are updated with `touch` (an external command, so a failure can't end the shell). (b) The whole listing block runs in a **subshell** `( … ) >/dev/null 2>&1`, so even a fatal error there can't end the parent. (c) If the attempt time can't be recorded, **no** listing session is opened. (d) A shrink forces an attempt on its own, so a reset flag that can't be created still gets the immediate attempt (it loses only the hourly persistence). | Jest: a dangling symlink at `.listing.attempt` → exit 0, stderr empty, outputs published, **no** listing session. A read-only old attempt file → exit 0, listing attempted (the owner can `touch`). A reset flag that can't be created plus a shrink → exit 0, listing attempted. Mutations: proceed when the attempt can't be recorded (fails); shrink only via the flag (3 fail). **Not caught:** replacing the subshell with `{ }` passes all 50, because after (a) nothing left in the block can be fatal. The subshell is now a second layer; say if you see a remaining fatal path. |
+| **R3-2 P2**: GNU timeout stops supervising when its direct child exits, so a TERM-resistant descendant could keep the lock | Each `lftp` session runs through `session()`: `timeout -k …` as a **background job**, `wait`, then `kill -s KILL -- -<pid>` for the whole process group (timeout leads its own group). It runs after **every** session (success, failure or deadline), so nothing from a session outlives it. Verified on this dash that `kill -s KILL -- -PGID` works; the `kill -KILL -- …` form does **not** (status 2). Background jobs in a non-interactive shell get stdin from `/dev/null`; `lftp -c` doesn't read stdin (real `lftp` over `file://` checked in this form). | Jest: the stub's lftp starts a same-group child that ignores TERM (`sleep 47.25`), then dies on TERM (Codex's scenario), for both the download and the listing (limit 1 s, grace 1 s). Grab done in < 10 s, no `sleep 47.25` left, lock free. A child left by a **successful** download is killed too. **Real runner:** the same descendant during a download deadline → `execFile` returns, redis queue, nothing left. Mutation: no group kill (5 fail). |
+| **R3-3 P2**: `0` disabled a deadline or the KILL escalation | `num()` accepts only 1–86400 (up to 6 digits, read as decimal with `expr`, so `0030` is 30, not octal). Anything else, including `0`, `000`, `86401`, empty and non-digits, falls back to the default. | Jest, on the **actual `timeout` argv** (recording stub that `exec`s the real timeout): `0/000/9999999` and `86401/''/0` → `-k 15 600` and `-k 15 120`; `0030/45/5` → `-k 5 30` and `-k 5 45`. Mutation: zero and huge accepted (2 fail). |
+| R1 residue (coverage): the `sed` table-name guards were untested | A `sed` stub fails on the `tables.txt` split, or prints and then fails when reading `tables.lines`. | Jest: both → exit 1 with the matching message, files untouched. |
+| Test robustness | Every direct script run has `spawnSync` `timeout: 20000`, `killSignal: SIGKILL`. `afterEach` SIGKILLs the deadline tests' distinctive sleeps. A deadline regression now fails in ≤ 20 s and leaves nothing behind. | No `lftp`, no leftover sleeps after the suite and after every mutation run (checked). |
+
+**Handoff claims corrected (Codex round 3, item 4):**
+- "At most about 24 attempts/day" holds only between shrinks: **every newly observed shrink forces
+  an immediate attempt**. That's on purpose, since that's when the old database might still be on
+  the scanner.
+- The deploy note's "one listing a day" is the ordinary case: no reset pending, no new shrink.
+
+## Fixes after round 2 (`REVIEW-PCTC-COLLECTOR-CODEX-2.md`, 2026-11-20)
+
+| Finding | Fix | Checked |
+|---|---|---|
+| **N1 P2**: a listing that failed part-way replaced the good one | The listing is installed only if the `timeout … lftp` session exits 0 **and** the file is non-empty; then `chmod` and `mv -fT`. Otherwise the previous listing and its mtime stay. | Jest: a partial listing plus exit 1 → previous content and mtime unchanged, stderr empty. Mutation: install despite failure (fails). |
+| **N2 P2**: TERM-only listing timeout could hold the lock forever | `timeout -k <grace> <limit>` on the listing, so GNU timeout signals the whole process group (lftp and ssh) and KILLs it after the grace. | Jest: a listing stub that ignores TERM (limit 1 s, grace 1 s) → the grab ends in about 2 s, exit 0, lock free, next grab 0. Mutation: no `-k` (fails). |
+| **N3 P2**: failed listings retried every grab | The throttle uses the **attempt** time (`$4/.listing.attempt`, touched before each attempt), not the listing's age: at most one attempt per 24 h. A shrunk database sets `$4/.listing.reset_pending` and attempts at once; while pending it retries at most hourly; success clears it. Worst case about 24 attempts/day, only while a reset listing is pending. | Jest: 3 grabs with failing listings → listing sessions 1, 0, 0. Shrink with a fresh attempt → attempt now; same size within 1 h → none; after 61 min → retry, succeeds, flag cleared; then the daily throttle. Mutations: throttle on listing age (fails); no hourly pending retry (fails). |
+| Q4 residue: an `mv` diagnostic from installing the listing reached stderr | The whole listing block, decision through install, runs inside `{ … } >/dev/null 2>&1`. | Jest: a directory at `Data_Logger.ls` → grab 0, stderr empty, exports published. Mutation: block not silenced (4 tests fail). |
+| Item 1 (Codex recommendation): no overall deadline on the main download | `timeout -k 15 600 lftp …` (configurable: `PHIL_CT_DL_TIMEOUT`, `PHIL_CT_LIST_TIMEOUT`, `PHIL_CT_KILL_GRACE`; whole seconds only, anything else falls back to the default). A deadline hit exits nonzero, which takes the existing "Connection timed out", exit 0 path, so the runner treats it as a connection failure (redis retry queue), as Codex said it would. 600 s means ≥ about 17 KiB/s for 10 MiB. It leaves room in the 15-minute cycle for the exports and the 120 s listing. Tune it once real durations are measured. | Jest: the download stub sleeps 30 s with limit 1 s → about 1 s, "Connection timed out", files untouched, lock free; **real runner** → redis queue, not online. Bad settings (`"1; rm -rf /"`, `-5`, `x`) → defaults, exit 0. Mutations: no download timeout (2 fail); settings unvalidated (fails). |
+| R1 residue: table-name `sed` pipelines unchecked | `sed` writes `tables.lines` (checked), then `NAME=$(sed -n Np …) \|\| fail` for each name. | Covered by the mdb-tables failure test. Byte equivalence rerun. |
+| Item 6, peak disk | `events.raw` is removed right after `tr`. The EALInfo raw export now runs only when EALInfo processing starts (same `mdb-export` call order: Events, then EALInfo). | The argv test still asserts the four calls in order. Equivalence rerun. |
+
+**Round-2 test gaps, now covered:**
+- a partial listing;
+- a listing that ignores TERM;
+- the download deadline (script and runner);
+- the failed-listing throttle and the reset-pending retry;
+- a listing install failure;
+- the later EALInfo `sort` failure;
+- a CSV `tr` (NUL removal) failure;
+- a publish failure at a later file (`EALInfo.csv`), with the exact list of published files;
+- distinct staging per grab;
+- handshakes instead of fixed sleeps in the orphan and lock tests (start and release files, and
+  `flock -n` polling);
+- **every** script run, direct ones included, now goes through the guard wrapper, which exits 99
+  unless `lftp` is the stub.
+
+**Not changed, by choice:**
+- Exit 75 is still logged as an error by the runner. Codex: "acceptable now"; a dedicated runner
+  outcome is the later interface if overlap becomes routine.
+- A shrink is still a reset *heuristic*, and the handoff calls it that. A reset that doesn't shrink
+  the file is caught by the daily listing.
+
+## Fixes after round 1 (`REVIEW-PCTC-COLLECTOR-CODEX.md`, 2026-11-20)
+
+| Finding | Fix | Checked |
+|---|---|---|
+| **F1 P1**: an orphaned `lftp` could write into the next grab's shared `.incoming` | (a) `lftp` no longer closes fd 9, so the lock stays held while any writer of the grab is alive, including after the shell is killed. (b) Staging is private per invocation: `mktemp -d "$4/.incoming.XXXXXX"` (l. 52). (c) Leftover `.incoming*` directories are removed only while holding the lock (l. 51); holding the lock means no earlier writer is alive. | Jest "orphaned download": shell A is `SIGKILL`ed while its `lftp` sleeps. Grab B is refused (75) while the orphan lives. After the orphan finishes, B publishes **its own** database and A's staging is gone. Mutations: put `9>&-` back (fails); drop the stale cleanup (fails). |
+| **F2 P2**: a skip, or a lock error, was recorded as a successful acquisition | `flock -n -E 75 9` (l. 40). Status 75 (lock taken) → `exit 75` with a `phil_ct:` message. Any other `flock` status → `exit 1`, `flock failed (status N)`. Both are nonzero, so `read/exec-hhm_data_grab.js` takes its `catch` path: `addLogEvent(E, …)`, return `null`, **no queue entry**. No runner change was needed. | Jest: lock held → 75, `lftp` never called. Stub `flock` returning 69 → exit 1. **Real runner** (Redis and logger mocked): skip → no online/redis queue, 1 error logged. Mutations: skip exits 0 (3 tests fail); any nonzero treated as a skip (fails). |
+| **F3 P2**: atomic replacement dropped the reader's permissions | `chmod 0644` on every staged file before publishing (l. 111, 131), whatever the umask. That is the mode the prod files have today (`-rw-r--r-- prod prod`, no ACLs). | Jest under `umask 077`: all published files are 0644. Mutation: no chmod (fails). |
+| **F4 P3**: a publish failure claimed "previous outputs kept" | The publish loop (l. 113–123) tracks what was published. On failure: `phil_ct: publish <f> failed; outputs partly updated (already published: …)`. `mv -fT`, so a directory at a target path fails instead of swallowing the file. | Jest: `Events.output` is a directory → exit 1, exact message, `Logger.mdb` and `EALInfo.output` new, `EALInfo.csv` old, staging removed. Mutation: `mv` without `-T` (fails). |
+| **R1 P1 (inherited)**: the legacy pipelines were unchecked | Every legacy step writes a file and checks its own status: `mdb-tables`, each `mdb-export`, header writes, `tr`, `awk`, `sort`, `sed`, `tail`. Intermediates are removed as soon as they've been used, to cut peak disk. The commands and their order are unchanged, so the bytes are unchanged (see Evidence). | Jest: failing `mdb-tables` and failing `sort` each → exit 1, files untouched. Mutation: `sort` unchecked (fails). |
+| **Q4**: `cls` stderr in the main session could make a successful grab look like a connection failure | The listing moved out of the main session. It's a separate best-effort session (`timeout 120 lftp … >/dev/null 2>&1`, l. 125–133) **after** publishing, so it can't change the exit status, stderr or outputs. It runs when there is no listing yet, when the listing is older than 24 h, or when the new database is smaller than the published one (a reset: exactly when the old-file question matters). That's at most about 1 extra connection per system per day. The main `lftp` command is back to its original two commands. | Jest: a failing listing session that prints a max-retries line → grab exit 0, **stderr empty**, outputs published, old listing kept. Policy test: fresh → no listing; 24 h old → listing; shrunk database → listing. Mutation: listing stderr not discarded (fails). |
+
+**Test gaps Codex listed, now covered:**
+- The full legacy `.output` content is asserted against an oracle produced by the pre-PCT-C script
+  on the same fixture. The fixture includes the comma and multi-line rows the legacy export drops,
+  plus a relay row.
+- The exact `mdb-export` argv for all four calls.
+- Each table's export failing in each mode.
+- `sort`, `mdb-tables` and `flock` failures.
+- The listing policy and its stderr isolation.
+- The real runner's queue behaviour for success, timeout, skip and export failure.
+
+**Not covered here:** the CSV dialect edge cases Codex asked for (literal `\n` text, doubled quotes,
+CRLF, tabs, non-ASCII). The script passes `mdb-export -e` output through and only removes NUL, so
+those belong to the PCT-1b reader's tests. They are recorded there with Codex's decoder requirement:
+parse CSV quoting first, then **one left-to-right** unescape pass per field.
+
+**A harness fault found and fixed while writing this.** Jest sandboxes `process.env`, but
+`child_process` (used by the runner without an `env`) reads the real one. So in a first draft of the
+runner tests, three tests ran the **real** `lftp` against the TEST-NET address 192.0.2.10. That
+address is never routed, so the connection hung and timed out, and nothing was reached. Fake
+credentials only. No processes were left behind (checked). The runner tests now go through a wrapper
+that puts the stubs first on `PATH` and exits 99 unless `lftp` resolves to the stub. A suite-level
+test asserts the same for the direct tests.
+
+## Problem in one paragraph (unchanged)
+
+The Philips CT collector downloads `D:\Data_Logger\Logger.mdb` every 15 minutes and rewrites
+`EALInfo.output` and `Events.output`, which `hhm_rpp_philips` parses. All 9 systems with
+`process_log = true` use `phil_ct_data_grab_1.sh`.
 
 The old script had four problems:
-1. **The Events export loses rows.** `tr -cd` deletes characters, and `awk -v FS=","` reorders
-   columns on commas, so a `Msg` containing a comma shifts the columns and the `sed` filter drops
-   the row. A `Msg` with a line break (5.1% of non-relay Events rows) also breaks the line-oriented
-   pipeline. Measured on real copies: 4–7% of Events rows are lost. They include the only lines that
-   say who cancelled a series (`GANTRY_CANCEL_SOURCE_<CTBOX|HOST|…>`), so operator-versus-system
-   aborts are invisible today.
-2. **Nothing is written atomically.** The outputs were truncated and refilled in place, so the
-   parser could read a half-written file. `lftp` also overwrote `Logger.mdb` in place, so a failed
-   transfer left a broken database behind.
-3. **Export failures were silent.** The script always exited 0 with whatever had been written.
-4. **We can't tell what happens at a reset.** Nobody knows whether the scanner keeps the old
-   `Logger.mdb` when it starts a new one. The rows written between the last grab and a reset are
-   lost, an estimated 1–2% (I4).
+1. The Events export loses 4–7% of rows: `tr -cd`, an `awk` column reorder on commas, and line
+   breaks inside `Msg`. Among the lost rows are the only ones that carry the series-cancel source.
+2. Nothing is written atomically.
+3. Failures are silent.
+4. Nobody knows whether the scanner keeps the old database at a reset.
 
-## What changed
+## Design (unchanged in intent)
 
-**Design choice: additive, so the running parser is unaffected.** The two legacy `.output` files
-are produced by the **same commands as before**, so they are byte-identical. The complete data goes
-into **new files** that only the future parser change (PCT-1b, `hhm_rpp_philips`, not in this diff)
-will read. The two changes can therefore deploy independently, and this one can go first.
-
-| Part | Change |
-|---|---|
-| Shebang | `#!/bin/sh`, made explicit. Before, `execFile` → `execvp` fell back to `/bin/sh` (dash 0.5.11) on the missing shebang, so the interpreter is unchanged. POSIX only: dash has no `pipefail`. |
-| Guard (l. 25–28) | Exit 1 if `$4` is empty or `/`, before any file operation. `$4` is used for `rm -rf "$4/.incoming"`. The runner always passes `<PROD_HHM_FILES>/<SME>`. |
-| Lock (l. 31–36) | `flock -n` on `$4/.grab.lock`. A second concurrent grab of the same system exits 0 with a `phil_ct:` message and touches nothing. The lock fd is closed for `lftp` (`9>&-`, l. 48), so an orphaned ssh can't hold it. |
-| Staging (l. 38–44) | Everything is written in `$4/.incoming` (same filesystem), which is removed on exit (`trap … EXIT`). |
-| Download (l. 46–48) | Same `lftp` settings and `open`. `mget -O` targets staging. New: `cd … && cls -l > $inc/Data_Logger.ls` lists `D:\Data_Logger\` (answers question 4). Because of `&&` the listing runs only after a successful `cd`, so stderr on a failed connection is unchanged. |
-| Connection failure (l. 50–53) | Unchanged: `Connection timed out` on stderr, exit 0, and now nothing in `$4` changes. |
-| Empty download (l. 55–59) | New: exit 1 with `phil_ct: … previous outputs kept`. |
-| Legacy exports (l. 67–87) | The same `mdb-tables`, `tr`, `awk`, `sort`, `sed`, `tail` commands. `mdb-export` now writes to a staging file first, so its exit status is checked, and the pipeline reads from that file (`… < file` is byte-equivalent to `mdb-export … \|`). |
-| Complete exports (l. 89–93) | New: `mdb-export -e -b strip -T '%Y-%m-%d %H:%M:%S' <mdb> EALInfo\|Events`, then `tr -d '\000'`, into `EALInfo.csv` and `Events.csv`. `-e` escapes `\n \r \t \\` inside fields, so there is one physical line per row. Quotes are doubled (mdb-export's default). BLOB is stripped (binary OLE, never used). Datetimes are device-local ISO. Table order. |
-| Publish (l. 95–100) | `mv -f` from staging, database first, then the four exports, then the listing if non-empty. Any failure before this point leaves `$4` exactly as it was. |
+**Additive.**
+- The legacy `.output` files are produced by the same commands, byte-identical, so the running
+  parser is unaffected.
+- `EALInfo.csv` / `Events.csv` are the complete exports (`mdb-export -e -b strip -T '%Y-%m-%d %H:%M:%S'`,
+  NUL removed) that PCT-1b will read.
+- `Data_Logger.ls` answers the reset question.
+- Nothing in `$4` changes until the download and every export succeed. Then each file is replaced by
+  `mv -fT` from private staging.
 
 ## Outcome → what `read/exec-hhm_data_grab.js` does (prod copy byte-identical to DEV)
 
-| Outcome | Exit | stderr | Runner branch | Before |
+| Outcome | Exit | stderr | Runner branch | Before PCT-C |
 |---|---|---|---|---|
-| success | 0 | empty | online queue, `successful_acquisition: true` | same |
-| connect timeout / max-retries | 0 | `Connection timed out` + lftp lines | `connection_regexes` match → redis queue + reset totalizer | same (outputs were already untouched) |
-| grab already running | 0 | `phil_ct: previous grab … skipped` | no regex match → online queue `successful_acquisition: true` | n/a (no lock before) |
-| empty download, export or publish failure | 1 | `phil_ct: … failed; previous outputs kept` | `catch`: no regex match, not 124 → `addLogEvent(E, …, error)`, returns `null`, no queue update | exit 0 with truncated or partial outputs |
+| success (listing ok or not) | 0 | empty | online queue, `successful_acquisition: true` | same |
+| connect timeout / max-retries / download deadline (600 s + 15 s kill; leftovers in the session's process group killed) | 0 | `Connection timed out` (+ lftp lines) | regex match → redis queue + reset totalizer | same (no deadline before) |
+| lock held by another grab | **75** | `phil_ct: previous grab … skipped` | catch: E logged, `null`, no queue | n/a |
+| lock error, empty download, any export/legacy step failure | 1 | `phil_ct: … failed; previous outputs kept` | catch: E logged, `null`, no queue | exit 0 with truncated/partial outputs |
+| publish failure part-way | 1 | `phil_ct: publish <f> failed; outputs partly updated (…)` | same | n/a |
 
-On the exit-1 path, `error.message`/`stack` contain `Command failed: <script> <ip> <user> <pass> …`.
-The credential redaction (`util/redact.js`, `util/flush_run_log.js`, commit `71e1c52`) is live on
-prod: the files are present, `index.js` calls `flushRunLog`, and `util/__tests__/credential-redaction.test.js`
-covers exactly this "script fails" shape.
+On the exit-1/75 path, `error.message`/`stack` contain `Command failed: <script> <ip> <user> <pass> …`.
+The credential redaction (`71e1c52`: `util/redact.js`, `util/flush_run_log.js`, `index.js`) is live
+on prod; its files are present and identical to DEV. `util/__tests__/credential-redaction.test.js`
+covers the "script fails" shape.
 
 ## Evidence
 
-1. **Jest: `npx jest read/__tests__/phil_ct_data_grab_1.test.js` passes 10/10.** No network; `lftp`,
-   `mdb-tables` and `mdb-export` are PATH stubs that produce synthetic tables with a comma-bearing
-   `Msg`, a multi-line `Msg` and a NUL byte. It covers:
-   - success (all six files published, staging removed, NUL removed, one line per row);
-   - the legacy format kept;
-   - the `lftp` command (listing only after `cd`, download into staging);
-   - connection failure (exit 0, regex classifies it, files untouched);
-   - legacy export failure and csv export failure (exit 1, no regex match, no fake credential in
-     stderr, files untouched);
-   - empty download;
-   - `$4` empty and `$4 = /`;
-   - lock contention (`lftp` never called).
+1. **Jest: `npx jest read/__tests__/phil_ct_data_grab_1.test.js` passes 50/50** in about 20 s, with no
+   open handles, no `lftp` and no leftover descendants afterwards. That's 43 script tests, 6
+   real-runner tests and 1 stub guard (7 stubbed tools).
 2. **Mutations, each caught:**
-   - csv export failure ignored (1 test fails);
-   - no lock (1);
-   - NUL not stripped (1);
-   - database published before the exports (3);
-   - no staging cleanup (5).
-3. **Equivalence on real data** (outside the repo, `~/philips_ct_evidence/pctc/`; real data stays
-   there):
-   - **Setup:** old and new script, each run with a stub `lftp` that copies one of 5 real
-     `Logger.mdb` copies (SME20598, SME18534, SME18535 from 2026-10/11; SME17372, SME18976 from
-     2025-10).
-   - **`EALInfo.output` and `Events.output` are byte-identical, old versus new, on all 10.** For
-     SME20598 the new output is also byte-identical to the file on prod.
-   - **`EALInfo.csv` and `Events.csv` match the database exactly on all 10** (179,478 rows): row
-     count equal to the table, one physical line per row plus the header, and every field equal to
-     a reference `mdb-export` parse after unescaping. That includes 1,785 `Msg` values with line
-     breaks. No NUL bytes.
-   - Script: `pctc/scripts/equivalence.sh`, output `pctc/out/04_equivalence.txt`.
-4. **Real `lftp` 4.8.4** (installed here) over its local `file://` protocol, with no network: `cd X &&
-   cls -l > f; mget Logger.mdb -O d; exit` writes the listing and downloads. When `cd` fails, `cls`
-   is skipped, stderr shows only the same `cd:`/`mget:` lines as today, and the exit status is 1.
-5. **dash:** an EXIT trap keeps the status passed to `exit` (checked, including bare `exit` after
-   `echo`). `sh -n` is clean.
+   - lock not held by `lftp`;
+   - no stale staging cleanup;
+   - any `flock` error treated as a skip;
+   - skip exits 0;
+   - no chmod;
+   - `mv` without `-T`;
+   - `sort` unchecked;
+   - listing stderr not discarded;
+   - from the first round: csv export failure ignored, no lock, NUL not stripped, database
+     published first, no staging cleanup;
+   - round 2: listing installed despite failure, no `-k`, no download timeout, throttle on listing
+     age, no pending retry, listing not silenced, settings unvalidated;
+   - round 3: proceed without a recorded attempt, no process-group kill, zero/huge settings
+     accepted, shrink only via the flag. Subshell → braces is **not** caught (see the R3-1 row).
+3. **Real data, rerun on this revision** (`~/philips_ct_evidence/pctc/scripts/equivalence.sh`,
+   output `pctc/out/07_equivalence_round3.txt`). This is the old script versus the new one on
+   5 real `Logger.mdb` copies, with a stub `lftp`:
+   - `.output` files are **byte-identical on all 10**. For SME20598 they also match the file on prod.
+   - `.csv` files **match the database on all 10** (179,478 rows, including 1,785 multi-line `Msg`
+     values): row count, one physical line per row, every field equal after unescaping, no NUL.
+4. **Real `lftp` 4.8.4 over `file://`** (no network):
+   - the listing-only session `cd X && cls -l > f` writes the listing and exits 0;
+   - when `cd` fails, it exits 1 and writes no file;
+   - `flock -E 75` returns 75 under contention (util-linux 2.36.1).
+5. **dash:** `sh -n` is clean. The EXIT trap keeps the `exit` status.
 
 ## Please look hard at
 
-1. **Atomicity and partial publish.** Each `mv` is atomic. A failure in the middle of the publish
-   loop (l. 96–99) would leave some new and some old files. The `.output` files are parsed
-   independently, each with its own Redis byte offset, so a mixed pair is not a correctness problem
-   for today's parser. Is that reasoning sound?
-2. **Interaction with the parser's byte-offset tail** (`hhm_rpp_philips` `data_acquisition/Philips_CT.js`).
-   The old script also replaced the whole file content on every grab; only the inode changes now.
-   Any reader that holds an fd across grabs? (None found: the parser re-opens by path each run.)
-3. **Lock semantics.** Is the fd inherited by anything besides `lftp`/ssh? Is `flock` on a file in
-   `$4` safe with the parser reading other files in the same directory? Is exit 0 on contention
-   the right signal for the runner?
-4. **`lftp`.** The `&&` and `>` redirection inside `-c` against a real cygwin sftp server (only tested
-   over `file://`). Could `cls` on a slow link noticeably extend each grab? It's one directory
-   listing in the same session.
-5. **The csv dialect for PCT-1b.** Header names from `mdb-export`, doubled quotes, `-e` backslash
-   escapes. Any ambiguity, for example a literal backslash before `n` in a message: it becomes `\\n`,
-   which unescapes correctly.
-6. **dash portability** of every line. In particular `exec 9>`, `trap … EXIT`, `fail()` inside `||`
-   lists, and `[ … ] && mv` as the last list before `exit 0`.
-7. **Pre-existing behaviour kept on purpose**, and said here so it isn't mistaken for new: the
-   unquoted glob `[:alnum:]` in `tr` (cwd is the app root, which has no one-letter files); the
-   password in the lftp URL and argv (the process list); `exit` 0 with "Connection timed out" for
-   any `lftp` failure, including a missing file.
+1. **`session()`**:
+   - `$!` of `timeout` as the process-group id;
+   - the window between `wait` returning and the group kill (PID reuse: Linux doesn't reuse an id
+     while a group with it exists);
+   - `wait` if this shell gets a signal;
+   - is the background form equivalent for real `lftp` + `ssh` (stdin `/dev/null`, no tty)?
+2. **The listing subshell.** Is any fatal path left that the subshell actually guards? If not, keep
+   it as a second layer or drop it?
+3. **Anything that still makes a grab's lifetime unbounded** with default settings.
+4. **Verdict:** ready to commit and promote, or not?
 
 ## Out of scope (separate work)
 
-- **Reachability:** all 9 systems time out at TCP connect on port 22, as recently as 2026-11-20
-  15:42 UTC. That's network or site work, not code.
-- **The parser change (PCT-1b, `hhm_rpp_philips`):** read the `.csv` files, accept the `__NN`
-  suffix, parse the whole file with key-based dedupe. Not before 2026-11-24 18:53 UTC. Until then
-  the `.csv` files are written but not read.
-- **`phil_ct_data_grab_2.sh`, `_3.sh`, `phil_ct_v2.sh`:** used only by systems with
-  `process_log = false` (1–2 each), and unchanged. A system that is re-enabled should be pointed at
-  `_1.sh` (a config change).
-- **Retiring the `.output` files:** after PCT-1b has run on the `.csv` files for 5 clean days.
+- **Reachability** (network or site): all 9 systems still time out at TCP connect.
+- **PCT-1b** (`hhm_rpp_philips`): read the `.csv` files. Its tests should carry the CSV-dialect
+  cases above.
+- **`phil_ct_data_grab_2.sh` / `_3.sh` / `phil_ct_v2.sh`:** used only by systems with
+  `process_log = false`. Unchanged.
 
 ## Deploy notes (for the owner, after the review closes)
 
-- Commit on `DEV`, then promote `STAGING` → `PROD` the usual way.
+- Commit on `DEV`, then promote `STAGING` → `PROD`.
 - No config, DB or crontab change.
-- The new files appear only once a system is reachable again; nothing reads them yet.
-- Disk: about +1.1× the current outputs per system (about 6 MB for a full `Logger.mdb`), plus a
-  `.grab.lock` and a small `Data_Logger.ls`.
-- Rollback: revert the script. The extra files can then be deleted.
-- Verify after the first successful grab:
-  - row counts of `EALInfo.csv` / `Events.csv` = `mdb-export | python csv` of the same `Logger.mdb`;
-  - `.output` = the old script's output;
-  - `Data_Logger.ls` shows whether older databases are kept.
+- Steady state: about +1.1× the current outputs per system, plus `.grab.lock` and a small
+  `Data_Logger.ls`. Peak during a grab: see "Please look hard at" item 6.
+- Rollback: revert the script.
+- First successful grab, check:
+  - `.csv` row counts equal the database's;
+  - `.output` equals the old script's output;
+  - read `Data_Logger.ls`;
+  - expect at most one listing session per system per day.
