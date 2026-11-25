@@ -4,6 +4,7 @@ const { get_hhm, getHhmCreds } = require("../../../sql/qf-provider");
 const { decryptString, list_new_phil_cv_files } = require("../../../util");
 const { get_previous_dir } = require("../../../redis/redis_helpers");
 const { file_exists } = require("../../../util");
+const { folders_to_unzip, scan_system_folder } = require("../../../util/tools/phil_cv_unzip_sweep");
 const { v4: uuidv4 } = require("uuid");
 
 const [addLogEvent] = require("../../../utils/logger/log");
@@ -152,23 +153,6 @@ async function run_phil_cv(
         capture_datetime
       );
     }
-
-    // 1) CHECK FOR PRESENCE OF EventLog.txe WITHIN last_aquired_dir
-    const event_log_there = await file_exists(
-      system.debian_server_path,
-      `${last_aquired_dir}/EventLog.txe`
-    );
-
-    if (!event_log_there) {
-      await exec_phil_cv_unzip(
-        job_id,
-        run_log,
-        system.id,
-        parse_event_zip,
-        system,
-        last_aquired_dir
-      );
-    }
   }
 
   // TESTING VARS
@@ -189,18 +173,20 @@ async function run_phil_cv(
         capture_datetime
       );
     }
+  }
 
-    // NOTE: LOOP THROUGH EACH DIRECTORY BROUGHT OVER FROM HOST, UNZIP AND FORMAT INTO EventLog.txe
-    for await (const daily_dir of daily_files_to_pull) {
-      await exec_phil_cv_unzip(
-        job_id,
-        run_log,
-        system.id,
-        parse_event_zip,
-        system,
-        daily_dir
-      );
-    }
+  // UNZIP SWEEP (CV-1b, hhm_rpp_philips plan §7.3): EVERY DAILY FOLDER WITH AN Event.zip AND NO
+  // EventLog.txe, WHOEVER FETCHED IT (THIS RUN, AN EARLIER RUN, OR THE TUNNEL-RESET JOB, WHICH DOESN'T
+  // UNZIP). REPLACES THE UNZIP OF ONLY last_aquired_dir AND THE FOLDERS FETCHED IN THIS RUN.
+  for (const daily_dir of folders_to_unzip(scan_system_folder(system.debian_server_path))) {
+    await exec_phil_cv_unzip(
+      job_id,
+      run_log,
+      system.id,
+      parse_event_zip,
+      system,
+      daily_dir
+    );
   }
 
   // NOTE: PULL LOD DIRECTORIES FROM HOST
