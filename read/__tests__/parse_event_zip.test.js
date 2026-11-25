@@ -30,6 +30,8 @@ function daily(name, entries, { raw } = {}) {
   fs.utimesSync(dir, t, t);
   return dir;
 }
+const SEC = Buffer.from("Security\xe12026-11-25\xe107:00:00\xe1Information\xe14624\xe1logon\r\n", "latin1");
+const OLD = new Date("2026-11-22T00:00:00Z"); // older than 48 h at any time this suite runs
 const run = (script, dir, env = {}) => spawnSync(script, [dir], { encoding: "utf8", env: { ...process.env, ...env } });
 const leftovers = () => fs.readdirSync(path.join(root, "SME00001")).filter((n) => n.startsWith(".unzip_tmp"));
 const mtime = (dir) => fs.statSync(dir).mtimeMs;
@@ -98,4 +100,55 @@ test("refuses a folder without Event.zip, a missing folder, and an empty argumen
   expect(run(SCRIPT, dir).status).toBe(2);
   expect(run(SCRIPT, path.join(root, "nope")).status).toBe(2);
   expect(spawnSync(SCRIPT, [""], { encoding: "utf8" }).status).toBe(2);
+});
+
+/** a stub `mv` on PATH that fails (exit 73) when its target ends with `fail_target`, else runs /bin/mv */
+function failing_mv(fail_target) {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), "cv-mvstub-"));
+  fs.writeFileSync(path.join(bin, "mv"), `#!/bin/bash\ncase "\${@: -1}" in *${fail_target}) echo "mv: stub failure" >&2; exit 73;; esac\nexec /bin/mv "$@"\n`, { mode: 0o755 });
+  return bin;
+}
+
+test("review F1: EventLog.txe fails to move, twice: nothing published, the daily folder's mtime unchanged both times", () => {
+  const dir = daily("daily_2026_11_25", { "EventLog.txe": TXE, "EventLogSystem.txe": SYS });
+  fs.utimesSync(dir, OLD, OLD);
+  const bin = failing_mv("/EventLog.txe");
+  for (let i = 0; i < 2; i++) {
+    const r = run(SCRIPT, dir, { PATH: `${bin}:${process.env.PATH}` });
+    expect(r.status).toBe(73);
+    expect(fs.readdirSync(dir)).toEqual(["Event.zip"]); // the companion was not published either
+    expect(fs.statSync(dir).mtimeMs).toBe(OLD.getTime()); // the parser's 48 h clock keeps running
+    expect(leftovers()).toEqual([]);
+  }
+  fs.rmSync(bin, { recursive: true });
+});
+
+test("review F1: a companion that fails after EventLog.txe: primary published, exit 0, the sweep won't retry", () => {
+  const { folders_to_unzip, scan_system_folder } = require("../../util/tools/phil_cv_unzip_sweep");
+  const dir = daily("daily_2026_11_25", { "EventLog.txe": TXE, "EventLogSystem.txe": SYS });
+  const bin = failing_mv("/EventLogSystem.txe");
+  const r = run(SCRIPT, dir, { PATH: `${bin}:${process.env.PATH}` });
+  fs.rmSync(bin, { recursive: true });
+  expect(r.status).toBe(0);
+  expect(r.stderr).toMatch(/EventLogSystem\.txe not published/);
+  expect(fs.readFileSync(path.join(dir, "EventLog.txe")).equals(TXE)).toBe(true);
+  expect(folders_to_unzip(scan_system_folder(path.join(root, "SME00001")))).toEqual([]);
+});
+
+test("review F1/F3: allowlist: the three known .txe files are published; a folder, a dot entry and others are not", () => {
+  const src = fs.mkdtempSync(path.join(os.tmpdir(), "cv-zipsrc-"));
+  fs.mkdirSync(path.join(src, "Trace"));
+  fs.writeFileSync(path.join(src, "Trace", "new.txt"), "x");
+  for (const [n, b] of Object.entries({ "EventLog.txe": TXE, "EventLogSystem.txe": SYS, "EventLogSecurity.txe": SEC, ".export-info": "x", "other.bin": "x" })) fs.writeFileSync(path.join(src, n), b);
+  const dir = path.join(root, "SME00001", "daily_2026_11_25");
+  fs.mkdirSync(path.join(dir, "Trace"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "Trace", "keep.txt"), "kept"); // a non-empty Trace/ already there
+  execFileSync("zip", ["-q", "-r", path.join(dir, "Event.zip"), "."], { cwd: src });
+  fs.rmSync(src, { recursive: true });
+  const r = run(SCRIPT, dir);
+  expect(r.status).toBe(0);
+  expect(fs.readdirSync(dir).sort()).toEqual(["Event.zip", "EventLog.txe", "EventLogSecurity.txe", "EventLogSystem.txe", "Trace"]);
+  expect(fs.readdirSync(path.join(dir, "Trace"))).toEqual(["keep.txt"]);
+  expect(fs.readFileSync(path.join(dir, "EventLogSecurity.txe")).equals(SEC)).toBe(true);
+  expect(leftovers()).toEqual([]);
 });
